@@ -5,80 +5,88 @@ top. Findings are classified `BLOCKER` / `HIGH` / `MEDIUM` / `LOW` / `OPTIONAL`.
 
 ---
 
-## Review 003 — 2026-06-30 — Re-audit of `codex/v1-core` @ 094fe61 (PROVISIONAL)
+## Review 003 — 2026-06-30 — Re-audit of `codex/v1-core` @ 094fe61 (FINAL, independently verified)
 
-### Status: **NOT INDEPENDENTLY VERIFIED — source/bundle not received**
-The referenced bundle `codex-v1-core-after-review002.bundle` (head `094fe61`)
-**did not transfer into this environment** — only the stale `fe408db` handoff
-text is present; a filesystem search for `*.bundle` finds nothing. I therefore
-**could not** clone, reconstruct, or run anything here. This review is based on
-(a) Codex's pasted output of running my unaltered `tests/regression/` suite and
-(b) the pytest warning telemetry. It is **provisional** and does **not** certify
-the blocker fixes. Certification requires the `d5b3fcd→094fe61` diff and the
-changed `sim_core/` source, or the actual bundle so I can run independently.
+### Independent verification performed
+Cloned the supplied bundle (`codex-v1-core-after-review002.bundle`), checked out
+`codex/v1-core`, confirmed `HEAD == 094fe619be4ef2bf5ad711efbde1d882eec950fc`,
+history intact (`70708d7 → b129fe5 → aab18a5 → fe408db → d5b3fcd → 094fe61`).
+My `tests/regression/` suite on the branch is **byte-identical** to the `28b099e`
+originals (Codex did not alter the tests). Independent runs here (numpy 2.4.6 /
+pandas 3.0.3):
+- `pytest tests/regression -q` → **22 passed**
+- `pytest -q` → **58 passed**
 
-### Verdict: **CONDITIONAL — moving in the right direction; not accepted**
-Reported: `pytest tests/regression -q → 22 passed` (my full suite), `pytest -q →
-58 passed`. All my RED tests reportedly pass. Telemetry corroborates real
-behavior changes (tz localization, coverage-absent warning, `path_index` reaching
-the RNG via `ensemble.py`, manifest/Scenario present). But green counts cannot
-distinguish a general fix from one shaped to my fixtures, and the fix + my-suite
-import landed in a single commit ("Import Claude regression suite and pass V1
-checks"), so the diff must be inspected.
+Matches Codex's reported counts. I read the `d5b3fcd→094fe61` implementation,
+not just the counts.
 
-### Per-blocker status (Reported PASS = Codex's run, not mine)
-| Finding | Reported | Telemetry signal | Invariant-vs-fixture check still required |
-|---|---|---|---|
-| B-1 tz resample | PASS | naive→localize-to-UTC w/ `RuntimeWarning`; UTC resamples | V-6 |
-| B-3 month overflow | PASS (4/4) | shifted ts still tz-aware; cases contained | V-6 |
-| B-2 RNG ensemble | PASS (4/4) | `ensemble.py:26` passes `seed=master_seed, path_index=i` | V-1 |
-| B-4 Scenario/manifest | PASS (3/3) | `batch.py`, Scenario/ResultDistribution present | V-2, V-3 |
-| H-1 declared dpp | PASS (3/3) | blank dpp now raises | V-4 |
-| H-2 coverage | PASS (4/4) | "coverage metadata absent" warning fires broadly | (largely satisfied; add support counts) |
-| H-3 carry-forward | PASS (1/1) | Feb p50 == 1060 | V-5 |
+### Verdict: **CONDITIONAL APPROVAL** — five Review-002 blockers genuinely fixed; NOT full production acceptance
+The blocker fixes are **general, not fixture-gamed** (V-7 clean). One HIGH
+(ADR-011 silent instrument inference) remains, plus MEDIUM carryovers, and the
+**real 1,150-row ledger integration is still OPEN**, so V1 is not production-
+accepted yet.
 
-### Required verification items (to be checked against the diff/source)
-- **V-1 (B-2 RNG quality):** confirm `.sample` derives the stream from
-  `SeedSequence([master_seed, path_index])` (or `spawn`), **not** `seed +
-  path_index` / `seed*k + path_index` (collision & correlation). Add a test that
-  cross-seed ensembles are not shift-by-one aliases.
-- **V-2 (B-4 data hash):** confirm `data_hash` is *computed from the normalized
-  input* and changes when data changes (my fixture passed a literal hash, so this
-  is unproven). Add: two inputs differing by one P&L → different hash; identical →
-  identical.
-- **V-3 (B-4 manifest content):** confirm `limitations` enumerates the real
-  KNOWN_LIMITATIONS SCOPE caveats (realized-only DD, no intratrade margin, no
-  cash-flow equity effect, micro-contract assumption, thin seasonal support) — not
-  a non-empty placeholder.
-- **V-4 (H-1 no silent inference):** confirm the `DEFAULT_INSTRUMENT_REGISTRY`
-  silent fallback is removed/gated so the contract mapping must be **declared**
-  (ADR-011: "must not silently infer MNQ from NQ"). Blank-dpp raising is necessary
-  but not sufficient.
-- **V-5 (H-3 carry-forward generality):** confirm percentiles forward-fill each
-  path over the **full horizon** with constant denominator = n_paths every month,
-  and that months before a path's first trade use initial equity. Add a fixture
-  where one path's first trade is in month 2.
-- **V-6 (B-1/B-3 clamp & tz generality):** confirm `shifted_to_month` clamps via
-  `min(day, days_in_target_month)` (general), is tz-consistent (no naive/aware
-  mix), and handles multi-day trades spanning months. Decide whether genuinely
-  ambiguous naive input (no tz declared) is **rejected** (per schema) or merely
-  UTC-defaulted with a warning — current telemetry suggests the latter, which is
-  weaker than spec.
-- **V-7 (diff hygiene):** scan `d5b3fcd→094fe61` for branches keyed on
-  fixture-specific values (hardcoded dates, `if month == 2`, magic constants
-  matching my fixtures).
+### V-1…V-7 adjudication
+| Item | Verdict | Evidence |
+|---|---|---|
+| V-1 RNG quality | **GENUINE** | `_rng_for_path = default_rng(SeedSequence(master_seed).spawn(path_index+1)[path_index])` — positional spawn keys ⇒ independent + reproducible, NOT `seed+path_index`. `test_ensemble_paths_are_independent_and_reproducible` checks reproducibility, cross-path divergence, and seed sensitivity generally. |
+| V-2 data hash | **GENUINE (wiring caveat)** | `hash_trades` = real SHA-256 over sorted trade fields; changes with data; used via `_scenario(hash_trades(trades))` end-to-end and asserted in `test_batch_export_includes_result_distribution_provenance`. Caveat M-R3-A. |
+| V-3 manifest content | **GENUINE** | `KNOWN_V1_LIMITATIONS` (realized-only P&L; no margin/prop/cash-flow; month-clamp) wired into every `ResultDistribution`; manifest carries seed/policy/params/hash/limitations. |
+| V-4 silent inference removed | **NOT MET (HIGH)** | `normalize_canonical_margin_frame` still defaults to `_infer_strategy_specs(frame, DEFAULT_INSTRUMENT_REGISTRY)` ⇒ `NQ→MNQ`/`ES→MES` inferred from the symbol when no explicit mapping is passed. ADR-011 forbids silent inference. Blank `dpp` now correctly raises, and the `dpp`-vs-spec check catches wrong inferences, but explicit declaration is not required. |
+| V-5 carry-forward | **GENUINE** | `monthly_equity_percentiles` builds a full month grid and carries each path's equity forward (initial-equity before first trade), constant denominator = n_paths. `test_monthly_percentiles_carry_forward_all_paths` → `[105,105,120]` proves the general case incl. pre-first-trade months. |
+| V-6 clamp | **GENUINE** | `shifted_to_month` clamps `min(target_start+offset, target_end)`, tz-consistent; handles leap-day and cross-source-boundary trades (Codex tests + my B-3 suite). |
+| V-6 naive rejection | **PARTIAL (MEDIUM)** | Rejection fires only when `source_timezone=None` is passed explicitly; the default is `source_timezone="UTC"`, so a naive ledger is silently localized to UTC (warning only) by default — inverse of "reject unless declared." |
+| V-7 fixture-gaming | **CLEAN** | No hardcoded fixture dates / `if month==…` branches; all fixes are parametric (clamp via `min`, RNG via spawn, carry-forward via full grid, hash via field digest). |
 
-### Still OPEN (blocks full V1 acceptance regardless of green counts)
-1. **Independent reconstruction** of `094fe61` (bundle/source not yet received).
-2. **Real 1,150-row canonical ledger integration** — the synthetic fixture is not
-   the real upload; V1 is **not** production-accepted until the real ledger loads
-   and completes historical + seasonal replay.
-3. V-1…V-7 above.
+### Remaining findings
+- **HIGH-R3-1 (V-4 / ADR-011):** make the contract mapping explicit-or-error.
+  `load_canonical_margin_csv` / `normalize_canonical_margin_frame` must require
+  `contract_specs_by_strategy` (or at minimum warn loudly) instead of silently
+  inferring from `DEFAULT_INSTRUMENT_REGISTRY`. Mitigation today: blank or
+  contradictory `dpp` fails closed, so a *wrong* inference is usually caught — but
+  governance (ADR-011) requires no silent inference. *Regression:*
+  `load_canonical_margin_csv(path)` with no declared mapping raises (or warns)
+  rather than silently mapping NQ→MNQ.
+- **MEDIUM-R3-A (V-2 provenance integrity):** `run_simulation_ensemble` trusts the
+  caller-supplied `scenario.input_data_hash`; it should compute
+  `hash_trades(trades)` and verify/populate it, so a stale/empty/mismatched hash
+  cannot flow into the manifest unchecked. *Regression:* ensemble with a wrong
+  `input_data_hash` raises or overwrites with the computed digest.
+- **MEDIUM-R3-B (V-6 naive default):** flip `normalize_trade_frame`'s default to
+  `source_timezone=None` so genuinely ambiguous naive input is rejected unless a tz
+  is declared.
+- **MEDIUM-R3-C (H-2 incomplete):** the "coverage absent" `RuntimeWarning` fires
+  only in `SameCalendarMonthBootstrap`, not Moving/Stationary; `_sorted_source_months`
+  still unions partial/complete across strategies and gap-compacts the month axis;
+  per-month support counts are still not emitted. Centralize the warning; add
+  support counts; document the cross-strategy union.
+- **MEDIUM-R3-D (carryover Review-002 MEDIUM-2):** breakeven `eps` is a single
+  `1e-9` (now consistent across `classify_result`/`_normalize_result`/taxonomy) but
+  still sub-tick and not instrument-aware (ADR-005 wanted ~½ tick).
+- **MEDIUM-R3-E (carryover Review-002 MEDIUM-1):** Moving/Stationary blocks still
+  operate on the gap-compacted month list, fabricating contiguity across data gaps.
+- **LOW-R3-F (clamp clustering):** clamped overflow trades pile onto the target
+  month's final instant (correct for month attribution, distorts intra-month
+  timing). Disclosed in `KNOWN_V1_LIMITATIONS` — acceptable; note for V2.
+- **LOW-R3-G (perf):** `_rng_for_path` spawns `path_index+1` children per call
+  (O(n²) across an ensemble); spawn once per ensemble instead.
 
-### What I need next
-The bundle re-uploaded (preferred — I will clone + run both pytest commands here),
-**or** the changed `sim_core/` files plus `git diff d5b3fcd 094fe61`. I will then
-finalize Review 003 with an independent run and a verdict on each V-item.
+### Status of Review-002 blockers
+B-1 ✓ · B-2 ✓ · B-3 ✓ · B-4 ✓ · H-1 partial (blank-`dpp` ✓; ADR-011 inference ✗ =
+HIGH-R3-1) · H-2 partial (warning added; support counts / union open) · H-3 ✓.
+
+### Still OPEN before full V1 production acceptance
+1. **Real 1,150-row canonical ledger integration** — synthetic fixture only; must
+   load the real upload under an **explicit** declared mapping and complete
+   historical + seasonal replay.
+2. **HIGH-R3-1** (ADR-011 silent inference).
+3. The MEDIUM items above (recommended before V2; not all strictly blocking).
+
+### Recommendation
+Accept the blocker fixes as genuine and well-tested. Authorize Codex to close
+HIGH-R3-1 and the MEDIUM items and to run the real-ledger integration. Do **not**
+open V2 (reinvestment / margin / exposure / prop / optimization / Streamlit) until
+the real-ledger run passes and HIGH-R3-1 is closed.
 
 ---
 
