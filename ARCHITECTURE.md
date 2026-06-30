@@ -154,3 +154,21 @@ Implemented:
   `breakeven_frequency_over_total`
 
 The engine does not expose a bare ambiguous `win_rate` metric.
+
+
+## Review-004 hardening (modules)
+
+- `sim_core/diagnostics/coverage.py` — reusable per-strategy/per-month coverage
+  report (complete/partial/verified_flat/missing, support counts, eligibility).
+- `sim_core/integration/real_ledger.py` — CLI harness:
+  `python -m sim_core.integration.real_ledger --csv ... --mapping
+  configs/nq_es_micro_contracts.yaml --output ...`. Discovers strategy IDs, fails
+  closed on any unmapped strategy, and writes a provenance-stamped integration
+  report (row count, mappings, date range, tz validation, coverage, replay P&L by
+  strategy, breakeven taxonomy, seasonal/moving/stationary smoke tests,
+  chronological-order check, data hash, scenario hash, warnings).
+- `models.BreakevenPolicy`, `models.VerificationReport`, `batch.hash_trades`,
+  `batch.verify_result_provenance`, `batch.scenario_hash` are part of the public
+  API (`sim_core.__all__`).
+- Block bootstraps now carry `ResampledPath.diagnostics` (consecutive runs,
+  restart counts).

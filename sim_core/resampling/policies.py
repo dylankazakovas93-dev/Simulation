@@ -65,12 +65,7 @@ class SameCalendarMonthBootstrap(ResamplingPolicy):
         coverage: Sequence[StrategyCoverage] | None = None,
     ) -> ResampledPath:
         rng = _rng_for_path(seed, path_index)
-        if coverage is None:
-            warnings.warn(
-                "coverage metadata absent; missing months cannot be distinguished from unverified flat months",
-                RuntimeWarning,
-                stacklevel=2,
-            )
+        _warn_if_coverage_absent(coverage)
         source_months = _sorted_source_months(trades, coverage=coverage)
         if not source_months:
             raise ValueError("no source months available for requested bootstrap")
@@ -108,21 +103,44 @@ class MovingBlockBootstrap(ResamplingPolicy):
         coverage: Sequence[StrategyCoverage] | None = None,
     ) -> ResampledPath:
         rng = _rng_for_path(seed, path_index)
+        _warn_if_coverage_absent(coverage)
         source_months = _sorted_source_months(trades, coverage=coverage)
         if not source_months:
             raise ValueError("no source months available for requested bootstrap")
+        runs = _consecutive_runs(source_months)
+        # Valid block starts must lie inside a single run of calendar-consecutive
+        # months; a gap or dataset boundary never bridges a block.
+        valid_starts = [
+            (run_index, offset)
+            for run_index, run in enumerate(runs)
+            for offset in range(len(run) - self.block_length + 1)
+        ]
+        if not valid_starts:
+            raise ValueError(
+                f"no run of consecutive verified months is long enough for "
+                f"block_length={self.block_length} (longest run="
+                f"{max(len(run) for run in runs)})"
+            )
         target_start = self.start_month or source_months[0]
         target_months = [target_start + offset for offset in range(self.months)]
         sampled: list[pd.Period] = []
+        block_count = 0
         while len(sampled) < self.months:
-            max_start = len(source_months) - self.block_length
-            if max_start < 0:
-                raise ValueError("not enough complete source months for requested block_length")
-            start = int(rng.integers(0, max_start + 1))
-            sampled.extend(source_months[start : start + self.block_length])
-        return _materialize_months(
+            run_index, offset = valid_starts[int(rng.integers(0, len(valid_starts)))]
+            sampled.extend(runs[run_index][offset : offset + self.block_length])
+            block_count += 1
+        path = _materialize_months(
             trades, sampled[: self.months], target_months, self.name, path_index
         )
+        diagnostics = {
+            "policy": self.name,
+            "consecutive_runs": len(runs),
+            "max_run_length": max(len(run) for run in runs),
+            "block_length": self.block_length,
+            "blocks_drawn": block_count,
+            "restarts_due_to_boundary": max(block_count - 1, 0),
+        }
+        return ResampledPath(path.trades, path.sampled_blocks, diagnostics)
 
 
 class StationaryBlockBootstrap(ResamplingPolicy):
@@ -154,22 +172,43 @@ class StationaryBlockBootstrap(ResamplingPolicy):
         coverage: Sequence[StrategyCoverage] | None = None,
     ) -> ResampledPath:
         rng = _rng_for_path(seed, path_index)
+        _warn_if_coverage_absent(coverage)
         source_months = _sorted_source_months(trades, coverage=coverage)
         if not source_months:
             raise ValueError("no source months available for requested bootstrap")
+        runs = _consecutive_runs(source_months)
+        # Positions are (run_index, offset); advancing only walks within a run so
+        # a gap or dataset boundary forces a restart instead of silently jumping
+        # across non-consecutive months.
+        positions = [
+            (run_index, offset) for run_index, run in enumerate(runs) for offset in range(len(run))
+        ]
         reset_probability = min(1.0, 1.0 / self.expected_block_length)
-        source_index = int(rng.integers(0, len(source_months)))
-        sampled = []
+        run_index, offset = positions[int(rng.integers(0, len(positions)))]
+        sampled: list[pd.Period] = []
+        boundary_restarts = 0
+        reset_restarts = 0
         for _ in range(self.months):
             if sampled and rng.random() < reset_probability:
-                source_index = int(rng.integers(0, len(source_months)))
-            sampled.append(source_months[source_index])
-            source_index += 1
-            if source_index >= len(source_months):
-                source_index = int(rng.integers(0, len(source_months)))
+                run_index, offset = positions[int(rng.integers(0, len(positions)))]
+                reset_restarts += 1
+            sampled.append(runs[run_index][offset])
+            if offset + 1 < len(runs[run_index]):
+                offset += 1
+            else:
+                run_index, offset = positions[int(rng.integers(0, len(positions)))]
+                boundary_restarts += 1
         target_start = self.start_month or source_months[0]
-        target_months = [target_start + offset for offset in range(self.months)]
-        return _materialize_months(trades, sampled, target_months, self.name, path_index)
+        target_months = [target_start + offset_i for offset_i in range(self.months)]
+        path = _materialize_months(trades, sampled, target_months, self.name, path_index)
+        diagnostics = {
+            "policy": self.name,
+            "consecutive_runs": len(runs),
+            "reset_probability": reset_probability,
+            "restarts_due_to_boundary": boundary_restarts,
+            "restarts_due_to_reset": reset_restarts,
+        }
+        return ResampledPath(path.trades, path.sampled_blocks, diagnostics)
 
 
 def _sorted_source_months(
@@ -185,6 +224,34 @@ def _sorted_source_months(
             months.update(item.complete_months())
         months.difference_update(partial_months)
     return sorted(months)
+
+
+def _warn_if_coverage_absent(coverage: Sequence[StrategyCoverage] | None) -> None:
+    """Single source of the coverage-absent warning, shared by every bootstrap."""
+
+    if coverage is None:
+        warnings.warn(
+            "coverage metadata absent; missing months cannot be distinguished from "
+            "unverified flat months",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+
+
+def _consecutive_runs(months: Sequence[pd.Period]) -> list[list[pd.Period]]:
+    """Split sorted unique month Periods into maximal calendar-consecutive runs.
+
+    A gap (``next != prev + 1``) starts a new run, so block bootstraps never
+    treat non-consecutive source months as contiguous.
+    """
+
+    runs: list[list[pd.Period]] = []
+    for month in months:
+        if runs and month == runs[-1][-1] + 1:
+            runs[-1].append(month)
+        else:
+            runs.append([month])
+    return runs
 
 
 def _rng_for_path(master_seed: int | None, path_index: int) -> np.random.Generator:

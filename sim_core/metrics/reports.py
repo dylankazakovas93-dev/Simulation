@@ -5,8 +5,7 @@ from collections.abc import Sequence
 import numpy as np
 import pandas as pd
 
-from sim_core.models import SimulationResult
-from sim_core.models import Trade
+from sim_core.models import BreakevenPolicy, SimulationResult, Trade
 
 
 def max_drawdown(result: SimulationResult) -> dict[str, float]:
@@ -110,8 +109,26 @@ def summarize_paths(results: Sequence[SimulationResult]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def trade_outcome_taxonomy(trades: Sequence[Trade], *, tolerance: float = 1e-9) -> dict[str, float]:
-    """Return named outcome rates with explicit denominators."""
+def trade_outcome_taxonomy(
+    trades: Sequence[Trade],
+    *,
+    tolerance: float | None = None,
+    policy: "BreakevenPolicy | None" = None,
+    dollars_per_tick: float | None = None,
+) -> dict[str, float]:
+    """Return named outcome rates with explicit denominators.
+
+    Breakeven classification follows the explicit policy (ADR-012). Default is
+    exact zero. A `BreakevenPolicy` (preferred) or a raw dollar `tolerance` may
+    be supplied; they must not be combined.
+    """
+
+    if policy is not None and tolerance is not None:
+        raise ValueError("supply either a BreakevenPolicy or a raw tolerance, not both")
+    if policy is not None:
+        tolerance = policy.resolved_tolerance(dollars_per_tick)
+    if tolerance is None:
+        tolerance = 0.0
 
     n_total = len(trades)
     n_win = sum(1 for trade in trades if trade.pnl_dollars > tolerance)

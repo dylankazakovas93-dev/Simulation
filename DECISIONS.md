@@ -122,3 +122,44 @@ Version 1 includes typed serializable `Scenario` and `ResultDistribution`
 models. Batch exports write result-distribution JSON so CSV outputs are
 accompanied by scenario assumptions, data hash, resampling diagnostics, warnings
 and known limitations.
+
+
+## Review-004 hardening decisions (2026-06-30)
+
+### ADR-011 (ENFORCED) — Explicit per-strategy contract mapping
+`normalize_canonical_margin_frame` / `load_canonical_margin_csv` now REQUIRE
+`contract_specs_by_strategy`. Underlying symbols (NQ/ES) never silently imply a
+contract (MNQ/MES). Unknown strategies, missing mappings, blank `dpp`, and `dpp`
+that contradicts the declaration all fail validation. The default registry is
+explicit convenience tooling only (`instruments.build_specs_from_registry`).
+
+### ADR-012 — Breakeven epsilon policy
+Default classification is **exact zero**. An optional tolerance may be declared
+in explicit dollars or instrument ticks (`models.BreakevenPolicy`), resolved at
+classification time and recorded in `Scenario.breakeven_policy`. No undocumented
+floating-point constant.
+
+### ADR-013 — Timezone policy
+`normalize_trade_frame` default `source_timezone=None`: naive timestamps are
+rejected unless a source timezone is declared; UTC-aware inputs are accepted and
+normalized to UTC. DST-ambiguous / nonexistent local times fail clearly unless an
+explicit `dst_resolution` policy is supplied.
+
+### ADR-014 — Provenance self-verification
+`batch.verify_result_provenance(result, scenario, source_data)` recomputes the
+input-data hash and checks scenario hash, engine version, seed, path count,
+policy, strategy mappings, and commission assumptions. `build_result_distribution`
+records the *computed* input-data hash as authoritative and warns on a declared
+mismatch.
+
+### ADR-015 — Gap-aware block bootstraps
+Moving/stationary blocks traverse only calendar-consecutive ("verified
+consecutive") months. A missing/partial month breaks continuity; a block that
+cannot fit in any run fails; restarts at a gap/boundary are recorded in
+`ResampledPath.diagnostics`.
+
+### ADR-016 — Coverage diagnostics
+`diagnostics.build_coverage_report` produces per-strategy/per-month status
+(complete / partial / verified_flat / missing), seasonal support counts, trade
+counts, coverage span, and per-method eligibility. It feeds scenario-validation
+warnings and exported diagnostics.

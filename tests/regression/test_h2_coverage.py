@@ -31,7 +31,8 @@ def _jan_only():
                     "pnl_dollars": 5,
                 }
             ]
-        )
+        ),
+        source_timezone="UTC",
     )
 
 
@@ -63,7 +64,8 @@ def test_partial_month_excluded_even_when_it_has_trades():
                     "pnl_dollars": 5,
                 }
             ]
-        )
+        ),
+        source_timezone="UTC",
     )
     coverage = [StrategyCoverage("s", "ES", "2025-02", "2025-02", {"2025-02"})]
     with pytest.raises(ValueError):

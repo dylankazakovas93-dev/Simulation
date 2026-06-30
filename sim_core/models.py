@@ -278,6 +278,7 @@ class SampledBlock:
 class ResampledPath:
     trades: list[Trade]
     sampled_blocks: list[SampledBlock]
+    diagnostics: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -346,6 +347,7 @@ class Scenario:
     ruin_threshold: float
     currency: str
     contract_mappings: dict[str, dict[str, Any]]
+    breakeven_policy: dict[str, Any]
     input_data_hash: str
     engine_version: str = ENGINE_VERSION
 
@@ -366,6 +368,7 @@ class Scenario:
         ruin_threshold: float | None = None,
         currency: str = "USD",
         contract_mappings: dict[str, dict[str, Any]] | None = None,
+        breakeven_policy: dict[str, Any] | None = None,
         input_data_hash: str | None = None,
         engine_version: str = ENGINE_VERSION,
         *,
@@ -406,6 +409,11 @@ class Scenario:
         )
         object.__setattr__(self, "currency", currency)
         object.__setattr__(self, "contract_mappings", contract_mappings or {})
+        object.__setattr__(
+            self,
+            "breakeven_policy",
+            breakeven_policy or DEFAULT_BREAKEVEN_POLICY.to_dict(),
+        )
         object.__setattr__(self, "input_data_hash", input_data_hash or data_hash or "")
         object.__setattr__(self, "engine_version", engine_version)
         self.__post_init__()
@@ -498,7 +506,60 @@ class ResultDistribution:
         return cls(**data)
 
 
-def classify_result(pnl_dollars: float, tolerance: float = 1e-9) -> TradeResult:
+@dataclass(frozen=True)
+class BreakevenPolicy:
+    """Explicit breakeven-classification policy (ADR-012).
+
+    The default is *exact zero*: a trade is breakeven only when its P&L is
+    exactly 0. An optional tolerance may be declared either as explicit dollars
+    or as a number of instrument ticks (resolved against the contract's dollar
+    value per tick). The selected policy is recorded in `Scenario` metadata.
+    """
+
+    mode: str = "exact_zero"  # "exact_zero" | "dollars" | "ticks"
+    tolerance_dollars: float = 0.0
+    ticks: float = 0.0
+
+    def __post_init__(self) -> None:
+        if self.mode not in {"exact_zero", "dollars", "ticks"}:
+            raise ValueError(f"unsupported breakeven mode: {self.mode!r}")
+        if self.tolerance_dollars < 0 or self.ticks < 0:
+            raise ValueError("breakeven tolerance cannot be negative")
+
+    def resolved_tolerance(self, dollars_per_tick: float | None = None) -> float:
+        if self.mode == "exact_zero":
+            return 0.0
+        if self.mode == "dollars":
+            return self.tolerance_dollars
+        if dollars_per_tick is None:
+            raise ValueError("ticks mode requires an instrument dollars_per_tick value")
+        return self.ticks * dollars_per_tick
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"mode": self.mode, "tolerance_dollars": self.tolerance_dollars, "ticks": self.ticks}
+
+
+DEFAULT_BREAKEVEN_POLICY = BreakevenPolicy()
+
+
+@dataclass(frozen=True)
+class VerificationReport:
+    """Result of checking exported results against their declared provenance."""
+
+    ok: bool
+    checks: dict[str, bool]
+    details: dict[str, Any]
+
+    def __bool__(self) -> bool:
+        return self.ok
+
+    def failures(self) -> list[str]:
+        return [name for name, passed in self.checks.items() if not passed]
+
+
+def classify_result(pnl_dollars: float, tolerance: float = 0.0) -> TradeResult:
+    """Classify a single trade. Default tolerance is exact zero (ADR-012)."""
+
     if pnl_dollars > tolerance:
         return "win"
     if pnl_dollars < -tolerance:

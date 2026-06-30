@@ -17,9 +17,14 @@ from __future__ import annotations
 import pandas as pd
 
 from sim_core.ingestion.csv_loader import load_canonical_margin_csv, normalize_trade_frame
+from sim_core.models import InstrumentSpec
 from sim_core.resampling.policies import HistoricalReplay, SameCalendarMonthBootstrap
 
 CANONICAL = "sample_data/nq_es_margin_sim_master_2025_2026.csv"
+_MICRO_SPECS = {
+    "nq_open": InstrumentSpec("NQ", "MNQ", 2.0, "USD"),
+    "es_open": InstrumentSpec("ES", "MES", 5.0, "USD"),
+}
 
 
 def _utc_frame() -> pd.DataFrame:
@@ -59,7 +64,7 @@ def test_utc_trades_resample_without_tz_error():
 
 def test_canonical_ledger_historical_and_seasonal_complete():
     """RED: canonical UTC ledger completes historical replay but seasonal raises today (BLOCKER-1)."""
-    trades = load_canonical_margin_csv(CANONICAL)
+    trades = load_canonical_margin_csv(CANONICAL, contract_specs_by_strategy=_MICRO_SPECS)
     HistoricalReplay().sample(trades)  # no timestamp shift -> already works
     path = SameCalendarMonthBootstrap(months=2, start_month="2026-01").sample(trades, seed=1)
     assert len(path.trades) >= 1

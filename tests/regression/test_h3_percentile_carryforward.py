@@ -30,7 +30,7 @@ def _path(entries):
         for i, (month, pnl) in enumerate(entries)
     ]
     return run_fixed_contract_simulation(
-        normalize_trade_frame(pd.DataFrame(rows)),
+        normalize_trade_frame(pd.DataFrame(rows), source_timezone="UTC"),
         account=AccountConfig(initial_equity=1_000),
     )
 

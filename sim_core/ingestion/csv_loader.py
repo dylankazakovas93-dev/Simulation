@@ -7,7 +7,6 @@ import warnings
 
 import pandas as pd
 
-from sim_core.instruments import DEFAULT_INSTRUMENT_REGISTRY
 from sim_core.models import (
     InstrumentSpec,
     StrategyMetadata,
@@ -73,7 +72,6 @@ def load_canonical_margin_csv(
     path: str | Path,
     *,
     contract_specs_by_strategy: dict[str, InstrumentSpec] | None = None,
-    instrument_registry: dict[str, InstrumentSpec] | None = None,
 ) -> list[Trade]:
     source_path = Path(path)
     frame = pd.read_csv(source_path)
@@ -81,9 +79,8 @@ def load_canonical_margin_csv(
         frame,
         source_path=source_path,
         contract_specs_by_strategy=contract_specs_by_strategy,
-        instrument_registry=instrument_registry,
     )
-    return normalize_trade_frame(normalized, source_path=source_path)
+    return normalize_trade_frame(normalized, source_path=source_path, source_timezone="UTC")
 
 
 def normalize_canonical_margin_frame(
@@ -91,9 +88,18 @@ def normalize_canonical_margin_frame(
     *,
     source_path: Path | None = None,
     contract_specs_by_strategy: dict[str, InstrumentSpec] | None = None,
-    instrument_registry: dict[str, InstrumentSpec] | None = None,
 ) -> pd.DataFrame:
-    """Map nq_es_margin_sim_master_2025_2026.csv columns into the V1 schema."""
+    """Map nq_es_margin_sim_master_2025_2026.csv columns into the V1 schema.
+
+    Explicit per-strategy contract specifications are REQUIRED (ADR-011). The
+    underlying symbol (e.g. ``NQ``/``ES``) never silently implies a contract
+    (``MNQ``/``MES``); every ``strategy_id`` present in the ledger must have a
+    declared spec. The default instrument registry may be used only as explicit,
+    user-selected convenience tooling (see
+    ``sim_core.instruments.build_specs_from_registry``), never as an unannounced
+    loader fallback. Unknown strategies, missing mappings, and blank ``dpp`` all
+    fail validation.
+    """
 
     required = {
         "strategy",
@@ -113,12 +119,36 @@ def normalize_canonical_margin_frame(
             [ValidationIssue(None, column, "required canonical column is missing") for column in missing]
         )
 
+    if contract_specs_by_strategy is None:
+        raise TradeValidationError(
+            [
+                ValidationIssue(
+                    None,
+                    "contract_specs_by_strategy",
+                    "explicit per-strategy contract specifications are required for canonical "
+                    "margin-ledger loading; underlying symbols are not silently mapped to contracts",
+                )
+            ]
+        )
+
     rows: list[dict[str, object]] = []
     issues: list[ValidationIssue] = []
-    contract_specs_by_strategy = contract_specs_by_strategy or _infer_strategy_specs(
-        frame,
-        instrument_registry or DEFAULT_INSTRUMENT_REGISTRY,
-    )
+
+    # Every strategy present in the ledger must have an explicit declared spec.
+    if "strategy" in frame.columns:
+        ledger_strategies = sorted(
+            {text for text in (_optional_str(value) for value in frame["strategy"]) if text}
+        )
+        for strategy in ledger_strategies:
+            if strategy not in contract_specs_by_strategy:
+                issues.append(
+                    ValidationIssue(
+                        None,
+                        "strategy",
+                        f"no declared contract specification for strategy '{strategy}'",
+                    )
+                )
+
     for index, row in frame.iterrows():
         row_number = int(index) + 2
         strategy_id = _required_str(row.get("strategy"), "strategy", row_number, issues)
@@ -127,20 +157,15 @@ def normalize_canonical_margin_frame(
             continue
         spec = contract_specs_by_strategy.get(strategy_id)
         if spec is None:
-            issues.append(
-                ValidationIssue(
-                    row_number,
-                    "strategy",
-                    "missing explicit contract specification for strategy",
-                )
-            )
+            # Already reported at the aggregate level above; skip the row.
             continue
         if spec.underlying != underlying:
             issues.append(
                 ValidationIssue(
                     row_number,
                     "inst",
-                    f"row underlying {underlying} does not match declared {spec.underlying}",
+                    f"row underlying {underlying} does not match declared "
+                    f"{spec.underlying} for strategy '{strategy_id}'",
                 )
             )
             continue
@@ -154,7 +179,7 @@ def normalize_canonical_margin_frame(
                 ValidationIssue(
                     row_number,
                     "dpp",
-                    "dpp is required unless an explicit fill policy is configured",
+                    "dpp is required and must not be blank; no silent fallback to a contract default",
                 )
             )
             continue
@@ -163,7 +188,8 @@ def normalize_canonical_margin_frame(
                 ValidationIssue(
                     row_number,
                     "dpp",
-                    f"does not match registry value {spec.dollars_per_point} for {underlying}",
+                    f"ledger dpp {dpp} does not match declared {spec.dollars_per_point} "
+                    f"for strategy '{strategy_id}'",
                 )
             )
 
@@ -222,7 +248,8 @@ def normalize_trade_frame(
     *,
     source_path: Path | None = None,
     metadata: StrategyMetadata | None = None,
-    source_timezone: str | None = "UTC",
+    source_timezone: str | None = None,
+    dst_resolution: str | None = None,
 ) -> list[Trade]:
     issues: list[ValidationIssue] = []
     missing = sorted(REQUIRED_COLUMNS - set(frame.columns))
@@ -249,10 +276,12 @@ def normalize_trade_frame(
         normalized[column] = pd.to_numeric(normalized[column], errors="coerce")
 
     entry_times = _parse_timestamp_column(
-        normalized["entry_time"], "entry_time", issues, source_timezone=source_timezone
+        normalized["entry_time"], "entry_time", issues,
+        source_timezone=source_timezone, dst_resolution=dst_resolution,
     )
     exit_times = _parse_timestamp_column(
-        normalized["exit_time"], "exit_time", issues, source_timezone=source_timezone
+        normalized["exit_time"], "exit_time", issues,
+        source_timezone=source_timezone, dst_resolution=dst_resolution,
     )
 
     trades: list[Trade] = []
@@ -376,6 +405,7 @@ def _parse_timestamp_column(
     issues: list[ValidationIssue],
     *,
     source_timezone: str | None,
+    dst_resolution: str | None = None,
 ) -> pd.Series:
     parsed_values: list[pd.Timestamp] = []
     for index, value in values.items():
@@ -395,21 +425,26 @@ def _parse_timestamp_column(
                     ValidationIssue(
                         row_number,
                         column,
-                        "naive timestamp rejected; configure source_timezone explicitly",
+                        "naive timestamp with no timezone declaration; pass source_timezone explicitly",
                     )
                 )
                 parsed_values.append(pd.NaT)
                 continue
             warnings.warn(
-                f"{column}: localized naive timestamp to configured source_timezone={source_timezone}",
+                f"{column}: localized naive timestamp to declared source_timezone={source_timezone}",
                 RuntimeWarning,
                 stacklevel=2,
             )
             try:
-                timestamp = timestamp.tz_localize(source_timezone)
+                timestamp = _localize_naive(timestamp, source_timezone, dst_resolution)
             except Exception as exc:
                 issues.append(
-                    ValidationIssue(row_number, column, f"cannot localize timestamp: {exc}")
+                    ValidationIssue(
+                        row_number,
+                        column,
+                        f"ambiguous or nonexistent local time for {source_timezone} "
+                        f"({type(exc).__name__}); supply an explicit dst_resolution policy",
+                    )
                 )
                 parsed_values.append(pd.NaT)
                 continue
@@ -417,19 +452,31 @@ def _parse_timestamp_column(
     return pd.Series(parsed_values, index=values.index)
 
 
-def _infer_strategy_specs(
-    frame: pd.DataFrame,
-    instrument_registry: dict[str, InstrumentSpec],
-) -> dict[str, InstrumentSpec]:
-    specs: dict[str, InstrumentSpec] = {}
-    if "strategy" not in frame.columns or "inst" not in frame.columns:
-        return specs
-    for _, row in frame.iterrows():
-        strategy = _optional_str(row.get("strategy"))
-        instrument = _optional_str(row.get("inst"))
-        if strategy and instrument and instrument in instrument_registry:
-            specs[strategy] = instrument_registry[instrument]
-    return specs
+def _localize_naive(
+    timestamp: pd.Timestamp, source_timezone: str, dst_resolution: str | None
+) -> pd.Timestamp:
+    """Localize a naive timestamp, failing clearly on DST gaps/overlaps.
+
+    With ``dst_resolution=None`` pandas raises on nonexistent (spring-forward gap)
+    or ambiguous (fall-back overlap) local times, which we surface as a clear
+    validation error. An explicit policy resolves them:
+      * ``"shift_forward"`` / ``"shift_backward"`` / ``"NaT"`` -> nonexistent times
+      * ``"earliest"`` / ``"latest"`` -> ambiguous times
+    """
+
+    if dst_resolution is None:
+        return timestamp.tz_localize(source_timezone)
+    ambiguous: object = "raise"
+    nonexistent: str = "raise"
+    if dst_resolution == "earliest":
+        ambiguous = True
+    elif dst_resolution == "latest":
+        ambiguous = False
+    elif dst_resolution in {"shift_forward", "shift_backward", "NaT"}:
+        nonexistent = dst_resolution
+    else:
+        raise ValueError(f"unsupported dst_resolution policy: {dst_resolution!r}")
+    return timestamp.tz_localize(source_timezone, ambiguous=ambiguous, nonexistent=nonexistent)
 
 
 def _required_str(

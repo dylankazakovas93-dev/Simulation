@@ -21,21 +21,25 @@ from sim_core.models import InstrumentSpec, TradeValidationError
 CANONICAL = "sample_data/nq_es_margin_sim_master_2025_2026.csv"
 
 
+def _micro_specs() -> dict[str, InstrumentSpec]:
+    # Explicit per-strategy declaration (ADR-011); no inference from the symbol.
+    return {
+        "nq_open": InstrumentSpec("NQ", "MNQ", 2.0, "USD"),
+        "es_open": InstrumentSpec("ES", "MES", 5.0, "USD"),
+    }
+
+
 def test_blank_dpp_fails_validation():
-    """RED: a blank dpp silently defaults to micro today instead of raising (HIGH-1)."""
+    """A blank dpp fails closed under an explicit declared mapping (HIGH-1)."""
     frame = pd.read_csv(CANONICAL)
     frame.loc[0, "dpp"] = np.nan
     with pytest.raises(TradeValidationError):
-        normalize_canonical_margin_frame(frame)
+        normalize_canonical_margin_frame(frame, contract_specs_by_strategy=_micro_specs())
 
 
 def test_declared_micro_mapping_passes():
     """GUARD: an explicit NQ->MNQ $2 / ES->MES $5 declaration loads and matches dpp."""
-    registry = {
-        "NQ": InstrumentSpec("NQ", "MNQ", 2.0, "USD"),
-        "ES": InstrumentSpec("ES", "MES", 5.0, "USD"),
-    }
-    trades = load_canonical_margin_csv(CANONICAL, instrument_registry=registry)
+    trades = load_canonical_margin_csv(CANONICAL, contract_specs_by_strategy=_micro_specs())
     declared = {(t.instrument, t.contract_symbol, t.dollars_per_point) for t in trades}
     assert ("NQ", "MNQ", 2.0) in declared
     assert ("ES", "MES", 5.0) in declared
@@ -46,4 +50,4 @@ def test_dpp_disagreeing_with_declaration_is_rejected():
     frame = pd.read_csv(CANONICAL)
     frame.loc[0, "dpp"] = 20.0  # full-size value under a declared-micro mapping
     with pytest.raises(TradeValidationError):
-        normalize_canonical_margin_frame(frame)
+        normalize_canonical_margin_frame(frame, contract_specs_by_strategy=_micro_specs())

@@ -34,7 +34,8 @@ def _one_path():
                     "source_row_id": "r1",
                 }
             ]
-        )
+        ),
+        source_timezone="UTC",
     )
     return run_fixed_contract_simulation(trades, account=AccountConfig(initial_equity=100_000))
 

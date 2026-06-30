@@ -30,7 +30,7 @@ def _two_year_trades() -> list:
                     "pnl_dollars": 10 * year + month,
                 }
             )
-    return normalize_trade_frame(pd.DataFrame(rows))
+    return normalize_trade_frame(pd.DataFrame(rows), source_timezone="UTC")
 
 
 def _source_months(path) -> tuple:

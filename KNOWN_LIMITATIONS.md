@@ -72,3 +72,22 @@ Legend: **[GUARD]** enforced in code · **[WARN]** should be surfaced in reports
   assumptions, data hash, diagnostics, and known limitations.
 - **[WARN]** Single-path equity CSV exports include scenario metadata only when
   a `Scenario` is supplied by the caller.
+
+
+## Review-004 status updates
+
+- **[GUARD]** Contract mapping must be declared per strategy; no silent NQ->MNQ /
+  ES->MES inference (ADR-011 enforced).
+- **[GUARD]** Naive timestamps rejected unless `source_timezone` declared; DST
+  gaps/overlaps fail unless an explicit `dst_resolution` is given (ADR-013).
+- **[GUARD]** Breakeven is exact-zero by default; tolerance is explicit and
+  recorded in the scenario (ADR-012).
+- **[GUARD]** Moving/stationary blocks never bridge calendar gaps (ADR-015).
+- **[GUARD]** Coverage report distinguishes missing vs verified-flat months; the
+  coverage-absent warning fires for every bootstrap, not only seasonal.
+- **[GUARD]** Result provenance is self-verifiable; the computed input-data hash
+  is authoritative in exports (ADR-014).
+- **[WARN/OPEN]** The real 1,150-row ledger has NOT yet been integrated; run
+  `sim_core.integration.real_ledger` against the real CSV before production
+  acceptance. The clamp-to-month-end behavior for shifted month-end trades still
+  clusters at the boundary (disclosed; acceptable for V1).
