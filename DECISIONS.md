@@ -93,3 +93,23 @@ pool by default (configurable). Support counts per month-of-year are always
 reported.
 **Why:** Including a 3-day "month" as if it were a full month biases seasonal
 distributions; thin or single-year support must be visible.
+
+## ADR-011 — Contract mapping is declared per strategy; `dpp` is authoritative; no silent micro fallback
+**Status:** ACCEPTED (user decision, 2026-06-30)
+**Decision:** For the `nq_es_margin_sim_master_2025_2026` ledger the contracts
+are **micros**: NQ rows = MNQ at $2/point, ES rows = MES at $5/point. The
+mapping is not inferred from the underlying symbol. A strategy/instrument
+configuration must explicitly declare `underlying`, `contract_symbol`,
+`dollars_per_point`, and `currency`. The file's `dpp` field is **authoritative**
+and is cross-checked against the declared mapping. A blank or missing `dpp`
+must **fail validation**; it must never silently fall back to micro-contract
+economics, and the engine must never silently infer `MNQ` from `NQ` (or `MES`
+from `ES`).
+**Why:** The micro values are correct for this ledger, but a built-in micro
+default is a latent 10× mispricing for any full-size or differently-specced
+ledger. Failing closed on a blank/contradictory `dpp` keeps the economics
+explicit and auditable.
+**Consequence (for Codex):** Replace the implicit
+`DEFAULT_INSTRUMENT_REGISTRY` fallback with a required declared mapping;
+`normalize_canonical_margin_frame` must raise (not default) on a blank `dpp`.
+Covered by `tests/regression/test_h1_instrument_mapping.py`.

@@ -197,6 +197,38 @@ Codex's reconciliation overwrote Review 001 in `HANDOFF.md` on `codex/v1-core`
 with its own notes. Keep this review log (Review 001 + 002, newest on top)
 canonical; fold Codex's status into `PROJECT_STATUS.md`, not over the review log.
 
+### Regression suite (added 2026-06-30) — `tests/regression/`
+Red-by-design acceptance targets for the findings above (run on `codex/v1-core`:
+`python3 -m pytest tests/regression -q`). RED = fails today, Codex must fix;
+GUARD = passes today, must not regress. Contract for not-yet-built APIs
+(`run_path_ensemble`, `Scenario`, `ResultDistribution`, manifest export) is in
+`tests/regression/README.md`.
+
+| File · test | Finding | Type | Expected failure today |
+|---|---|---|---|
+| `test_b1_timezone::test_utc_timestamps_preserved_on_ingest` | H-4 | GUARD | passes (ingest keeps tz) |
+| `test_b1_timezone::test_utc_trades_resample_without_tz_error` | B-1 | RED | `TypeError: Cannot subtract tz-naive and tz-aware` in `shifted_to_month` |
+| `test_b1_timezone::test_canonical_ledger_historical_and_seasonal_complete` | B-1/B-5 | RED | same `TypeError` at the seasonal step (historical step passes) |
+| `test_b3_month_overflow::test_shift_never_leaves_target_month` (×4) | B-3 | RED | shifted entry/exit land in the month after target (e.g. Jan-31→Feb gives 2025-03) |
+| `test_b2_rng_streams::test_existing_sample_path_index_is_currently_inert` | B-2 | RED | assertion: all 8 paths identical (`path_index` inert) |
+| `test_b2_rng_streams::test_run_path_ensemble_gives_independent_streams` | B-2 | RED | `ModuleNotFoundError: sim_core.execution.ensemble` |
+| `test_b2_rng_streams::test_same_master_seed_reproduces_full_ensemble` | B-2/T1 | RED | `ModuleNotFoundError: sim_core.execution.ensemble` |
+| `test_b2_rng_streams::test_path_indices_produce_non_identical_valid_paths` | B-2 | RED | `ModuleNotFoundError: sim_core.execution.ensemble` |
+| `test_b4_scenario_and_exports::test_scenario_round_trips` | B-4 | RED | `ImportError: cannot import name 'Scenario'` |
+| `test_b4_scenario_and_exports::test_result_distribution_embeds_and_round_trips_scenario` | B-4 | RED | `ImportError: cannot import name 'ResultDistribution'` |
+| `test_b4_scenario_and_exports::test_export_manifest_contains_assumptions` | B-4/M-3 | RED | `ImportError` (Scenario/ResultDistribution); no `run_manifest.json` emitted |
+| `test_h1_instrument_mapping::test_blank_dpp_fails_validation` | H-1 | RED | DID NOT RAISE — blank `dpp` silently defaults to micro |
+| `test_h1_instrument_mapping::test_declared_micro_mapping_passes` | H-1 | GUARD | passes (declared NQ→MNQ $2 / ES→MES $5) |
+| `test_h1_instrument_mapping::test_dpp_disagreeing_with_declaration_is_rejected` | H-1 | GUARD | passes (dpp mismatch fails closed) |
+| `test_h2_coverage::test_verified_flat_month_is_sampleable` | H-2 | GUARD | passes (coverage flat month drawable) |
+| `test_h2_coverage::test_missing_month_is_not_treated_as_flat` | H-2 | GUARD | passes (missing month raises, not fabricated) |
+| `test_h2_coverage::test_partial_month_excluded_even_when_it_has_trades` | H-2 | GUARD | passes (declared-partial excluded) |
+| `test_h2_coverage::test_missing_coverage_emits_warning` | H-2 | RED | no warning emitted when coverage absent |
+| `test_h3_percentile_carryforward::test_monthly_percentiles_carry_forward_flat_paths` | H-3 | RED | Feb p50 == 1150 (flat path dropped); expected 1060 with carry-forward |
+
+Note: on the governance branch `sim_core` is absent, so the suite errors at
+collection here by design — it travels with the implementation on `codex/v1-core`.
+
 ### Do NOT proceed to V2
 Reinvestment, margin, exposure, prop-firm, optimization, and Streamlit stay gated
 until B-1…B-5 and H-1…H-4 are cleared and T1/T17/T19/T20 pass.
