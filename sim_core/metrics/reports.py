@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from sim_core.models import SimulationResult
+from sim_core.models import Trade
 
 
 def max_drawdown(result: SimulationResult) -> dict[str, float]:
@@ -78,3 +79,24 @@ def summarize_paths(results: Sequence[SimulationResult]) -> pd.DataFrame:
             }
         )
     return pd.DataFrame(rows)
+
+
+def trade_outcome_taxonomy(trades: Sequence[Trade], *, tolerance: float = 1e-9) -> dict[str, float]:
+    """Return named outcome rates with explicit denominators."""
+
+    n_total = len(trades)
+    n_win = sum(1 for trade in trades if trade.pnl_dollars > tolerance)
+    n_loss = sum(1 for trade in trades if trade.pnl_dollars < -tolerance)
+    n_breakeven = n_total - n_win - n_loss
+    active = n_win + n_loss
+    return {
+        "n_total": float(n_total),
+        "n_win": float(n_win),
+        "n_loss": float(n_loss),
+        "n_breakeven": float(n_breakeven),
+        "rate_wins_over_total": n_win / n_total if n_total else 0.0,
+        "true_win_rate_excluding_breakevens": n_win / active if active else 0.0,
+        "non_loss_rate_over_total": (n_win + n_breakeven) / n_total if n_total else 0.0,
+        "loss_rate_over_total": n_loss / n_total if n_total else 0.0,
+        "breakeven_frequency_over_total": n_breakeven / n_total if n_total else 0.0,
+    }

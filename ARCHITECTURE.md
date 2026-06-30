@@ -1,29 +1,62 @@
 # Architecture
 
-## Version 1 Boundary
+This document reconciles Claude's target architecture with the current Codex
+Version 1 implementation on `codex/v1-core`.
 
-The first milestone is a deterministic simulation core:
+## Non-Negotiable Principles
 
-CSV load -> validation -> synchronized resampling -> fixed-contract replay -> equity path -> risk report/export.
+- Engine/UI separation: `sim_core/` contains the headless simulation engine. `app/`
+  is reserved for Streamlit after the core passes audit.
+- Explicit typed domain: V1 uses frozen dataclasses and explicit validators.
+- Determinism: stochastic policies use local `numpy.random.default_rng(seed)`;
+  no module-level global RNG state is used.
+- Assumptions are visible: modeling assumptions and deviations are recorded in
+  `DECISIONS.md`, `KNOWN_LIMITATIONS.md`, and `HANDOFF.md`.
+- V1 supports USD only.
 
-UI, prop-firm state machines, dynamic sizing, cash flows, optimizer objectives, and margin rules are deferred.
+## Current Package Layout
+
+```text
+sim_core/
+  models.py        # typed domain objects and validation errors
+  instruments.py   # explicit USD instrument/contract registry
+  ingestion/       # CSV and canonical margin-ledger normalization
+  resampling/      # historical, seasonal, moving, stationary bootstrap policies
+  execution/       # fixed-contract realized-PnL replay
+  metrics/         # drawdown, ruin, percentiles, outcome taxonomy
+  exports.py       # CSV export helpers
+app/               # reserved for later Streamlit UI
+tests/             # pytest suite
+sample_data/       # small fixtures, including canonical-schema fixture
+configs/           # example V1 configuration
+```
+
+Claude's target layout used `core/`; this branch keeps the implemented
+`sim_core/` package name from the initial vertical slice. The architecture is
+otherwise aligned with the same engine/UI separation.
 
 ## Domain Models
 
-- `StrategyMetadata`: strategy/instrument-specific metadata such as dollars per point and commission defaults.
-- `Trade`: normalized historical trade measured per one contract.
-- `FixedContractPortfolio`: fixed contract counts per strategy or per strategy/instrument pair.
+- `InstrumentSpec`: explicit underlying, contract symbol, dollars per point,
+  currency, and optional commission defaults.
+- `StrategyMetadata`: strategy/instrument-specific defaults, never shared across
+  instruments unless explicitly configured.
+- `Trade`: normalized historical trade measured per one contract, with permanent
+  `source_row_id` preserved through resampling.
+- `StrategyCoverage`: declared verified coverage dates and partial-month flags
+  used to distinguish flat months from missing data.
+- `FixedContractPortfolio`: fixed contract counts per strategy or
+  strategy/instrument pair.
 - `AccountConfig`: initial equity and ruin threshold.
-- `SampledBlock`: provenance record mapping a target month to the sampled source month.
-- `ResampledPath`: trades plus block provenance.
-- `EquityPoint`: one realized trade event in the replay equity curve.
-- `SimulationResult`: replay result with equity path, trades, portfolio, account, and sampled block metadata.
+- `SampledBlock`: provenance record mapping target month to source month.
+- `ResampledPath`: sampled trades plus block provenance.
+- `EquityPoint`: one realized settlement event.
+- `SimulationResult`: account, portfolio, trades, equity path, and block
+  provenance.
 
-The package uses typed dataclasses plus explicit validation as the configuration-validation equivalent for Version 1. This avoids introducing a larger config system before scenario schemas stabilize.
+## CSV Schemas
 
-## CSV Schema
-
-Required fields:
+Generic V1 normalized schema requires:
 
 - `strategy_id`
 - `instrument`
@@ -31,9 +64,11 @@ Required fields:
 - `exit_time`
 - `pnl_dollars`, or both `pnl_points` and `dollars_per_point`
 
-Optional fields:
+Optional generic fields:
 
 - `trade_id`
+- `source_row_id`
+- `contract_symbol`
 - `direction`
 - `entry_price`
 - `exit_price`
@@ -43,65 +78,79 @@ Optional fields:
 - `mfe_points`
 - `result_type`
 - `session`
+- `currency`
 - `commission_round_turn`
 
-Derived fields:
+Canonical margin-ledger schema supported by
+`load_canonical_margin_csv`/`normalize_canonical_margin_frame`:
 
-- `pnl_dollars` can be derived from `pnl_points * dollars_per_point`.
-- `result_type` is derived as `win`, `loss`, or `breakeven` when absent.
-- `trade_id` is generated from source path and CSV row when absent.
-
-Validation behavior:
-
-- Missing required columns raise `TradeValidationError`.
-- Invalid timestamps raise `TradeValidationError`.
-- `exit_time < entry_time` raises `TradeValidationError`.
-- Duplicate trades with identical strategy, instrument, entry time, exit time, and PnL are rejected.
-- Breakeven trades must have zero PnL if explicitly labeled.
-
-## Resampling Interfaces
-
-All policies expose:
-
-```python
-sample(trades, *, seed=None, path_index=0) -> ResampledPath
+```text
+strategy, inst, window, mult, year, sess_date, entry_utc, exit_utc, side,
+pnl_pts, mae_pts, mfe_pts, exit, dpp, nq_inside
 ```
 
-Implemented policies:
+Mapping:
+
+- `strategy` -> `strategy_id`
+- `inst` -> underlying `instrument`
+- explicit registry maps `NQ` -> `MNQ` at USD 2/point and `ES` -> `MES` at USD
+  5/point
+- `entry_utc` / `exit_utc` -> timestamps
+- `pnl_pts` -> `pnl_points`
+- `mae_pts` / `mfe_pts`
+- `exit` -> `result_type`
+- `dpp` -> `dollars_per_point`, validated against the registry
+- `window`, `mult`, and `nq_inside` -> metadata only
+
+`mult` is never used as position sizing in V1.
+
+## Resampling
+
+Implemented policies share:
+
+```python
+sample(trades, *, seed=None, path_index=0, coverage=None) -> ResampledPath
+```
 
 - `HistoricalReplay`
 - `SameCalendarMonthBootstrap`
 - `MovingBlockBootstrap`
 - `StationaryBlockBootstrap`
 
-For bootstraps, a sampled source month is applied to the entire portfolio, so all strategies draw from the same historical calendar block. This preserves observed cross-strategy dependence at month granularity for Version 1.
+Synchronized month/block selection is the default. Seasonal bootstrap only
+selects historical blocks whose month-of-year matches the target slot. Moving
+blocks sample complete contiguous historical blocks and truncate to the horizon;
+they do not wrap the final month into the first month within a block. Stationary
+bootstrap samples a new source start when the source boundary is reached.
 
-## Portfolio Event Flow
+Declared coverage can add verified flat zero-trade months to the sampling pool
+and can exclude partial months.
 
-1. Normalize one or more ledgers into `Trade` objects ordered by entry time.
-2. Resampling creates a `ResampledPath` and records source-month provenance.
-3. Replay sorts realized events by `exit_time`, then `entry_time`, then `trade_id`.
-4. Contracts are read from strategy/instrument overrides, strategy overrides, or the portfolio default.
-5. Gross PnL is `trade.pnl_dollars * contracts`.
-6. Commission is `trade.commission_round_turn * contracts`.
-7. Net PnL is applied to equity at the trade exit timestamp.
-8. Metrics consume the resulting realized equity path.
+## Event Processing
 
-## Test Plan
+Version 1 books realized P&L at `exit_time`. Settlement ordering is:
 
-Current tests cover:
+1. `exit_time`
+2. `entry_time`
+3. `strategy_id`
+4. permanent `source_row_id`
 
-- Chronological load ordering.
-- Strategy/instrument metadata isolation.
-- ES metadata not modifying NQ metadata.
-- Mismatched strategy/instrument metadata not being applied to another instrument.
-- Breakeven classification.
-- Duplicate-trade rejection.
-- Synchronized source-month selection across strategies.
-- Identical seed reproducibility.
-- Different seed variation.
-- Fixed-contract replay math.
-- MES and MNQ independent sizing overrides.
-- Drawdown, ruin, and monthly percentile reporting.
+Future event-driven cash-flow ordering is locked in `DECISIONS.md`: deposits
+before exits and exits before entries when timestamps are identical. Cash flows
+remain outside this implementation pass.
 
-Future tests should cover cash flows, forced size-down, margin restrictions, account failure, prop payouts, optimizer constraints, and stress adjustments as those modules are implemented.
+## Metrics
+
+Implemented:
+
+- equity path export
+- terminal equity
+- max drawdown depth and percent
+- ruin probability
+- cross-path monthly equity percentiles
+- explicit outcome taxonomy:
+  `rate_wins_over_total`, `true_win_rate_excluding_breakevens`,
+  `non_loss_rate_over_total`, `loss_rate_over_total`, and
+  `breakeven_frequency_over_total`
+
+The engine does not expose a bare ambiguous `win_rate` metric.

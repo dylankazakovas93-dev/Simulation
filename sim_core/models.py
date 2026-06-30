@@ -33,12 +33,37 @@ class TradeValidationError(ValueError):
 
 
 @dataclass(frozen=True)
+class InstrumentSpec:
+    """Explicit contract reference metadata; never inferred from a symbol alone."""
+
+    underlying: str
+    contract_symbol: str
+    dollars_per_point: float
+    currency: str = "USD"
+    commission_round_turn: float = 0.0
+
+    def __post_init__(self) -> None:
+        if not self.underlying:
+            raise ValueError("underlying is required")
+        if not self.contract_symbol:
+            raise ValueError("contract_symbol is required")
+        if self.dollars_per_point <= 0:
+            raise ValueError("dollars_per_point must be positive")
+        if self.currency != "USD":
+            raise ValueError("Version 1 supports USD instruments only")
+        if self.commission_round_turn < 0:
+            raise ValueError("commission_round_turn cannot be negative")
+
+
+@dataclass(frozen=True)
 class StrategyMetadata:
     """Metadata stays attached to a specific strategy and instrument pair."""
 
     strategy_id: str
     instrument: str
+    contract_symbol: str | None = None
     dollars_per_point: float | None = None
+    currency: str = "USD"
     commission_round_turn: float = 0.0
     description: str | None = None
     extra: dict[str, Any] = field(default_factory=dict)
@@ -48,6 +73,8 @@ class StrategyMetadata:
             raise ValueError("strategy_id is required")
         if not self.instrument:
             raise ValueError("instrument is required")
+        if self.currency != "USD":
+            raise ValueError("Version 1 supports USD instruments only")
         if self.dollars_per_point is not None and self.dollars_per_point <= 0:
             raise ValueError("dollars_per_point must be positive")
         if self.commission_round_turn < 0:
@@ -59,8 +86,10 @@ class Trade:
     """A normalized historical trade, measured per one contract."""
 
     trade_id: str
+    source_row_id: str
     strategy_id: str
     instrument: str
+    contract_symbol: str | None
     entry_time: pd.Timestamp
     exit_time: pd.Timestamp
     pnl_dollars: float
@@ -75,6 +104,7 @@ class Trade:
     result_type: TradeResult | None = None
     session: str | None = None
     dollars_per_point: float | None = None
+    currency: str = "USD"
     commission_round_turn: float = 0.0
     source_path: Path | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -82,10 +112,14 @@ class Trade:
     def __post_init__(self) -> None:
         if not self.trade_id:
             raise ValueError("trade_id is required")
+        if not self.source_row_id:
+            raise ValueError("source_row_id is required")
         if not self.strategy_id:
             raise ValueError("strategy_id is required")
         if not self.instrument:
             raise ValueError("instrument is required")
+        if self.currency != "USD":
+            raise ValueError("Version 1 supports USD trades only")
         if self.exit_time < self.entry_time:
             raise ValueError("exit_time cannot precede entry_time")
         if self.commission_round_turn < 0:
@@ -106,8 +140,10 @@ class Trade:
         exit_offset = self.exit_time - source_start
         return Trade(
             trade_id=f"{self.trade_id}@{target_month}",
+            source_row_id=self.source_row_id,
             strategy_id=self.strategy_id,
             instrument=self.instrument,
+            contract_symbol=self.contract_symbol,
             entry_time=target_start + entry_offset,
             exit_time=target_start + exit_offset,
             pnl_dollars=self.pnl_dollars,
@@ -122,6 +158,7 @@ class Trade:
             result_type=self.result_type,
             session=self.session,
             dollars_per_point=self.dollars_per_point,
+            currency=self.currency,
             commission_round_turn=self.commission_round_turn,
             source_path=self.source_path,
             metadata={
@@ -130,6 +167,46 @@ class Trade:
                 "source_month": str(self.source_month),
             },
         )
+
+
+@dataclass(frozen=True)
+class StrategyCoverage:
+    """Declared verified data coverage for distinguishing flat months from gaps."""
+
+    strategy_id: str
+    instrument: str
+    start_month: pd.Period
+    end_month: pd.Period
+    partial_months: frozenset[pd.Period] = frozenset()
+
+    def __init__(
+        self,
+        strategy_id: str,
+        instrument: str,
+        start_month: str | pd.Period,
+        end_month: str | pd.Period,
+        partial_months: set[str | pd.Period] | frozenset[str | pd.Period] | None = None,
+    ) -> None:
+        object.__setattr__(self, "strategy_id", strategy_id)
+        object.__setattr__(self, "instrument", instrument)
+        object.__setattr__(self, "start_month", pd.Period(start_month, "M"))
+        object.__setattr__(self, "end_month", pd.Period(end_month, "M"))
+        object.__setattr__(
+            self,
+            "partial_months",
+            frozenset(pd.Period(month, "M") for month in (partial_months or set())),
+        )
+        if self.end_month < self.start_month:
+            raise ValueError("end_month cannot precede start_month")
+
+    def complete_months(self) -> list[pd.Period]:
+        months = []
+        current = self.start_month
+        while current <= self.end_month:
+            if current not in self.partial_months:
+                months.append(current)
+            current += 1
+        return months
 
 
 @dataclass(frozen=True)
@@ -185,8 +262,10 @@ class EquityPoint:
     timestamp: pd.Timestamp
     equity: float
     trade_id: str
+    source_row_id: str
     strategy_id: str
     instrument: str
+    contract_symbol: str | None
     contracts: int
     gross_pnl: float
     commission: float
@@ -213,8 +292,10 @@ class SimulationResult:
                 "timestamp": point.timestamp,
                 "equity": point.equity,
                 "trade_id": point.trade_id,
+                "source_row_id": point.source_row_id,
                 "strategy_id": point.strategy_id,
                 "instrument": point.instrument,
+                "contract_symbol": point.contract_symbol,
                 "contracts": point.contracts,
                 "gross_pnl": point.gross_pnl,
                 "commission": point.commission,

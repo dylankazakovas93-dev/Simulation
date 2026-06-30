@@ -6,7 +6,9 @@ from typing import Any
 
 import pandas as pd
 
+from sim_core.instruments import DEFAULT_INSTRUMENT_REGISTRY
 from sim_core.models import (
+    InstrumentSpec,
     StrategyMetadata,
     Trade,
     TradeValidationError,
@@ -30,6 +32,9 @@ OPTIONAL_COLUMNS = {
     "dollars_per_point",
     "commission_round_turn",
     "trade_id",
+    "source_row_id",
+    "contract_symbol",
+    "currency",
 }
 NUMERIC_COLUMNS = {
     "entry_price",
@@ -55,6 +60,110 @@ def load_trade_csv(
     source_path = Path(path)
     frame = pd.read_csv(source_path)
     return normalize_trade_frame(frame, source_path=source_path, metadata=metadata)
+
+
+def load_canonical_margin_csv(
+    path: str | Path,
+    *,
+    instrument_registry: dict[str, InstrumentSpec] | None = None,
+) -> list[Trade]:
+    source_path = Path(path)
+    frame = pd.read_csv(source_path)
+    normalized = normalize_canonical_margin_frame(
+        frame,
+        source_path=source_path,
+        instrument_registry=instrument_registry,
+    )
+    return normalize_trade_frame(normalized, source_path=source_path)
+
+
+def normalize_canonical_margin_frame(
+    frame: pd.DataFrame,
+    *,
+    source_path: Path | None = None,
+    instrument_registry: dict[str, InstrumentSpec] | None = None,
+) -> pd.DataFrame:
+    """Map nq_es_margin_sim_master_2025_2026.csv columns into the V1 schema."""
+
+    registry = instrument_registry or DEFAULT_INSTRUMENT_REGISTRY
+    required = {
+        "strategy",
+        "inst",
+        "entry_utc",
+        "exit_utc",
+        "side",
+        "pnl_pts",
+        "mae_pts",
+        "mfe_pts",
+        "exit",
+        "dpp",
+    }
+    missing = sorted(required - set(frame.columns))
+    if missing:
+        raise TradeValidationError(
+            [ValidationIssue(None, column, "required canonical column is missing") for column in missing]
+        )
+
+    rows: list[dict[str, object]] = []
+    issues: list[ValidationIssue] = []
+    for index, row in frame.iterrows():
+        row_number = int(index) + 2
+        underlying = _required_str(row.get("inst"), "inst", row_number, issues)
+        if underlying is None:
+            continue
+        spec = registry.get(underlying)
+        if spec is None:
+            issues.append(ValidationIssue(row_number, "inst", "missing instrument registry entry"))
+            continue
+        if spec.currency != "USD":
+            issues.append(ValidationIssue(row_number, "inst", "Version 1 supports USD only"))
+            continue
+
+        dpp = _optional_float(row.get("dpp"))
+        if dpp is None:
+            dpp = spec.dollars_per_point
+        elif abs(dpp - spec.dollars_per_point) > 1e-9:
+            issues.append(
+                ValidationIssue(
+                    row_number,
+                    "dpp",
+                    f"does not match registry value {spec.dollars_per_point} for {underlying}",
+                )
+            )
+
+        source_row_id = f"{source_path.name if source_path else 'canonical'}:{row_number}"
+        metadata = {
+            "source_schema": "nq_es_margin_sim_master_2025_2026",
+            "window": _optional_str(row.get("window")),
+            "mult": _optional_float(row.get("mult")),
+            "nq_inside": row.get("nq_inside") if "nq_inside" in frame.columns else None,
+            "year": row.get("year") if "year" in frame.columns else None,
+            "sess_date": row.get("sess_date") if "sess_date" in frame.columns else None,
+        }
+        rows.append(
+            {
+                "strategy_id": _required_str(row.get("strategy"), "strategy", row_number, issues),
+                "instrument": spec.underlying,
+                "contract_symbol": spec.contract_symbol,
+                "entry_time": row.get("entry_utc"),
+                "exit_time": row.get("exit_utc"),
+                "direction": row.get("side"),
+                "pnl_points": row.get("pnl_pts"),
+                "mae_points": row.get("mae_pts"),
+                "mfe_points": row.get("mfe_pts"),
+                "result_type": row.get("exit"),
+                "dollars_per_point": dpp,
+                "currency": spec.currency,
+                "commission_round_turn": spec.commission_round_turn,
+                "trade_id": source_row_id,
+                "source_row_id": source_row_id,
+                "metadata": metadata,
+            }
+        )
+
+    if issues:
+        raise TradeValidationError(issues)
+    return pd.DataFrame(rows)
 
 
 def load_trade_csvs(
@@ -163,13 +272,25 @@ def normalize_trade_frame(
         trade_id = _optional_str(row.get("trade_id"))
         if trade_id is None:
             trade_id = f"{source_path or 'frame'}:{row_number}"
+        source_row_id = _optional_str(row.get("source_row_id")) or trade_id
+        contract_symbol = _optional_str(row.get("contract_symbol"))
+        currency = _optional_str(row.get("currency")) or "USD"
+        if currency != "USD":
+            issues.append(ValidationIssue(row_number, "currency", "Version 1 supports USD only"))
+            continue
 
         result_type = _normalize_result(row.get("result_type"), pnl_dollars, row_number, issues)
+        row_metadata = {"row_number": row_number}
+        if "metadata" in normalized.columns and isinstance(row.get("metadata"), dict):
+            row_metadata.update(row.get("metadata"))
         trades.append(
             Trade(
                 trade_id=trade_id,
+                source_row_id=source_row_id,
                 strategy_id=strategy_id,
                 instrument=instrument,
+                contract_symbol=contract_symbol
+                or (metadata.contract_symbol if metadata_matches_row else None),
                 entry_time=pd.Timestamp(entry_time),
                 exit_time=pd.Timestamp(exit_time),
                 pnl_dollars=float(pnl_dollars),
@@ -184,9 +305,10 @@ def normalize_trade_frame(
                 result_type=result_type,
                 session=_optional_str(row.get("session")),
                 dollars_per_point=dollars_per_point,
+                currency=currency,
                 commission_round_turn=float(commission),
                 source_path=source_path,
-                metadata={"row_number": row_number},
+                metadata=row_metadata,
             )
         )
 
@@ -196,7 +318,15 @@ def normalize_trade_frame(
 
 
 def sort_trades_chronologically(trades: Iterable[Trade]) -> list[Trade]:
-    return sorted(trades, key=lambda trade: (trade.entry_time, trade.exit_time, trade.trade_id))
+    return sorted(
+        trades,
+        key=lambda trade: (
+            trade.entry_time,
+            trade.exit_time,
+            trade.strategy_id,
+            trade.source_row_id,
+        ),
+    )
 
 
 def _parse_timestamp_column(
@@ -244,7 +374,18 @@ def _normalize_result(
     if text is None:
         return classify_result(float(pnl_dollars))
     lowered = text.lower()
-    aliases = {"be": "breakeven", "break_even": "breakeven", "scratch": "breakeven"}
+    aliases = {
+        "be": "breakeven",
+        "break_even": "breakeven",
+        "scratch": "breakeven",
+        "flat": "breakeven",
+        "target": "win",
+        "tp": "win",
+        "profit": "win",
+        "stop": "loss",
+        "sl": "loss",
+        "loss_exit": "loss",
+    }
     lowered = aliases.get(lowered, lowered)
     if lowered not in {"win", "loss", "breakeven"}:
         issues.append(ValidationIssue(row_number, "result_type", "must be win, loss, or breakeven"))

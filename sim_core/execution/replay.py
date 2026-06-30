@@ -43,8 +43,10 @@ def run_fixed_contract_simulation(
                 timestamp=trade.exit_time,
                 equity=equity,
                 trade_id=trade.trade_id,
+                source_row_id=trade.source_row_id,
                 strategy_id=trade.strategy_id,
                 instrument=trade.instrument,
+                contract_symbol=trade.contract_symbol,
                 contracts=contracts,
                 gross_pnl=gross_pnl,
                 commission=commission,
@@ -62,4 +64,12 @@ def run_fixed_contract_simulation(
 
 
 def _sort_by_realization_time(trades: Sequence[Trade]) -> list[Trade]:
-    return sorted(trades, key=lambda trade: (trade.exit_time, trade.entry_time, trade.trade_id))
+    return sorted(
+        trades,
+        key=lambda trade: (
+            trade.exit_time,
+            trade.entry_time,
+            trade.strategy_id,
+            trade.source_row_id,
+        ),
+    )

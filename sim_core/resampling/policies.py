@@ -7,14 +7,21 @@ import numpy as np
 import pandas as pd
 
 from sim_core.ingestion.csv_loader import sort_trades_chronologically
-from sim_core.models import ResampledPath, SampledBlock, Trade
+from sim_core.models import ResampledPath, SampledBlock, StrategyCoverage, Trade
 
 
 class ResamplingPolicy(ABC):
     name: str
 
     @abstractmethod
-    def sample(self, trades: Sequence[Trade], *, seed: int | None = None, path_index: int = 0) -> ResampledPath:
+    def sample(
+        self,
+        trades: Sequence[Trade],
+        *,
+        seed: int | None = None,
+        path_index: int = 0,
+        coverage: Sequence[StrategyCoverage] | None = None,
+    ) -> ResampledPath:
         raise NotImplementedError
 
 
@@ -27,8 +34,9 @@ class HistoricalReplay(ResamplingPolicy):
         *,
         seed: int | None = None,
         path_index: int = 0,
+        coverage: Sequence[StrategyCoverage] | None = None,
     ) -> ResampledPath:
-        del seed
+        del seed, coverage
         sorted_trades = sort_trades_chronologically(trades)
         sampled_blocks = [
             SampledBlock(path_index, month, month, self.name) for month in _sorted_source_months(sorted_trades)
@@ -53,11 +61,12 @@ class SameCalendarMonthBootstrap(ResamplingPolicy):
         *,
         seed: int | None = None,
         path_index: int = 0,
+        coverage: Sequence[StrategyCoverage] | None = None,
     ) -> ResampledPath:
         rng = np.random.default_rng(seed)
-        source_months = _sorted_source_months(trades)
+        source_months = _sorted_source_months(trades, coverage=coverage)
         if not source_months:
-            return ResampledPath([], [])
+            raise ValueError("no source months available for requested bootstrap")
         start_month = self.start_month or source_months[0]
         target_months = [start_month + offset for offset in range(self.months)]
         sampled = []
@@ -89,16 +98,19 @@ class MovingBlockBootstrap(ResamplingPolicy):
         *,
         seed: int | None = None,
         path_index: int = 0,
+        coverage: Sequence[StrategyCoverage] | None = None,
     ) -> ResampledPath:
         rng = np.random.default_rng(seed)
-        source_months = _sorted_source_months(trades)
+        source_months = _sorted_source_months(trades, coverage=coverage)
         if not source_months:
-            return ResampledPath([], [])
+            raise ValueError("no source months available for requested bootstrap")
         target_start = self.start_month or source_months[0]
         target_months = [target_start + offset for offset in range(self.months)]
         sampled: list[pd.Period] = []
         while len(sampled) < self.months:
-            max_start = max(0, len(source_months) - self.block_length)
+            max_start = len(source_months) - self.block_length
+            if max_start < 0:
+                raise ValueError("not enough complete source months for requested block_length")
             start = int(rng.integers(0, max_start + 1))
             sampled.extend(source_months[start : start + self.block_length])
         return _materialize_months(
@@ -132,11 +144,12 @@ class StationaryBlockBootstrap(ResamplingPolicy):
         *,
         seed: int | None = None,
         path_index: int = 0,
+        coverage: Sequence[StrategyCoverage] | None = None,
     ) -> ResampledPath:
         rng = np.random.default_rng(seed)
-        source_months = _sorted_source_months(trades)
+        source_months = _sorted_source_months(trades, coverage=coverage)
         if not source_months:
-            return ResampledPath([], [])
+            raise ValueError("no source months available for requested bootstrap")
         reset_probability = min(1.0, 1.0 / self.expected_block_length)
         source_index = int(rng.integers(0, len(source_months)))
         sampled = []
@@ -144,14 +157,27 @@ class StationaryBlockBootstrap(ResamplingPolicy):
             if sampled and rng.random() < reset_probability:
                 source_index = int(rng.integers(0, len(source_months)))
             sampled.append(source_months[source_index])
-            source_index = (source_index + 1) % len(source_months)
+            source_index += 1
+            if source_index >= len(source_months):
+                source_index = int(rng.integers(0, len(source_months)))
         target_start = self.start_month or source_months[0]
         target_months = [target_start + offset for offset in range(self.months)]
         return _materialize_months(trades, sampled, target_months, self.name, path_index)
 
 
-def _sorted_source_months(trades: Sequence[Trade]) -> list[pd.Period]:
-    return sorted({trade.source_month for trade in trades})
+def _sorted_source_months(
+    trades: Sequence[Trade],
+    *,
+    coverage: Sequence[StrategyCoverage] | None = None,
+) -> list[pd.Period]:
+    months = {trade.source_month for trade in trades}
+    if coverage:
+        partial_months: set[pd.Period] = set()
+        for item in coverage:
+            partial_months.update(item.partial_months)
+            months.update(item.complete_months())
+        months.difference_update(partial_months)
+    return sorted(months)
 
 
 def _materialize_months(
