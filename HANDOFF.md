@@ -5,6 +5,83 @@ top. Findings are classified `BLOCKER` / `HIGH` / `MEDIUM` / `LOW` / `OPTIONAL`.
 
 ---
 
+## Review 003 — 2026-06-30 — Re-audit of `codex/v1-core` @ 094fe61 (PROVISIONAL)
+
+### Status: **NOT INDEPENDENTLY VERIFIED — source/bundle not received**
+The referenced bundle `codex-v1-core-after-review002.bundle` (head `094fe61`)
+**did not transfer into this environment** — only the stale `fe408db` handoff
+text is present; a filesystem search for `*.bundle` finds nothing. I therefore
+**could not** clone, reconstruct, or run anything here. This review is based on
+(a) Codex's pasted output of running my unaltered `tests/regression/` suite and
+(b) the pytest warning telemetry. It is **provisional** and does **not** certify
+the blocker fixes. Certification requires the `d5b3fcd→094fe61` diff and the
+changed `sim_core/` source, or the actual bundle so I can run independently.
+
+### Verdict: **CONDITIONAL — moving in the right direction; not accepted**
+Reported: `pytest tests/regression -q → 22 passed` (my full suite), `pytest -q →
+58 passed`. All my RED tests reportedly pass. Telemetry corroborates real
+behavior changes (tz localization, coverage-absent warning, `path_index` reaching
+the RNG via `ensemble.py`, manifest/Scenario present). But green counts cannot
+distinguish a general fix from one shaped to my fixtures, and the fix + my-suite
+import landed in a single commit ("Import Claude regression suite and pass V1
+checks"), so the diff must be inspected.
+
+### Per-blocker status (Reported PASS = Codex's run, not mine)
+| Finding | Reported | Telemetry signal | Invariant-vs-fixture check still required |
+|---|---|---|---|
+| B-1 tz resample | PASS | naive→localize-to-UTC w/ `RuntimeWarning`; UTC resamples | V-6 |
+| B-3 month overflow | PASS (4/4) | shifted ts still tz-aware; cases contained | V-6 |
+| B-2 RNG ensemble | PASS (4/4) | `ensemble.py:26` passes `seed=master_seed, path_index=i` | V-1 |
+| B-4 Scenario/manifest | PASS (3/3) | `batch.py`, Scenario/ResultDistribution present | V-2, V-3 |
+| H-1 declared dpp | PASS (3/3) | blank dpp now raises | V-4 |
+| H-2 coverage | PASS (4/4) | "coverage metadata absent" warning fires broadly | (largely satisfied; add support counts) |
+| H-3 carry-forward | PASS (1/1) | Feb p50 == 1060 | V-5 |
+
+### Required verification items (to be checked against the diff/source)
+- **V-1 (B-2 RNG quality):** confirm `.sample` derives the stream from
+  `SeedSequence([master_seed, path_index])` (or `spawn`), **not** `seed +
+  path_index` / `seed*k + path_index` (collision & correlation). Add a test that
+  cross-seed ensembles are not shift-by-one aliases.
+- **V-2 (B-4 data hash):** confirm `data_hash` is *computed from the normalized
+  input* and changes when data changes (my fixture passed a literal hash, so this
+  is unproven). Add: two inputs differing by one P&L → different hash; identical →
+  identical.
+- **V-3 (B-4 manifest content):** confirm `limitations` enumerates the real
+  KNOWN_LIMITATIONS SCOPE caveats (realized-only DD, no intratrade margin, no
+  cash-flow equity effect, micro-contract assumption, thin seasonal support) — not
+  a non-empty placeholder.
+- **V-4 (H-1 no silent inference):** confirm the `DEFAULT_INSTRUMENT_REGISTRY`
+  silent fallback is removed/gated so the contract mapping must be **declared**
+  (ADR-011: "must not silently infer MNQ from NQ"). Blank-dpp raising is necessary
+  but not sufficient.
+- **V-5 (H-3 carry-forward generality):** confirm percentiles forward-fill each
+  path over the **full horizon** with constant denominator = n_paths every month,
+  and that months before a path's first trade use initial equity. Add a fixture
+  where one path's first trade is in month 2.
+- **V-6 (B-1/B-3 clamp & tz generality):** confirm `shifted_to_month` clamps via
+  `min(day, days_in_target_month)` (general), is tz-consistent (no naive/aware
+  mix), and handles multi-day trades spanning months. Decide whether genuinely
+  ambiguous naive input (no tz declared) is **rejected** (per schema) or merely
+  UTC-defaulted with a warning — current telemetry suggests the latter, which is
+  weaker than spec.
+- **V-7 (diff hygiene):** scan `d5b3fcd→094fe61` for branches keyed on
+  fixture-specific values (hardcoded dates, `if month == 2`, magic constants
+  matching my fixtures).
+
+### Still OPEN (blocks full V1 acceptance regardless of green counts)
+1. **Independent reconstruction** of `094fe61` (bundle/source not yet received).
+2. **Real 1,150-row canonical ledger integration** — the synthetic fixture is not
+   the real upload; V1 is **not** production-accepted until the real ledger loads
+   and completes historical + seasonal replay.
+3. V-1…V-7 above.
+
+### What I need next
+The bundle re-uploaded (preferred — I will clone + run both pytest commands here),
+**or** the changed `sim_core/` files plus `git diff d5b3fcd 094fe61`. I will then
+finalize Review 003 with an independent run and a verdict on each V-item.
+
+---
+
 ## Review 002 — 2026-06-30 — Audit of `codex/v1-core` @ fe408db (FINAL)
 
 ### Executive verdict: **CONDITIONAL APPROVAL** — V1 milestone NOT acceptable yet
