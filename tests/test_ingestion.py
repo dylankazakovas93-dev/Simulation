@@ -143,3 +143,33 @@ def test_duplicate_trades_raise_validation_error():
 
     with pytest.raises(TradeValidationError):
         normalize_trade_frame(frame)
+
+
+def test_explicit_source_row_id_distinguishes_same_economics():
+    base = {
+        "strategy_id": "s1",
+        "instrument": "ES",
+        "entry_time": "2024-01-02T09:30:00Z",
+        "exit_time": "2024-01-02T10:00:00Z",
+        "pnl_dollars": 0,
+    }
+    trades = normalize_trade_frame(
+        pd.DataFrame(
+            [
+                {**base, "source_row_id": "row-1"},
+                {**base, "source_row_id": "row-2"},
+            ]
+        )
+    )
+
+    assert [trade.source_row_id for trade in trades] == ["row-1", "row-2"]
+
+    with pytest.raises(TradeValidationError):
+        normalize_trade_frame(
+            pd.DataFrame(
+                [
+                    {**base, "source_row_id": "row-1"},
+                    {**base, "source_row_id": "row-1"},
+                ]
+            )
+        )

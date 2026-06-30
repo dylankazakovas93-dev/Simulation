@@ -8,6 +8,7 @@ import pytest
 from sim_core.ingestion.csv_loader import (
     load_canonical_margin_csv,
     normalize_canonical_margin_frame,
+    normalize_trade_frame,
 )
 from sim_core.instruments import DEFAULT_INSTRUMENT_REGISTRY
 from sim_core.models import InstrumentSpec, TradeValidationError
@@ -35,6 +36,7 @@ def test_canonical_margin_fixture_maps_source_columns_and_preserves_metadata():
     assert trades[0].source_row_id == "nq_es_margin_sim_master_2025_2026.csv:2"
     assert trades[0].metadata["mult"] == 3.0
     assert trades[0].metadata["window"] == "09:30-10:00"
+    assert trades[0].metadata["exit_reason"] == "target"
 
 
 def test_canonical_mult_is_metadata_not_position_sizing():
@@ -45,6 +47,18 @@ def test_canonical_mult_is_metadata_not_position_sizing():
 
     assert "mult" not in normalized.columns
     assert normalized.iloc[0]["metadata"]["mult"] == 3.0
+
+
+def test_canonical_exit_reason_is_not_used_as_outcome():
+    frame = pd.read_csv(FIXTURE)
+    frame.loc[0, "exit"] = "cutoff"
+    frame.loc[0, "pnl_pts"] = -1.5
+
+    normalized = normalize_canonical_margin_frame(frame, contract_specs_by_strategy=_micro_specs())
+    trades = normalize_trade_frame(normalized, source_timezone="UTC")
+
+    assert trades[0].metadata["exit_reason"] == "cutoff"
+    assert trades[0].result_type == "loss"
 
 
 def test_registry_explicitly_maps_underlying_to_micro_contract():

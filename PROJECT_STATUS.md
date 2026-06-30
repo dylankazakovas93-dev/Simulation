@@ -6,136 +6,147 @@ Branch: `codex/v1-core`
 
 ## Current State
 
-Version 1 hardening for Claude Review 002 is implemented locally. Claude's
-red-by-design regression suite from governance commit `28b099e` has been
-imported under `tests/regression/` without modifying its assertions. No Version
-2 work was started.
+Version 1.1 hardening from Claude Review 004 has been imported and verified
+locally. No Version 2 work was started.
 
-## Findings Resolved
+Imported Claude head:
 
-- **BLOCKER-1 timezone policy:** ingestion now stores timezone-aware UTC
-  timestamps, rejects naive timestamps unless `source_timezone` is explicitly
-  configured, and preserves UTC through normalized trades and resampling.
-- **BLOCKER-3 month-boundary-safe shifting:** `Trade.shifted_to_month` carries
-  an explicit `target_month`, preserves source offset when possible, clamps to
-  the final valid target-month instant when necessary, and never lets a shifted
-  trade fall into the following month.
-- **BLOCKER-2 independent path RNG:** resampling policies derive path-local RNGs
-  from `SeedSequence(master_seed).spawn(path_index + 1)[path_index]`; path index
-  now affects the stream.
-- **BLOCKER-4 Scenario/ResultDistribution:** typed serializable models were
-  added, with JSON round-trip tests and batch result/provenance exports.
-- **HIGH contract registry:** canonical ingestion now requires explicit
-  per-strategy `InstrumentSpec` declarations and validates authoritative `dpp`
-  against them. Missing `dpp` fails closed.
-- **HIGH monthly percentile denominator:** monthly percentiles now carry forward
-  last equity so every path contributes one value for every requested month.
-- **HIGH timestamp warnings:** code paths avoid pandas timezone-drop warnings in
-  core month bucketing.
-- **Claude regression compatibility:** added `sim_core.execution.ensemble` and
-  legacy-compatible `Scenario`/`ResultDistribution` constructors required by
-  the Review 002 regression suite.
+```text
+3387d3a V1.1 hardening: close HIGH-R3-1 + MEDIUM findings; add integration harness
+```
 
-## Files Changed
+Codex then performed the real-ledger integration pass against:
 
-- `HANDOFF.md`
-- `DECISIONS.md`
-- `PROJECT_STATUS.md`
-- `sim_core/models.py`
-- `sim_core/ingestion/csv_loader.py`
-- `sim_core/resampling/policies.py`
-- `sim_core/metrics/reports.py`
-- `sim_core/exports.py`
-- `sim_core/execution/ensemble.py`
-- `sim_core/__init__.py`
-- `sim_core/batch.py`
-- `tests/test_blocker_regressions.py`
-- `tests/regression/**`
-- `tests/test_canonical_fixture.py`
-- existing tests and sample CSV timestamps updated to UTC-aware fixture values
+```text
+/Users/mariusvidziunas/Downloads/nq_es_margin_sim_master_2025_2026.csv
+```
 
-## Tests Added
+## Codex Post-Review Fixes
 
-`tests/test_blocker_regressions.py` adds coverage for:
+- Expanded `configs/nq_es_micro_contracts.yaml` to cover all 5 real strategy IDs.
+- Fixed packaging discovery in `pyproject.toml` so `pip install -e .` does not
+  fail on the repository's flat layout.
+- Fixed canonical ingestion so the source `exit` column is treated as raw
+  exit reason metadata, not as normalized `win/loss/breakeven` outcome. Outcomes
+  are now classified from signed P&L dollars.
+- Fixed duplicate-trade detection so explicit source identities distinguish
+  legitimate repeated same-economics ledger rows, while un-identified duplicate
+  semantic rows still fail closed.
+- Made integration exports lazy in `sim_core.__init__` and
+  `sim_core.integration.__init__` to avoid importing the real-ledger module as a
+  side effect.
 
-- naive timestamp rejection and explicit source-timezone localization
-- UTC timestamp preservation
-- January 31 -> February clamp
-- leap-day -> non-leap February clamp
-- source trades crossing a month boundary without target-month overflow
-- reproducible independent path ensembles
-- scenario and result-distribution JSON round trips
-- provenance JSON export accompanying batch CSV outputs
-- month-end percentile carry-forward denominators
+## Real-Ledger Integration
 
-`tests/test_canonical_fixture.py` now additionally proves:
+Command:
 
-- explicit micro contract mappings validate
-- declared full-size contracts with micro `dpp` fail
-- missing canonical `dpp` fails closed
+```bash
+python3 -m sim_core.integration.real_ledger \
+  --csv /Users/mariusvidziunas/Downloads/nq_es_margin_sim_master_2025_2026.csv \
+  --mapping configs/nq_es_micro_contracts.yaml \
+  --output reports/real_ledger_v1/
+```
 
-`tests/regression/` was imported from governance commit `28b099e` and currently
-contains 22 Claude-authored regression tests.
+Result:
 
-## Tests
+```text
+Discovered 5 strategy_id(s): ES_EXPANDED_19_15_X2_0, ES_LATE_11_15_X2_0, ES_NORMAL_19_11_X2_0, ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5, NQ_LOCKED_19_11_X1_5
+Rows: 1150  Strategies: 5
+Chronological order valid: True
+All timestamps UTC: True
+data_hash: 4225435567c0d659a8dd7ea57cf707cc51c843268c34c0b9fa2db5191d006c7a
+Report written to reports/real_ledger_v1/integration_report.json
+```
 
-Passing:
+Generated report:
+
+```text
+reports/real_ledger_v1/integration_report.json
+size: 31,803 bytes
+scenario_hash: 991287215fa022c493d8f0d1f940c98f0b38ac1df19514072e5441f0bbff2b86
+```
+
+Strategy row counts:
+
+```text
+ES_EXPANDED_19_15_X2_0: 328
+ES_LATE_11_15_X2_0: 105
+ES_NORMAL_19_11_X2_0: 237
+ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5: 224
+NQ_LOCKED_19_11_X1_5: 256
+```
+
+Historical replay P&L by strategy:
+
+```text
+ES_EXPANDED_19_15_X2_0: 12732.64924036323
+ES_LATE_11_15_X2_0: 2593.225451870194
+ES_NORMAL_19_11_X2_0: 10241.244004279119
+ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5: 7273.739271916729
+NQ_LOCKED_19_11_X1_5: 17615.52307950767
+```
+
+Bootstrap smoke checks:
+
+```text
+seasonal_bootstrap: ok=True, sampled_trades=168, sampled_blocks=3, terminal_equity=105773.69073936349
+moving_block: ok=True, sampled_trades=226, sampled_blocks=3, terminal_equity=117333.88044192355
+stationary_block: ok=True, sampled_trades=191, sampled_blocks=3, terminal_equity=105140.14454454568
+```
+
+## Test Results
+
+Claude regression suite:
 
 ```bash
 python3 -m pytest tests/regression -q
 ```
 
-Result: 22 passed.
-
-```bash
-python3 -m pytest -q
-```
-
-Result: 58 passed.
-
-## Canonical-Ledger Integration
-
-The actual 1,150-row `nq_es_margin_sim_master_2025_2026.csv` was not available
-locally. Searches under `/Users/mariusvidziunas/Documents/Codex` and
-`/Users/mariusvidziunas/.codex/attachments` found only the representative
-4-row fixture already checked into `sample_data/`.
-
-Real-ledger acceptance remains blocked until the actual CSV is provided. The
-current canonical fixture verifies schema mechanics and explicit contract
-mapping, but it is not a substitute for the real-ledger integration check.
-
-Representative fixture smoke output:
+Result:
 
 ```text
-fixture_rows 4
-terminal_equity 100030.0
-same_calendar_month_bootstrap 4 [('2026-01', '2025-01'), ('2026-02', '2025-02')]
-moving_block_bootstrap 4 [('2026-01', '2025-02'), ('2026-02', '2025-01')]
-stationary_block_bootstrap 4 [('2026-01', '2025-02'), ('2026-02', '2025-01')]
+22 passed
 ```
 
-Required real-ledger checks still pending:
+Ordinary full suite:
 
-- all 1,150 rows load
-- NQ strategies validate as explicitly declared MNQ at USD 2/point
-- ES strategies validate as explicitly declared MES at USD 5/point
-- historical replay reproduces aggregate ledger P&L after configured
-  commissions
-- seasonal, moving, and stationary bootstrap run on UTC-aware timestamps
-- partial June 2026 is excluded or marked partial by coverage metadata
-- all paths remain chronologically ordered
-- strategy-specific fields remain isolated
+```bash
+python3 -m pytest
+```
 
-## Remaining MEDIUM/LOW Findings
+Result:
 
-- No warning-report object yet; warning/provenance text is present in
-  `ResultDistribution`, but ingestion warnings remain future work.
-- Drawdown duration/recovery metrics remain unimplemented; V1 reports drawdown
-  depth and percent.
-- Scenario config file loading is still manual/programmatic; no CLI runner yet.
-- GitHub push remains blocked from this environment by missing write
-  credentials/plugin permission.
+```text
+90 passed, 1 skipped, 71 warnings
+```
 
-## New Commit
+Real-ledger-enabled full suite:
 
-Pending commit after importing Claude regression suite and compatibility fixes.
+```bash
+SIM_REAL_LEDGER_PATH=/Users/mariusvidziunas/Downloads/nq_es_margin_sim_master_2025_2026.csv \
+SIM_REAL_LEDGER_MAPPING=configs/nq_es_micro_contracts.yaml \
+python3 -m pytest
+```
+
+Result:
+
+```text
+91 passed, 72 warnings
+```
+
+## Remaining Defects / Warnings
+
+- No coverage metadata was supplied with the real ledger, so the integration
+  report correctly warns that missing months cannot be distinguished from
+  verified-flat months.
+- Seasonal support is thin for calendar months July through December because the
+  real ledger covers January 2025 through partial June 2026.
+- Drawdown duration/recovery metrics remain unimplemented V1 follow-up work.
+- Scenario config file loading remains manual/programmatic.
+- The real CSV is local-only and is not committed.
+
+## Codex Recommendation
+
+No known V1.1 blockers remain after the real 1,150-row ledger integration.
+Codex recommendation: proceed to Claude's independent final review of this new
+source commit for V1 approval. Do not begin V2 until that review is complete.

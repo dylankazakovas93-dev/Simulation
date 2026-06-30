@@ -198,6 +198,7 @@ def normalize_canonical_margin_frame(
             "source_schema": "nq_es_margin_sim_master_2025_2026",
             "window": _optional_str(row.get("window")),
             "mult": _optional_float(row.get("mult")),
+            "exit_reason": _optional_str(row.get("exit")),
             "nq_inside": row.get("nq_inside") if "nq_inside" in frame.columns else None,
             "year": row.get("year") if "year" in frame.columns else None,
             "sess_date": row.get("sess_date") if "sess_date" in frame.columns else None,
@@ -213,7 +214,7 @@ def normalize_canonical_margin_frame(
                 "pnl_points": row.get("pnl_pts"),
                 "mae_points": row.get("mae_pts"),
                 "mfe_points": row.get("mfe_pts"),
-                "result_type": row.get("exit"),
+                "result_type": None,
                 "dollars_per_point": dpp,
                 "currency": spec.currency,
                 "commission_round_turn": spec.commission_round_turn,
@@ -333,7 +334,12 @@ def normalize_trade_frame(
         if not strategy_id or not instrument or pd.isna(entry_time) or pd.isna(exit_time):
             continue
 
-        duplicate_key = (strategy_id, instrument, entry_time, exit_time, pnl_dollars)
+        explicit_identity = _optional_str(row.get("source_row_id")) or _optional_str(row.get("trade_id"))
+        duplicate_key = (
+            ("source_identity", explicit_identity)
+            if explicit_identity is not None
+            else ("semantic", strategy_id, instrument, entry_time, exit_time, pnl_dollars)
+        )
         if duplicate_key in seen_keys:
             issues.append(ValidationIssue(row_number, None, "duplicate trade detected"))
             continue

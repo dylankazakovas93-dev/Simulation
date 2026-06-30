@@ -23,6 +23,10 @@ markers = [
     "real_ledger: integration test against the real canonical ledger; skips unless SIM_REAL_LEDGER_PATH is set",
 ]
 
+[tool.setuptools.packages.find]
+include = ["sim_core*"]
+exclude = ["app*", "configs*", "reports*", "sample_data*", "tests*"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"

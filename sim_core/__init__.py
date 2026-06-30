@@ -1,5 +1,9 @@
 """Version 1 simulation core public API."""
 
+from __future__ import annotations
+
+from typing import Any
+
 from sim_core.batch import (
     build_result_distribution,
     hash_trades,
@@ -22,7 +26,6 @@ from sim_core.instruments import (
     build_specs_from_registry,
     get_instrument_spec,
 )
-from sim_core.integration.real_ledger import build_integration_report
 from sim_core.metrics.reports import (
     monthly_equity_percentiles,
     ruin_probability,
@@ -95,3 +98,11 @@ __all__ = [
     "trade_outcome_taxonomy",
     "verify_result_provenance",
 ]
+
+
+def __getattr__(name: str) -> Any:
+    if name == "build_integration_report":
+        from sim_core.integration.real_ledger import build_integration_report
+
+        return build_integration_report
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

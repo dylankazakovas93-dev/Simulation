@@ -1,0 +1,1089 @@
+{
+  "breakeven_taxonomy": {
+    "breakeven_frequency_over_total": 0.2756521739130435,
+    "loss_rate_over_total": 0.26,
+    "n_breakeven": 317.0,
+    "n_loss": 299.0,
+    "n_total": 1150.0,
+    "n_win": 534.0,
+    "non_loss_rate_over_total": 0.74,
+    "rate_wins_over_total": 0.4643478260869565,
+    "true_win_rate_excluding_breakevens": 0.6410564225690276
+  },
+  "chronological_order_valid": true,
+  "contract_mapping": {
+    "ES_EXPANDED_19_15_X2_0": {
+      "contract_symbol": "MES",
+      "currency": "USD",
+      "dollars_per_point": 5.0,
+      "underlying": "ES"
+    },
+    "ES_LATE_11_15_X2_0": {
+      "contract_symbol": "MES",
+      "currency": "USD",
+      "dollars_per_point": 5.0,
+      "underlying": "ES"
+    },
+    "ES_NORMAL_19_11_X2_0": {
+      "contract_symbol": "MES",
+      "currency": "USD",
+      "dollars_per_point": 5.0,
+      "underlying": "ES"
+    },
+    "ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5": {
+      "contract_symbol": "MES",
+      "currency": "USD",
+      "dollars_per_point": 5.0,
+      "underlying": "ES"
+    },
+    "NQ_LOCKED_19_11_X1_5": {
+      "contract_symbol": "MNQ",
+      "currency": "USD",
+      "dollars_per_point": 2.0,
+      "underlying": "NQ"
+    }
+  },
+  "coverage_months": [
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-01",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_EXPANDED_19_15_X2_0",
+      "trade_count": 23
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-02",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_EXPANDED_19_15_X2_0",
+      "trade_count": 14
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-03",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_EXPANDED_19_15_X2_0",
+      "trade_count": 14
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-04",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_EXPANDED_19_15_X2_0",
+      "trade_count": 15
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-05",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_EXPANDED_19_15_X2_0",
+      "trade_count": 25
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-06",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_EXPANDED_19_15_X2_0",
+      "trade_count": 23
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-07",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "ES_EXPANDED_19_15_X2_0",
+      "trade_count": 14
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-08",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "ES_EXPANDED_19_15_X2_0",
+      "trade_count": 17
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-09",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "ES_EXPANDED_19_15_X2_0",
+      "trade_count": 19
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-10",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "ES_EXPANDED_19_15_X2_0",
+      "trade_count": 17
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-11",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "ES_EXPANDED_19_15_X2_0",
+      "trade_count": 25
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-12",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "ES_EXPANDED_19_15_X2_0",
+      "trade_count": 23
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2026-01",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_EXPANDED_19_15_X2_0",
+      "trade_count": 23
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2026-02",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_EXPANDED_19_15_X2_0",
+      "trade_count": 13
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2026-03",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_EXPANDED_19_15_X2_0",
+      "trade_count": 25
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2026-04",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_EXPANDED_19_15_X2_0",
+      "trade_count": 15
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2026-05",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_EXPANDED_19_15_X2_0",
+      "trade_count": 18
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2026-06",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_EXPANDED_19_15_X2_0",
+      "trade_count": 5
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-01",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_LATE_11_15_X2_0",
+      "trade_count": 6
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-02",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_LATE_11_15_X2_0",
+      "trade_count": 3
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-03",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_LATE_11_15_X2_0",
+      "trade_count": 6
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-04",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_LATE_11_15_X2_0",
+      "trade_count": 8
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-05",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_LATE_11_15_X2_0",
+      "trade_count": 10
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-06",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_LATE_11_15_X2_0",
+      "trade_count": 1
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-07",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "ES_LATE_11_15_X2_0",
+      "trade_count": 8
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-08",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "ES_LATE_11_15_X2_0",
+      "trade_count": 5
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-09",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "ES_LATE_11_15_X2_0",
+      "trade_count": 3
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-10",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "ES_LATE_11_15_X2_0",
+      "trade_count": 11
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-11",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "ES_LATE_11_15_X2_0",
+      "trade_count": 9
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-12",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "ES_LATE_11_15_X2_0",
+      "trade_count": 6
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2026-01",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_LATE_11_15_X2_0",
+      "trade_count": 9
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2026-02",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_LATE_11_15_X2_0",
+      "trade_count": 5
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2026-03",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_LATE_11_15_X2_0",
+      "trade_count": 4
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2026-04",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_LATE_11_15_X2_0",
+      "trade_count": 6
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2026-05",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_LATE_11_15_X2_0",
+      "trade_count": 3
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2026-06",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_LATE_11_15_X2_0",
+      "trade_count": 2
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-01",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_NORMAL_19_11_X2_0",
+      "trade_count": 18
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-02",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_NORMAL_19_11_X2_0",
+      "trade_count": 13
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-03",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_NORMAL_19_11_X2_0",
+      "trade_count": 8
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-04",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_NORMAL_19_11_X2_0",
+      "trade_count": 8
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-05",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_NORMAL_19_11_X2_0",
+      "trade_count": 15
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-06",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_NORMAL_19_11_X2_0",
+      "trade_count": 22
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-07",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "ES_NORMAL_19_11_X2_0",
+      "trade_count": 6
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-08",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "ES_NORMAL_19_11_X2_0",
+      "trade_count": 12
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-09",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "ES_NORMAL_19_11_X2_0",
+      "trade_count": 15
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-10",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "ES_NORMAL_19_11_X2_0",
+      "trade_count": 10
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-11",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "ES_NORMAL_19_11_X2_0",
+      "trade_count": 17
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-12",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "ES_NORMAL_19_11_X2_0",
+      "trade_count": 20
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2026-01",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_NORMAL_19_11_X2_0",
+      "trade_count": 15
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2026-02",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_NORMAL_19_11_X2_0",
+      "trade_count": 9
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2026-03",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_NORMAL_19_11_X2_0",
+      "trade_count": 22
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2026-04",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_NORMAL_19_11_X2_0",
+      "trade_count": 9
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2026-05",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_NORMAL_19_11_X2_0",
+      "trade_count": 15
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2026-06",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_NORMAL_19_11_X2_0",
+      "trade_count": 3
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-01",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5",
+      "trade_count": 18
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-02",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5",
+      "trade_count": 15
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-03",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5",
+      "trade_count": 8
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-04",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5",
+      "trade_count": 8
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-05",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5",
+      "trade_count": 14
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-06",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5",
+      "trade_count": 19
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-07",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5",
+      "trade_count": 5
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-08",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5",
+      "trade_count": 12
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-09",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5",
+      "trade_count": 13
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-10",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5",
+      "trade_count": 10
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-11",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5",
+      "trade_count": 14
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2025-12",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5",
+      "trade_count": 20
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2026-01",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5",
+      "trade_count": 15
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2026-02",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5",
+      "trade_count": 5
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2026-03",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5",
+      "trade_count": 21
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2026-04",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5",
+      "trade_count": 9
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2026-05",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5",
+      "trade_count": 15
+    },
+    {
+      "block_eligible": true,
+      "instrument": "ES",
+      "month": "2026-06",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5",
+      "trade_count": 3
+    },
+    {
+      "block_eligible": true,
+      "instrument": "NQ",
+      "month": "2025-01",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "NQ_LOCKED_19_11_X1_5",
+      "trade_count": 17
+    },
+    {
+      "block_eligible": true,
+      "instrument": "NQ",
+      "month": "2025-02",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "NQ_LOCKED_19_11_X1_5",
+      "trade_count": 12
+    },
+    {
+      "block_eligible": true,
+      "instrument": "NQ",
+      "month": "2025-03",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "NQ_LOCKED_19_11_X1_5",
+      "trade_count": 13
+    },
+    {
+      "block_eligible": true,
+      "instrument": "NQ",
+      "month": "2025-04",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "NQ_LOCKED_19_11_X1_5",
+      "trade_count": 8
+    },
+    {
+      "block_eligible": true,
+      "instrument": "NQ",
+      "month": "2025-05",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "NQ_LOCKED_19_11_X1_5",
+      "trade_count": 14
+    },
+    {
+      "block_eligible": true,
+      "instrument": "NQ",
+      "month": "2025-06",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "NQ_LOCKED_19_11_X1_5",
+      "trade_count": 20
+    },
+    {
+      "block_eligible": true,
+      "instrument": "NQ",
+      "month": "2025-07",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "NQ_LOCKED_19_11_X1_5",
+      "trade_count": 11
+    },
+    {
+      "block_eligible": true,
+      "instrument": "NQ",
+      "month": "2025-08",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "NQ_LOCKED_19_11_X1_5",
+      "trade_count": 12
+    },
+    {
+      "block_eligible": true,
+      "instrument": "NQ",
+      "month": "2025-09",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "NQ_LOCKED_19_11_X1_5",
+      "trade_count": 15
+    },
+    {
+      "block_eligible": true,
+      "instrument": "NQ",
+      "month": "2025-10",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "NQ_LOCKED_19_11_X1_5",
+      "trade_count": 14
+    },
+    {
+      "block_eligible": true,
+      "instrument": "NQ",
+      "month": "2025-11",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "NQ_LOCKED_19_11_X1_5",
+      "trade_count": 17
+    },
+    {
+      "block_eligible": true,
+      "instrument": "NQ",
+      "month": "2025-12",
+      "seasonal_eligible": true,
+      "source_month_support": 1,
+      "status": "complete",
+      "strategy_id": "NQ_LOCKED_19_11_X1_5",
+      "trade_count": 23
+    },
+    {
+      "block_eligible": true,
+      "instrument": "NQ",
+      "month": "2026-01",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "NQ_LOCKED_19_11_X1_5",
+      "trade_count": 18
+    },
+    {
+      "block_eligible": true,
+      "instrument": "NQ",
+      "month": "2026-02",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "NQ_LOCKED_19_11_X1_5",
+      "trade_count": 7
+    },
+    {
+      "block_eligible": true,
+      "instrument": "NQ",
+      "month": "2026-03",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "NQ_LOCKED_19_11_X1_5",
+      "trade_count": 20
+    },
+    {
+      "block_eligible": true,
+      "instrument": "NQ",
+      "month": "2026-04",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "NQ_LOCKED_19_11_X1_5",
+      "trade_count": 15
+    },
+    {
+      "block_eligible": true,
+      "instrument": "NQ",
+      "month": "2026-05",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "NQ_LOCKED_19_11_X1_5",
+      "trade_count": 17
+    },
+    {
+      "block_eligible": true,
+      "instrument": "NQ",
+      "month": "2026-06",
+      "seasonal_eligible": true,
+      "source_month_support": 2,
+      "status": "complete",
+      "strategy_id": "NQ_LOCKED_19_11_X1_5",
+      "trade_count": 3
+    }
+  ],
+  "coverage_strategies": {
+    "ES_EXPANDED_19_15_X2_0": {
+      "coverage_end": "2026-06",
+      "coverage_start": "2025-01",
+      "has_coverage": false,
+      "instrument": "ES"
+    },
+    "ES_LATE_11_15_X2_0": {
+      "coverage_end": "2026-06",
+      "coverage_start": "2025-01",
+      "has_coverage": false,
+      "instrument": "ES"
+    },
+    "ES_NORMAL_19_11_X2_0": {
+      "coverage_end": "2026-06",
+      "coverage_start": "2025-01",
+      "has_coverage": false,
+      "instrument": "ES"
+    },
+    "ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5": {
+      "coverage_end": "2026-06",
+      "coverage_start": "2025-01",
+      "has_coverage": false,
+      "instrument": "ES"
+    },
+    "NQ_LOCKED_19_11_X1_5": {
+      "coverage_end": "2026-06",
+      "coverage_start": "2025-01",
+      "has_coverage": false,
+      "instrument": "NQ"
+    }
+  },
+  "data_hash": "4225435567c0d659a8dd7ea57cf707cc51c843268c34c0b9fa2db5191d006c7a",
+  "date_range": {
+    "end": "2026-06-05 19:00:00+00:00",
+    "start": "2025-01-02 00:18:00+00:00"
+  },
+  "engine_version": "0.1.0",
+  "historical_replay_pnl_by_strategy": {
+    "ES_EXPANDED_19_15_X2_0": 12732.64924036323,
+    "ES_LATE_11_15_X2_0": 2593.225451870194,
+    "ES_NORMAL_19_11_X2_0": 10241.244004279119,
+    "ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5": 7273.739271916729,
+    "NQ_LOCKED_19_11_X1_5": 17615.52307950767
+  },
+  "row_count": 1150,
+  "scenario_hash": "991287215fa022c493d8f0d1f940c98f0b38ac1df19514072e5441f0bbff2b86",
+  "smoke_tests": {
+    "moving_block": {
+      "diagnostics": {
+        "block_length": 2,
+        "blocks_drawn": 2,
+        "consecutive_runs": 1,
+        "max_run_length": 18,
+        "policy": "moving_block_bootstrap",
+        "restarts_due_to_boundary": 1
+      },
+      "ok": true,
+      "sampled_blocks": 3,
+      "sampled_trades": 226,
+      "terminal_equity": 117333.88044192355
+    },
+    "seasonal_bootstrap": {
+      "diagnostics": {},
+      "ok": true,
+      "sampled_blocks": 3,
+      "sampled_trades": 168,
+      "terminal_equity": 105773.69073936349
+    },
+    "stationary_block": {
+      "diagnostics": {
+        "consecutive_runs": 1,
+        "policy": "stationary_block_bootstrap",
+        "reset_probability": 0.3333333333333333,
+        "restarts_due_to_boundary": 0,
+        "restarts_due_to_reset": 2
+      },
+      "ok": true,
+      "sampled_blocks": 3,
+      "sampled_trades": 191,
+      "terminal_equity": 105140.14454454568
+    }
+  },
+  "strategy_ids": [
+    "ES_EXPANDED_19_15_X2_0",
+    "ES_LATE_11_15_X2_0",
+    "ES_NORMAL_19_11_X2_0",
+    "ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5",
+    "NQ_LOCKED_19_11_X1_5"
+  ],
+  "test_seed": 20260630,
+  "timezone_validation": {
+    "all_utc": true,
+    "observed_timezones": [
+      "UTC"
+    ]
+  },
+  "trade_count_by_strategy": {
+    "ES_EXPANDED_19_15_X2_0": 328,
+    "ES_LATE_11_15_X2_0": 105,
+    "ES_NORMAL_19_11_X2_0": 237,
+    "ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5": 224,
+    "NQ_LOCKED_19_11_X1_5": 256
+  },
+  "warnings": [
+    "strategy 'ES_EXPANDED_19_15_X2_0': no coverage declared; missing months cannot be distinguished from verified flat months",
+    "strategy 'ES_LATE_11_15_X2_0': no coverage declared; missing months cannot be distinguished from verified flat months",
+    "strategy 'ES_NORMAL_19_11_X2_0': no coverage declared; missing months cannot be distinguished from verified flat months",
+    "strategy 'ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5': no coverage declared; missing months cannot be distinguished from verified flat months",
+    "strategy 'NQ_LOCKED_19_11_X1_5': no coverage declared; missing months cannot be distinguished from verified flat months",
+    "strategy 'ES_EXPANDED_19_15_X2_0': calendar month 07 has thin seasonal support (1 source month(s))",
+    "strategy 'ES_EXPANDED_19_15_X2_0': calendar month 08 has thin seasonal support (1 source month(s))",
+    "strategy 'ES_EXPANDED_19_15_X2_0': calendar month 09 has thin seasonal support (1 source month(s))",
+    "strategy 'ES_EXPANDED_19_15_X2_0': calendar month 10 has thin seasonal support (1 source month(s))",
+    "strategy 'ES_EXPANDED_19_15_X2_0': calendar month 11 has thin seasonal support (1 source month(s))",
+    "strategy 'ES_EXPANDED_19_15_X2_0': calendar month 12 has thin seasonal support (1 source month(s))",
+    "strategy 'ES_LATE_11_15_X2_0': calendar month 07 has thin seasonal support (1 source month(s))",
+    "strategy 'ES_LATE_11_15_X2_0': calendar month 08 has thin seasonal support (1 source month(s))",
+    "strategy 'ES_LATE_11_15_X2_0': calendar month 09 has thin seasonal support (1 source month(s))",
+    "strategy 'ES_LATE_11_15_X2_0': calendar month 10 has thin seasonal support (1 source month(s))",
+    "strategy 'ES_LATE_11_15_X2_0': calendar month 11 has thin seasonal support (1 source month(s))",
+    "strategy 'ES_LATE_11_15_X2_0': calendar month 12 has thin seasonal support (1 source month(s))",
+    "strategy 'ES_NORMAL_19_11_X2_0': calendar month 07 has thin seasonal support (1 source month(s))",
+    "strategy 'ES_NORMAL_19_11_X2_0': calendar month 08 has thin seasonal support (1 source month(s))",
+    "strategy 'ES_NORMAL_19_11_X2_0': calendar month 09 has thin seasonal support (1 source month(s))",
+    "strategy 'ES_NORMAL_19_11_X2_0': calendar month 10 has thin seasonal support (1 source month(s))",
+    "strategy 'ES_NORMAL_19_11_X2_0': calendar month 11 has thin seasonal support (1 source month(s))",
+    "strategy 'ES_NORMAL_19_11_X2_0': calendar month 12 has thin seasonal support (1 source month(s))",
+    "strategy 'ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5': calendar month 07 has thin seasonal support (1 source month(s))",
+    "strategy 'ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5': calendar month 08 has thin seasonal support (1 source month(s))",
+    "strategy 'ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5': calendar month 09 has thin seasonal support (1 source month(s))",
+    "strategy 'ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5': calendar month 10 has thin seasonal support (1 source month(s))",
+    "strategy 'ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5': calendar month 11 has thin seasonal support (1 source month(s))",
+    "strategy 'ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5': calendar month 12 has thin seasonal support (1 source month(s))",
+    "strategy 'NQ_LOCKED_19_11_X1_5': calendar month 07 has thin seasonal support (1 source month(s))",
+    "strategy 'NQ_LOCKED_19_11_X1_5': calendar month 08 has thin seasonal support (1 source month(s))",
+    "strategy 'NQ_LOCKED_19_11_X1_5': calendar month 09 has thin seasonal support (1 source month(s))",
+    "strategy 'NQ_LOCKED_19_11_X1_5': calendar month 10 has thin seasonal support (1 source month(s))",
+    "strategy 'NQ_LOCKED_19_11_X1_5': calendar month 11 has thin seasonal support (1 source month(s))",
+    "strategy 'NQ_LOCKED_19_11_X1_5': calendar month 12 has thin seasonal support (1 source month(s))"
+  ]
+}
