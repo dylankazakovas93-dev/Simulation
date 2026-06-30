@@ -5,6 +5,118 @@ top. Findings are classified `BLOCKER` / `HIGH` / `MEDIUM` / `LOW` / `OPTIONAL`.
 
 ---
 
+## Review 007 — 2026-06-30 — V2 live-account FINAL audit (codex/v2-live-account @ ecf5502)
+
+### Verdict: **CONDITIONAL APPROVAL**
+Supersedes the provisional Review 006. The cash-flow/sizing/returns **core is
+correct and well-tested** (12 of 15 checks pass on code + samples + my own run).
+Four **metric/provenance** items must be fixed before the margin/exposure
+milestone, because that milestone consumes drawdown and ruin directly. No
+REJECT (no accounting defect); no APPROVE (the four items below).
+
+### Independent verification
+Applied the V2 commits patch onto my reconstructed `8a81536` tree (V1 engine
+files untouched — only `sim_core/__init__.py` + new `live_account.py` + new
+test). Independent runs (numpy 2.4.6 / pandas 3.0.3): **`tests/regression -q` = 22
+passed; `pytest -q` = 112 passed, 1 skipped** (matches the V2 summary). Read
+`live_account.py` in full and machine-checked all six available sample JSONs.
+
+### Findings (all in the metrics/provenance layer; accounting core is sound)
+**MEDIUM-V2-A — drawdown conflates external flows with trading losses.**
+`_drawdown_metrics` iterates **all** events including deposits/withdrawals, so a
+withdrawal lowers equity below the peak and registers as drawdown, and a deposit
+raises the peak (masking later drawdowns). Sample 09: reported `max_drawdown
+2250` vs trading-only `250` — the $2000 withdrawal is counted as a $2000
+drawdown. It is deliberate/tested (`test_drawdown_uses_account_equity...`) and
+loosely disclosed, but the headline `max_drawdown`/`max_drawdown_pct` is what
+will drive forced-size-down/margin logic, and a withdrawal must not trip a
+drawdown threshold. *Fix:* add a **flow-neutral trading drawdown** alongside the
+account drawdown and feed the trading curve to threshold/ruin logic. *Regression:*
+same trades ± a withdrawal ⇒ identical trading drawdown; a withdrawal alone never
+trips a drawdown threshold.
+
+**MEDIUM-V2-B — ruin is end-of-path, inconsistent with V1's barrier definition.**
+`operational_ruin = state.equity <= threshold` and `zero_equity_ruin =
+state.equity <= 0` test only the **ending** equity (line 704–705). V1's
+`ruin_probability` uses a **barrier touch** (`any(point.equity <= threshold)`). A
+path that breaches the operational threshold mid-stream then recovers is **not**
+flagged — understating ruin, and contradicting the charter's "risk-of-ruin
+definitions changing between reports." *Fix:* make ruin an **absorbing barrier**
+(touch) event, or explicitly justify end-of-path and reconcile/relabel against V1.
+*Regression:* a dip below the threshold that later recovers ⇒ `operational_ruin`
+true under barrier semantics.
+
+**MEDIUM-V2-C — MWR (annualized XIRR) vs TWR (cumulative) basis mismatch.**
+`_money_weighted_return` solves XIRR with year-fraction exponents ⇒ an
+**annualized** rate, shown beside a cumulative-period TWR. Over ~59-day samples
+this yields 1,406% / 9,764% / 105× headline MWRs — the charter's "huge uncapped
+compounding presented as realistic." Distinctness itself is correct (pt 4 PASS,
+tested), so this is a presentation/basis defect, not a math bug. *Fix:* label MWR
+"annualized XIRR," provide a period-basis figure (so no-flow ⇒ period-MWR == TWR),
+and suppress/caveat annualization below a minimum horizon. *Regression:* no-flow
+fixture ⇒ period-MWR == TWR; sub-annual window does not surface an unlabeled
+>100% annualized number.
+
+**MEDIUM-V2-D — live-account results lack provenance (ADR-014).**
+`LiveAccountPathResult` serializes config/allocations/cash-flow policy/events but
+carries **no input-data hash or config/scenario hash** (samples have none). V1
+results are provenance-stamped; V2 live-account results are not. *Fix:* add an
+input-data hash + account-config hash to the result, consistent with ADR-014.
+
+**LOW-V2-E — reinvestment gain/loss asymmetry (disclosed, acceptable).**
+`_sizing_equity_basis` scales gains by `reinvestment_rate` but applies losses in
+full to the sizing basis — a conservative, intentional, documented choice. Keep;
+ensure it stays disclosed.
+
+### Checklist (1–15) — final
+| # | Item | Status |
+|---|---|---|
+| 1 | Deposits never profit | **PASS** (code + sample) |
+| 2 | Withdrawals never trading losses | **PASS** for `trading_pnl`; but counted in drawdown (MEDIUM-V2-A) |
+| 3 | Cash-flow timing affects sizing only when it should | **PASS** (priority deposit<exit<withdrawal<entry; basis = external + reinvested P&L) |
+| 4 | TWR vs MWR distinct | **PASS** (tested); basis-mismatch caveat (MEDIUM-V2-C) |
+| 5 | Strategy quantities independent | **PASS** (`test_nq_and_es_sizes_are_independent`) |
+| 6 | MES not mechanically from MNQ | **PASS** (per-strategy `decide_contracts`; MNQ/MES test) |
+| 7 | Fixed-dollar uses declared risk | **PASS** (metadata→stop_points×dpp→proxy→**validation failure**; never realized loss) |
+| 8 | Reinvestment both directions | **PASS** (gains×rate up, losses full down) |
+| 9 | Size-down not delayed/omitted | **PASS** (losses cut basis immediately; `forced_reduction` flagged; `test_scale_down`) |
+| 10 | Drawdown not distorted by deposits w/o disclosure | **PARTIAL/FAIL** (MEDIUM-V2-A) |
+| 11 | Operational ruin stable/explicit | **PARTIAL** — explicit but end-of-path, inconsistent w/ V1 (MEDIUM-V2-B) |
+| 12 | Percentiles consistent path counts | **PASS** (`summarize_live_account_paths` uses one `path_count`) |
+| 13 | V1 historical/bootstrap unchanged | **PASS** (engine untouched; 22 regression independently green) |
+| 14 | Optimizer can't access incomplete V2 | **PASS** (no optimizer exists; diff is additive) |
+| 15 | Outputs separate trading vs contributed | **PASS** (`trading_return_before_cash_flows`, contributions fields) |
+
+### Architecture note (future-milestone support only)
+The event-driven account (typed events with explicit priority ordering, a
+`sizing_decisions` ledger, per-strategy independent sizing, no equity floor) is a
+sound substrate for margin/exposure (add margin-check / intratrade events) and a
+later prop state machine — **provided** drawdown and ruin gain flow-neutral /
+barrier semantics first (A, B), since those metrics are what the next milestone
+acts on. No margin/exposure/prop/optimizer/UI work was audited.
+
+### Exact gate for beginning the margin/exposure milestone
+Do **not** start margin/exposure until **all** hold:
+1. **MEDIUM-V2-A** resolved — a flow-neutral trading drawdown exists and is what
+   drawdown-threshold / forced-size-down / ruin logic consumes; withdrawals/
+   deposits cannot create or mask a trading drawdown (regression test).
+2. **MEDIUM-V2-B** resolved — ruin is a single, stable, **barrier** definition
+   consistent with V1 (or an explicitly justified, reconciled, relabeled
+   alternative), with a dip-then-recover regression test.
+3. **MEDIUM-V2-C** resolved — MWR/TWR on a consistent, clearly-labeled basis with
+   sub-annual annualization guarded; no-flow ⇒ period-MWR == TWR test.
+4. **MEDIUM-V2-D** resolved — live-account results carry an input-data + config
+   hash (ADR-014 provenance).
+5. V1 regression remains green and the V1 engine remains untouched (re-confirmed:
+   22 passed here); no optimizer/margin/exposure entry point references an
+   incomplete component.
+
+Until 1–4 are closed with regression tests, the milestone stays **CONDITIONAL** —
+correct cash-flow/sizing/returns core, four metric/provenance items to fix before
+risk metrics are built upon.
+
+---
+
 ## Review 006 — 2026-06-30 — V2 live-account milestone audit (codex/v1-core → ecf5502)
 
 ### Verdict: **CONDITIONAL APPROVAL**
