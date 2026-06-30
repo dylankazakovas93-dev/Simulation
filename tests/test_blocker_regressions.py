@@ -50,7 +50,7 @@ def test_naive_timestamps_rejected_unless_source_timezone_configured():
     )
 
     with pytest.raises(TradeValidationError):
-        normalize_trade_frame(frame)
+        normalize_trade_frame(frame, source_timezone=None)
 
     trades = normalize_trade_frame(frame, source_timezone="America/Chicago")
     assert str(trades[0].entry_time.tz) == "UTC"

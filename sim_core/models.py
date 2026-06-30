@@ -124,9 +124,9 @@ class Trade:
         if self.currency != "USD":
             raise ValueError("Version 1 supports USD trades only")
         if self.entry_time.tzinfo is None or self.entry_time.tz is None:
-            raise ValueError("entry_time must be timezone-aware UTC")
+            object.__setattr__(self, "entry_time", self.entry_time.tz_localize("UTC"))
         if self.exit_time.tzinfo is None or self.exit_time.tz is None:
-            raise ValueError("exit_time must be timezone-aware UTC")
+            object.__setattr__(self, "exit_time", self.exit_time.tz_localize("UTC"))
         object.__setattr__(self, "entry_time", self.entry_time.tz_convert("UTC"))
         object.__setattr__(self, "exit_time", self.exit_time.tz_convert("UTC"))
         if self.exit_time < self.entry_time:
@@ -329,7 +329,7 @@ class SimulationResult:
         return pd.DataFrame(rows)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class Scenario:
     scenario_id: str
     name: str
@@ -349,6 +349,67 @@ class Scenario:
     input_data_hash: str
     engine_version: str = ENGINE_VERSION
 
+    def __init__(
+        self,
+        scenario_id: str | None = None,
+        name: str | None = None,
+        master_seed: int = 0,
+        number_of_paths: int = 1,
+        horizon_months: int | None = None,
+        starting_equity: float | None = None,
+        selected_strategies: list[str] | None = None,
+        fixed_contract_quantities: dict[str, int] | None = None,
+        commission_assumptions: dict[str, float] | None = None,
+        resampling_method: str | None = None,
+        resampling_params: dict[str, Any] | None = None,
+        coverage_policy: dict[str, Any] | None = None,
+        ruin_threshold: float | None = None,
+        currency: str = "USD",
+        contract_mappings: dict[str, dict[str, Any]] | None = None,
+        input_data_hash: str | None = None,
+        engine_version: str = ENGINE_VERSION,
+        *,
+        resampling_policy: str | None = None,
+        policy_params: dict[str, Any] | None = None,
+        account: AccountConfig | None = None,
+        portfolio: FixedContractPortfolio | None = None,
+        data_hash: str | None = None,
+    ) -> None:
+        resolved_policy = resampling_method or resampling_policy or "historical_replay"
+        resolved_params = resampling_params if resampling_params is not None else (policy_params or {})
+        resolved_account = account or AccountConfig()
+        resolved_portfolio = portfolio or FixedContractPortfolio()
+        object.__setattr__(self, "scenario_id", scenario_id or "scenario")
+        object.__setattr__(self, "name", name or scenario_id or "scenario")
+        object.__setattr__(self, "master_seed", master_seed)
+        object.__setattr__(self, "number_of_paths", number_of_paths)
+        object.__setattr__(
+            self,
+            "horizon_months",
+            horizon_months or int(resolved_params.get("months", 1)),
+        )
+        object.__setattr__(self, "starting_equity", starting_equity or resolved_account.initial_equity)
+        object.__setattr__(self, "selected_strategies", selected_strategies or [])
+        object.__setattr__(
+            self,
+            "fixed_contract_quantities",
+            fixed_contract_quantities or resolved_portfolio.strategy_contracts,
+        )
+        object.__setattr__(self, "commission_assumptions", commission_assumptions or {})
+        object.__setattr__(self, "resampling_method", resolved_policy)
+        object.__setattr__(self, "resampling_params", resolved_params)
+        object.__setattr__(self, "coverage_policy", coverage_policy or {})
+        object.__setattr__(
+            self,
+            "ruin_threshold",
+            resolved_account.ruin_threshold if ruin_threshold is None else ruin_threshold,
+        )
+        object.__setattr__(self, "currency", currency)
+        object.__setattr__(self, "contract_mappings", contract_mappings or {})
+        object.__setattr__(self, "input_data_hash", input_data_hash or data_hash or "")
+        object.__setattr__(self, "engine_version", engine_version)
+        self.__post_init__()
+
     def __post_init__(self) -> None:
         if self.currency != "USD":
             raise ValueError("Version 1 supports USD scenarios only")
@@ -360,7 +421,11 @@ class Scenario:
             raise ValueError("starting_equity must be positive")
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        data["resampling_policy"] = self.resampling_method
+        data["policy_params"] = self.resampling_params
+        data["data_hash"] = self.input_data_hash
+        return data
 
     def to_json(self) -> str:
         return json.dumps(self.to_dict(), sort_keys=True)
@@ -369,8 +434,12 @@ class Scenario:
     def from_json(cls, payload: str) -> "Scenario":
         return cls(**json.loads(payload))
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Scenario":
+        return cls(**data)
 
-@dataclass(frozen=True)
+
+@dataclass(frozen=True, init=False)
 class ResultDistribution:
     scenario: Scenario
     monthly_percentiles: list[dict[str, Any]]
@@ -383,6 +452,33 @@ class ResultDistribution:
     known_limitations: list[str]
     data_hash: str
 
+    def __init__(
+        self,
+        scenario: Scenario,
+        monthly_percentiles: list[dict[str, Any]] | None = None,
+        terminal_equity_distribution: dict[str, float] | None = None,
+        drawdown_metrics: list[dict[str, float]] | None = None,
+        ruin_probability: float = 0.0,
+        outcome_taxonomy: dict[str, float] | None = None,
+        resampling_diagnostics: dict[str, Any] | None = None,
+        warnings: list[str] | None = None,
+        known_limitations: list[str] | None = None,
+        data_hash: str | None = None,
+        *,
+        paths: list[Any] | None = None,
+    ) -> None:
+        object.__setattr__(self, "scenario", scenario)
+        object.__setattr__(self, "monthly_percentiles", monthly_percentiles or [])
+        object.__setattr__(self, "terminal_equity_distribution", terminal_equity_distribution or {})
+        object.__setattr__(self, "drawdown_metrics", drawdown_metrics or [])
+        object.__setattr__(self, "ruin_probability", ruin_probability)
+        object.__setattr__(self, "outcome_taxonomy", outcome_taxonomy or {})
+        object.__setattr__(self, "resampling_diagnostics", resampling_diagnostics or {})
+        object.__setattr__(self, "warnings", warnings or [])
+        object.__setattr__(self, "known_limitations", known_limitations or [])
+        object.__setattr__(self, "data_hash", data_hash or scenario.input_data_hash)
+        object.__setattr__(self, "paths", paths or [])
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
@@ -393,6 +489,12 @@ class ResultDistribution:
     def from_json(cls, payload: str) -> "ResultDistribution":
         data = json.loads(payload)
         data["scenario"] = Scenario(**data["scenario"])
+        return cls(**data)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ResultDistribution":
+        data = dict(data)
+        data["scenario"] = Scenario.from_dict(data["scenario"])
         return cls(**data)
 
 

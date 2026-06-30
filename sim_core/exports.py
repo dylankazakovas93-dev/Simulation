@@ -26,7 +26,7 @@ def export_simulation_result(
 
 
 def export_simulation_batch(
-    results: list[SimulationResult],
+    results: list[SimulationResult] | ResultDistribution,
     output_dir: str | Path,
     *,
     scenario: Scenario | None = None,
@@ -34,6 +34,12 @@ def export_simulation_batch(
 ) -> dict[str, Path]:
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
+    if isinstance(results, ResultDistribution):
+        distribution = results
+        manifest_path = output_path / "run_manifest.json"
+        manifest_path.write_text(_manifest_json(distribution), encoding="utf-8")
+        return {"run_manifest": manifest_path}
+
     summary_path = output_path / "path_summary.csv"
     monthly_path = output_path / "monthly_percentiles.csv"
     summarize_paths(results).to_csv(summary_path, index=False)
@@ -47,3 +53,23 @@ def export_simulation_batch(
         metadata_path.write_text(distribution.to_json(), encoding="utf-8")
         exported["result_distribution"] = metadata_path
     return exported
+
+
+def _manifest_json(distribution: ResultDistribution) -> str:
+    scenario = distribution.scenario
+    import json
+
+    return json.dumps(
+        {
+            "master_seed": scenario.master_seed,
+            "resampling_policy": scenario.resampling_method,
+            "policy_params": scenario.resampling_params,
+            "data_hash": distribution.data_hash or scenario.input_data_hash,
+            "limitations": distribution.known_limitations
+            or [
+                "V1 books realized P&L at trade exit only.",
+                "V1 excludes margin, prop-firm rules, exposure, and optimization.",
+            ],
+        },
+        sort_keys=True,
+    )

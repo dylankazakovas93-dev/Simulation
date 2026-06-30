@@ -89,10 +89,11 @@ model validation or ingestion validation.
 
 Status: accepted and implemented.
 
-All normalized timestamps are timezone-aware UTC. Naive timestamps are rejected
-unless the caller explicitly configures a source timezone. Timezone conversion
-is performed during ingestion and stored on normalized `Trade` objects; timezone
-information is not silently dropped.
+All normalized timestamps are timezone-aware UTC. Naive timestamps are localized
+through an explicit `source_timezone` policy and emit a runtime warning; callers
+can set `source_timezone=None` to fail closed on naive timestamps. Timezone
+conversion is performed during ingestion and stored on normalized `Trade`
+objects; timezone information is not silently dropped.
 
 ## 2026-06-30: Month Bootstrap Timestamp Shifting
 

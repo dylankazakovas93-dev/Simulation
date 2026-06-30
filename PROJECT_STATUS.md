@@ -6,8 +6,10 @@ Branch: `codex/v1-core`
 
 ## Current State
 
-Version 1 hardening for Claude Review 002 is implemented locally. No Version 2
-work was started.
+Version 1 hardening for Claude Review 002 is implemented locally. Claude's
+red-by-design regression suite from governance commit `28b099e` has been
+imported under `tests/regression/` without modifying its assertions. No Version
+2 work was started.
 
 ## Findings Resolved
 
@@ -30,6 +32,9 @@ work was started.
   last equity so every path contributes one value for every requested month.
 - **HIGH timestamp warnings:** code paths avoid pandas timezone-drop warnings in
   core month bucketing.
+- **Claude regression compatibility:** added `sim_core.execution.ensemble` and
+  legacy-compatible `Scenario`/`ResultDistribution` constructors required by
+  the Review 002 regression suite.
 
 ## Files Changed
 
@@ -41,9 +46,11 @@ work was started.
 - `sim_core/resampling/policies.py`
 - `sim_core/metrics/reports.py`
 - `sim_core/exports.py`
+- `sim_core/execution/ensemble.py`
 - `sim_core/__init__.py`
 - `sim_core/batch.py`
 - `tests/test_blocker_regressions.py`
+- `tests/regression/**`
 - `tests/test_canonical_fixture.py`
 - existing tests and sample CSV timestamps updated to UTC-aware fixture values
 
@@ -67,17 +74,24 @@ work was started.
 - declared full-size contracts with micro `dpp` fail
 - missing canonical `dpp` fails closed
 
+`tests/regression/` was imported from governance commit `28b099e` and currently
+contains 22 Claude-authored regression tests.
+
 ## Tests
 
 Passing:
 
 ```bash
-python3 -m pytest
+python3 -m pytest tests/regression -q
 ```
 
-Result: 36 passed.
+Result: 22 passed.
 
-Last observed run: 36 passed.
+```bash
+python3 -m pytest -q
+```
+
+Result: 58 passed.
 
 ## Canonical-Ledger Integration
 
@@ -124,4 +138,4 @@ Required real-ledger checks still pending:
 
 ## New Commit
 
-`443aad4` — `Address Claude V1 audit blockers`
+Pending commit after importing Claude regression suite and compatibility fixes.

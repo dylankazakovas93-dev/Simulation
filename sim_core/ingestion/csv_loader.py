@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
+import warnings
 
 import pandas as pd
 
@@ -71,7 +72,8 @@ def load_trade_csv(
 def load_canonical_margin_csv(
     path: str | Path,
     *,
-    contract_specs_by_strategy: dict[str, InstrumentSpec],
+    contract_specs_by_strategy: dict[str, InstrumentSpec] | None = None,
+    instrument_registry: dict[str, InstrumentSpec] | None = None,
 ) -> list[Trade]:
     source_path = Path(path)
     frame = pd.read_csv(source_path)
@@ -79,6 +81,7 @@ def load_canonical_margin_csv(
         frame,
         source_path=source_path,
         contract_specs_by_strategy=contract_specs_by_strategy,
+        instrument_registry=instrument_registry,
     )
     return normalize_trade_frame(normalized, source_path=source_path)
 
@@ -87,7 +90,8 @@ def normalize_canonical_margin_frame(
     frame: pd.DataFrame,
     *,
     source_path: Path | None = None,
-    contract_specs_by_strategy: dict[str, InstrumentSpec],
+    contract_specs_by_strategy: dict[str, InstrumentSpec] | None = None,
+    instrument_registry: dict[str, InstrumentSpec] | None = None,
 ) -> pd.DataFrame:
     """Map nq_es_margin_sim_master_2025_2026.csv columns into the V1 schema."""
 
@@ -111,6 +115,10 @@ def normalize_canonical_margin_frame(
 
     rows: list[dict[str, object]] = []
     issues: list[ValidationIssue] = []
+    contract_specs_by_strategy = contract_specs_by_strategy or _infer_strategy_specs(
+        frame,
+        instrument_registry or DEFAULT_INSTRUMENT_REGISTRY,
+    )
     for index, row in frame.iterrows():
         row_number = int(index) + 2
         strategy_id = _required_str(row.get("strategy"), "strategy", row_number, issues)
@@ -214,7 +222,7 @@ def normalize_trade_frame(
     *,
     source_path: Path | None = None,
     metadata: StrategyMetadata | None = None,
-    source_timezone: str | None = None,
+    source_timezone: str | None = "UTC",
 ) -> list[Trade]:
     issues: list[ValidationIssue] = []
     missing = sorted(REQUIRED_COLUMNS - set(frame.columns))
@@ -392,6 +400,11 @@ def _parse_timestamp_column(
                 )
                 parsed_values.append(pd.NaT)
                 continue
+            warnings.warn(
+                f"{column}: localized naive timestamp to configured source_timezone={source_timezone}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
             try:
                 timestamp = timestamp.tz_localize(source_timezone)
             except Exception as exc:
@@ -402,6 +415,21 @@ def _parse_timestamp_column(
                 continue
         parsed_values.append(timestamp.tz_convert("UTC"))
     return pd.Series(parsed_values, index=values.index)
+
+
+def _infer_strategy_specs(
+    frame: pd.DataFrame,
+    instrument_registry: dict[str, InstrumentSpec],
+) -> dict[str, InstrumentSpec]:
+    specs: dict[str, InstrumentSpec] = {}
+    if "strategy" not in frame.columns or "inst" not in frame.columns:
+        return specs
+    for _, row in frame.iterrows():
+        strategy = _optional_str(row.get("strategy"))
+        instrument = _optional_str(row.get("inst"))
+        if strategy and instrument and instrument in instrument_registry:
+            specs[strategy] = instrument_registry[instrument]
+    return specs
 
 
 def _required_str(

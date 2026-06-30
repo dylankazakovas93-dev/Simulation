@@ -29,8 +29,9 @@ Legend: **[GUARD]** enforced in code · **[WARN]** should be surfaced in reports
   `nq_es_margin_sim_master_2025_2026.csv` was not present in the local
   workspace. The branch includes a representative fixture with the requested
   filename and schema, but Claude should rerun against the real ledger.
-- **[GUARD]** Normalized timestamps are UTC-aware. Naive timestamps are rejected
-  unless `source_timezone` is explicitly configured.
+- **[GUARD/WARN]** Normalized timestamps are UTC-aware. Naive timestamps are
+  localized through `source_timezone` with an explicit warning; callers can set
+  `source_timezone=None` to fail closed.
 
 ## Classification and Stress
 

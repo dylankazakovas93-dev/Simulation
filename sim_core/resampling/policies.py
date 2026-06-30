@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -64,6 +65,12 @@ class SameCalendarMonthBootstrap(ResamplingPolicy):
         coverage: Sequence[StrategyCoverage] | None = None,
     ) -> ResampledPath:
         rng = _rng_for_path(seed, path_index)
+        if coverage is None:
+            warnings.warn(
+                "coverage metadata absent; missing months cannot be distinguished from unverified flat months",
+                RuntimeWarning,
+                stacklevel=2,
+            )
         source_months = _sorted_source_months(trades, coverage=coverage)
         if not source_months:
             raise ValueError("no source months available for requested bootstrap")
