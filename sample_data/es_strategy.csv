@@ -1,0 +1,5 @@
+strategy_id,instrument,entry_time,exit_time,direction,pnl_points,dollars_per_point,commission_round_turn,result_type,session
+es_morning,ES,2024-01-03 09:35,2024-01-03 10:20,long,2.0,50,4.50,win,RTH
+es_morning,ES,2024-01-18 09:40,2024-01-18 10:05,short,-1.5,50,4.50,loss,RTH
+es_morning,ES,2024-02-07 09:32,2024-02-07 09:55,long,0.0,50,4.50,breakeven,RTH
+es_morning,ES,2024-02-22 09:45,2024-02-22 11:10,long,3.0,50,4.50,win,RTH

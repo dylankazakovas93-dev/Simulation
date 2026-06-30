@@ -1,0 +1,24 @@
+{
+  "description": "Version 1 fixed-contract example using sample_data CSV files.",
+  "csv_files": [
+    "sample_data/es_strategy.csv",
+    "sample_data/nq_strategy.csv"
+  ],
+  "account": {
+    "initial_equity": 100000,
+    "ruin_threshold": 0
+  },
+  "portfolio": {
+    "strategy_contracts": {
+      "es_morning": 1,
+      "nq_open": 1
+    },
+    "default_contracts": 1
+  },
+  "resampling": {
+    "policy": "same_calendar_month_bootstrap",
+    "months": 6,
+    "start_month": "2025-01",
+    "seed": 42
+  }
+}
