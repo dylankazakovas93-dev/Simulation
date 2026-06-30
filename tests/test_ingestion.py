@@ -13,8 +13,8 @@ def test_trade_ordering_is_chronological_after_load(tmp_path):
         "\n".join(
             [
                 "strategy_id,instrument,entry_time,exit_time,pnl_dollars",
-                "s1,ES,2024-02-02 09:30,2024-02-02 10:00,100",
-                "s1,ES,2024-01-02 09:30,2024-01-02 10:00,-50",
+                "s1,ES,2024-02-02T09:30:00Z,2024-02-02T10:00:00Z,100",
+                "s1,ES,2024-01-02T09:30:00Z,2024-01-02T10:00:00Z,-50",
             ]
         )
     )
@@ -31,8 +31,8 @@ def test_metadata_stays_attached_to_specific_instrument():
             {
                 "strategy_id": "expanded",
                 "instrument": "ES",
-                "entry_time": "2024-01-02 09:30",
-                "exit_time": "2024-01-02 10:00",
+                "entry_time": "2024-01-02T09:30:00Z",
+                "exit_time": "2024-01-02T10:00:00Z",
                 "pnl_points": 2,
             },
         ]
@@ -55,8 +55,8 @@ def test_es_configuration_does_not_modify_nq_configuration():
                 {
                     "strategy_id": "expanded",
                     "instrument": "ES",
-                    "entry_time": "2024-01-02 09:30",
-                    "exit_time": "2024-01-02 10:00",
+                    "entry_time": "2024-01-02T09:30:00Z",
+                    "exit_time": "2024-01-02T10:00:00Z",
                     "pnl_points": 2,
                 }
             ]
@@ -69,8 +69,8 @@ def test_es_configuration_does_not_modify_nq_configuration():
                 {
                     "strategy_id": "expanded",
                     "instrument": "NQ",
-                    "entry_time": "2024-01-02 09:30",
-                    "exit_time": "2024-01-02 10:00",
+                    "entry_time": "2024-01-02T09:30:00Z",
+                    "exit_time": "2024-01-02T10:00:00Z",
                     "pnl_points": 2,
                 }
             ]
@@ -89,8 +89,8 @@ def test_mismatched_metadata_is_not_applied_to_other_instrument():
             {
                 "strategy_id": "expanded",
                 "instrument": "NQ",
-                "entry_time": "2024-01-02 09:30",
-                "exit_time": "2024-01-02 10:00",
+                "entry_time": "2024-01-02T09:30:00Z",
+                "exit_time": "2024-01-02T10:00:00Z",
                 "pnl_points": 2,
             }
         ]
@@ -110,8 +110,8 @@ def test_breakeven_trades_are_not_classified_as_losses():
                 {
                     "strategy_id": "s1",
                     "instrument": "ES",
-                    "entry_time": "2024-01-02 09:30",
-                    "exit_time": "2024-01-02 10:00",
+                    "entry_time": "2024-01-02T09:30:00Z",
+                    "exit_time": "2024-01-02T10:00:00Z",
                     "pnl_dollars": 0,
                 }
             ]
@@ -127,15 +127,15 @@ def test_duplicate_trades_raise_validation_error():
             {
                 "strategy_id": "s1",
                 "instrument": "ES",
-                "entry_time": "2024-01-02 09:30",
-                "exit_time": "2024-01-02 10:00",
+                "entry_time": "2024-01-02T09:30:00Z",
+                "exit_time": "2024-01-02T10:00:00Z",
                 "pnl_dollars": 0,
             },
             {
                 "strategy_id": "s1",
                 "instrument": "ES",
-                "entry_time": "2024-01-02 09:30",
-                "exit_time": "2024-01-02 10:00",
+                "entry_time": "2024-01-02T09:30:00Z",
+                "exit_time": "2024-01-02T10:00:00Z",
                 "pnl_dollars": 0,
             },
         ]

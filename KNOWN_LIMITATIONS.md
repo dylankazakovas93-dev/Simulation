@@ -14,6 +14,9 @@ Legend: **[GUARD]** enforced in code · **[WARN]** should be surfaced in reports
 - **[GUARD]** Stationary bootstrap resamples a source start at the source
   boundary instead of silently wrapping.
 - **[GUARD]** Declared partial months are excluded from sampling pools.
+- **[GUARD]** Resampled trades carry `target_month` and are clamped inside that
+  month when source offsets would overflow.
+- **[GUARD]** Ensemble paths use path-indexed `SeedSequence` RNG streams.
 - **[WARN]** Thin seasonal support counts are not yet emitted in exported
   reports.
 - **[SCOPE]** No out-of-sample degradation/haircut controls in V1.
@@ -26,8 +29,8 @@ Legend: **[GUARD]** enforced in code · **[WARN]** should be surfaced in reports
   `nq_es_margin_sim_master_2025_2026.csv` was not present in the local
   workspace. The branch includes a representative fixture with the requested
   filename and schema, but Claude should rerun against the real ledger.
-- **[WARN]** Source timestamp timezone handling relies on pandas parsing. The
-  canonical fixture uses UTC timestamps with `Z`.
+- **[GUARD]** Normalized timestamps are UTC-aware. Naive timestamps are rejected
+  unless `source_timezone` is explicitly configured.
 
 ## Classification and Stress
 
@@ -49,8 +52,12 @@ Legend: **[GUARD]** enforced in code · **[WARN]** should be surfaced in reports
 
 ## Sizing and Instruments
 
-- **[GUARD]** The canonical NQ/ES mapping uses explicit instrument registry
-  metadata: NQ rows map to MNQ at USD 2/point, ES rows map to MES at USD 5/point.
+- **[GUARD]** Canonical ingestion requires explicit per-strategy contract
+  metadata. NQ strategies must be declared as MNQ at USD 2/point and ES
+  strategies as MES at USD 5/point for the confirmed real-ledger contract
+  mapping.
+- **[GUARD]** The file's `dpp` is authoritative and is cross-checked against the
+  declared strategy contract. Missing `dpp` fails closed.
 - **[GUARD]** `mult` from the canonical file is preserved as metadata and is not
   used as position sizing.
 - **[SCOPE]** No reinvestment, percentage-equity sizing, fixed-dollar risk,
@@ -60,5 +67,7 @@ Legend: **[GUARD]** enforced in code · **[WARN]** should be surfaced in reports
 ## Outputs
 
 - **[GUARD]** Equity-path export includes source row IDs and P&L columns.
-- **[WARN]** Exported reports do not yet embed full scenario assumptions, data
-  hashes, or known-limitation text.
+- **[GUARD]** Batch exports can include `ResultDistribution` JSON with scenario
+  assumptions, data hash, diagnostics, and known limitations.
+- **[WARN]** Single-path equity CSV exports include scenario metadata only when
+  a `Scenario` is supplied by the caller.

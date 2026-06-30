@@ -14,8 +14,8 @@ def _multi_strategy_trades():
                 {
                     "strategy_id": strategy,
                     "instrument": instrument,
-                    "entry_time": f"2024-{month:02d}-05 09:30",
-                    "exit_time": f"2024-{month:02d}-05 10:00",
+                    "entry_time": f"2024-{month:02d}-05T09:30:00Z",
+                    "exit_time": f"2024-{month:02d}-05T10:00:00Z",
                     "pnl_dollars": pnl + month,
                 }
             )
@@ -36,7 +36,7 @@ def test_multiple_strategies_use_synchronized_source_months():
         block_trades = [
             trade
             for trade in path.trades
-            if trade.entry_time.to_period("M") == block.target_month
+            if pd.Period(trade.entry_time.strftime("%Y-%m"), "M") == block.target_month
         ]
         assert {trade.strategy_id for trade in block_trades} == {"es_open", "nq_open"}
         assert {trade.metadata["source_month"] for trade in block_trades} == {

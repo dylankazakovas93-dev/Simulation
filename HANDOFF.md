@@ -1,97 +1,270 @@
-# Handoff
+# HANDOFF
 
-## Synchronization Summary
+Review log between the Architecture/Model-Risk lead and Codex. Newest review on
+top. Findings are classified `BLOCKER` / `HIGH` / `MEDIUM` / `LOW` / `OPTIONAL`.
 
-- Branch: `codex/v1-core`
-- Remote: `https://github.com/dylankazakovas93-dev/Simulation.git`
-- Claude governance branch merged:
-  `origin/claude/portfolio-sim-architecture-yq361s`
-- Final commit hash: recorded in final response after commit creation.
-- No force-push used.
+---
 
-## Work Completed
+## Review 002 — 2026-06-30 — Codex V1 implementation audit
 
-Implemented and reconciled Version 1 only:
+### Verdict
 
-- `sim_core` typed domain models, including `InstrumentSpec`,
-  `StrategyCoverage`, permanent `source_row_id`, and USD-only validation.
-- Generic CSV ingestion and canonical margin-ledger schema normalization.
-- Explicit instrument registry for NQ->MNQ and ES->MES micro contract mapping.
-- Fixed-contract replay with deterministic settlement ordering.
-- Historical, seasonal, moving-block, and stationary-block resampling.
-- Coverage-aware sampling for verified flat zero-trade months and partial-month
-  exclusion.
-- Drawdown, ruin, cross-path monthly percentiles, explicit outcome taxonomy,
-  path summaries, and CSV exports.
-- Representative canonical fixture:
-  `sample_data/nq_es_margin_sim_master_2025_2026.csv`.
-- Reconciled `ARCHITECTURE.md`, `DECISIONS.md`, `PROJECT_STATUS.md`, and
-  `KNOWN_LIMITATIONS.md` with Claude's governance docs.
+**CONDITIONAL APPROVAL. Version 1 is not yet acceptable. Do not begin Version 2.**
 
-## Tests Run
+### BLOCKER findings
 
-```bash
-python3 -m pytest
-```
+- **BLOCKER-1 — Timezone policy.** Adopt one internal timestamp policy: parse
+  timestamps as timezone-aware UTC, store normalized timestamps as UTC-aware
+  values, never silently drop timezone information, and reject ambiguous naive
+  timestamps unless an explicit source timezone is configured. Fix
+  `Trade.shifted_to_month` so timestamp arithmetic is timezone-consistent.
+- **BLOCKER-2 — Independent path RNG.** `path_index` must influence the random
+  stream. Use deterministic independent streams equivalent to
+  `SeedSequence(master_seed).spawn(number_of_paths)`. Add a batch simulation
+  runner for complete ensembles.
+- **BLOCKER-3 — Month-boundary-safe shifting.** A resampled trade must carry an
+  authoritative `target_month`. Shifted entry and exit timestamps must remain
+  inside the target month. Preserve original offset when possible; otherwise
+  clamp to the final valid instant of the target month and preserve duration
+  where possible without crossing the boundary.
+- **BLOCKER-4 — Scenario and ResultDistribution.** Implement typed serializable
+  `Scenario` and `ResultDistribution` models. CSV exports must include or be
+  accompanied by scenario metadata/provenance.
+- **BLOCKER-5 — Canonical real-ledger integration.** Run the actual
+  `nq_es_margin_sim_master_2025_2026.csv`; do not substitute the representative
+  sample fixture for acceptance.
 
-Result: 25 passed.
+### User decision: contract mapping
 
-## Acceptance Matrix
+The real ledger uses micro contracts:
 
-| Claude test requirement | Existing Codex test | Status | Missing work |
+- NQ strategies represent MNQ at $2 per point.
+- ES strategies represent MES at $5 per point.
+- Currency is USD.
+
+This must be explicitly declared per strategy. Do not infer contract size from
+the underlying symbol. The file's `dpp` value is authoritative and must be
+cross-checked against the declared contract specification.
+
+Required behavior:
+
+- Declared MNQ + `dpp=2` -> valid.
+- Declared MES + `dpp=5` -> valid.
+- Declared full NQ + `dpp=2` -> validation error.
+- Declared full ES + `dpp=5` -> validation error.
+- Blank or missing `dpp` -> validation error unless an explicit, user-approved
+  fill policy is configured.
+- Never silently default blank `dpp` to micro multipliers.
+
+### HIGH findings
+
+- Replace underlying-based implicit defaults with explicit per-strategy contract
+  declarations.
+- A flat month is sampleable only when coverage metadata proves the strategy was
+  active and the month was complete.
+- Each path must have an equity value at every requested month-end. Carry last
+  known equity forward through months with no trades; do not drop paths from a
+  month because they had no event.
+- Timezone conversion, assumption, or rejection must be explicit. Pandas
+  warnings must not be the only indication of destructive conversion.
+
+### Minimum regression coverage required
+
+- UTC-aware canonical data works.
+- Timestamp timezone is preserved.
+- Shifted trades remain in their target month.
+- Ensemble paths are independent and reproducible.
+- Scenario serialization round-trips.
+- Exports include full provenance.
+- Explicit micro mappings work.
+- Missing `dpp` fails closed.
+- Flat versus missing versus partial months are distinguished.
+- Percentile denominators are consistent.
+- Real-ledger integration succeeds.
+
+### Codex response location
+
+Implementation status, files changed, test counts, and remaining blockers belong
+in `PROJECT_STATUS.md`, not in this review history.
+
+---
+
+## Review 001 — 2026-06-30 — Baseline & V1 specification
+
+### What was reviewed
+Entire repository at `70708d7`. Finding: the repo is empty apart from a one-line
+`README.md`. There is **no Codex V1 implementation to audit.** This review
+therefore sets the foundation: architecture, domain model, CSV schema,
+statistical methodology, the V1 acceptance contract, and the test plan Codex
+must satisfy. New docs in this commit: `ARCHITECTURE.md`, `DECISIONS.md`,
+`KNOWN_LIMITATIONS.md`, `PROJECT_STATUS.md`.
+
+### Critical findings
+Nothing to fault yet — but the following are the design decisions that, if
+gotten wrong, produce an engine that runs and lies. They are stated as up-front
+**BLOCKER-to-V1** requirements: V1 is not accepted unless each holds.
+
+- **BLOCKER-1 — Per-contract P&L is the resizing primitive.** The CSV must carry
+  (or let us derive) **per-contract** P&L. The simulator computes dollar P&L as
+  `qty_sim × pnl_per_contract`. The historical row's contract count is metadata
+  only; it must never be the quantity the sim books. Without this, every sizing
+  policy is wrong. (KNOWN_LIMITATIONS → Sizing.)
+- **BLOCKER-2 — Synchronized seasonal bootstrap, not IID.** Default generator is
+  the same-calendar-month block bootstrap with one shared `(year, month)` draw
+  applied to all strategies, then chronological merge. No IID shuffle anywhere.
+  (ADR-002/003.)
+- **BLOCKER-3 — Win-rate taxonomy.** No bare `win_rate`. Implement the five
+  named rates with explicit denominators and the configurable breakeven `eps`.
+  (ARCHITECTURE §6, ADR-005.)
+- **BLOCKER-4 — Contributions ≠ P&L; equity uncapped.** Deposits/withdrawals on
+  a separate ledger lane; no silent equity floor; ruin recorded.
+  (ADR-006/007.)
+- **BLOCKER-5 — Determinism.** One master seed, spawned streams, no global RNG;
+  a determinism test proves same-seed reproducibility. (ADR-008.)
+- **BLOCKER-6 — Cross-path percentiles.** Monthly metrics computed across the
+  ensemble, never by differencing medians. (ADR-009.)
+
+### Required fixes (for the V1 build, in order)
+1. **Domain layer** (`core/domain/`) — typed entities per ARCHITECTURE §3.
+   Value objects frozen; invariants enforced in `__post_init__` (e.g.
+   `exit_ts >= entry_ts`, `point_value > 0`, tz-aware timestamps).
+2. **CSV schema + loader + validation** (`core/io/`) — implement the schema in
+   "CSV schema" below; fail-closed on errors, collect warnings, emit a typed
+   `ValidationReport`. Compute and store a content hash of normalized input for
+   the `Scenario`.
+3. **Block primitives + seasonal resampler** (`core/resampling/`) — month
+   indexing, partial-month flagging (ADR-010), support counts, synchronized draw,
+   year-boundary chaining across the horizon.
+4. **Chronological merge** (`core/engine/merge.py`) — single documented ordering
+   key (see D1).
+5. **Fixed-contract sizing** (`core/sizing/fixed.py`) — constant `qty` per
+   strategy; independent per strategy (no cross-instrument coupling).
+6. **Simulator + ledger** (`core/engine/simulator.py`) — events → equity curve;
+   cash flows positioned per D2; contributions tracked separately.
+7. **Metrics** — drawdown (depth/duration/recovery), cross-path monthly
+   percentiles, the three return measures.
+8. **Tests + fixtures** — see Test plan.
+
+### Recommended (not blocking V1)
+- Use `pydantic` or plain dataclasses + a thin validator; either is fine, but
+  keep `core` import-light (no pandas in the hot simulation loop — pandas is OK
+  in the loader, but the simulator should iterate typed objects / numpy arrays).
+- Store the `Scenario` and `ResultDistribution` as JSON with a schema version
+  field from day one to avoid a painful migration later.
+
+### CSV schema (V1 proposal — Codex to confirm/adjust against real logs)
+One file per strategy (preferred) or a combined file with a `strategy_id`
+column. Required vs optional:
+
+| column | req | type | notes |
 |---|---|---|---|
-| T1 same seed + config + data gives identical distribution | `test_identical_seeds_reproduce_identical_outputs` | Partial | No full `ResultDistribution` JSON/hash object yet. |
-| T2 different seed gives different valid paths and same invariants | `test_different_seeds_produce_different_valid_outputs` | Partial | Support-count invariants not yet reported. |
-| T3 no global RNG module functions | Not explicit | Missing | Add grep/AST guard in CI. |
-| T4 historical replay exact order and merged stream | `test_historical_replay_preserves_full_ledger_order_and_equity` | Partial | Needs golden real-ledger replay fixture. |
-| T5 seasonal month matching | `test_seasonal_month_matching_over_many_seeds` | Covered | Property-style breadth can be expanded. |
-| T6 synchronized source-month selection across strategies | `test_multiple_strategies_use_synchronized_source_months` | Covered | Independent stress mode intentionally not implemented. |
-| T7 within-block order preserved | Covered by replay/resampling ordering tests | Partial | Add explicit intra-month multi-trade fixture. |
-| T8 partial months excluded; support counts correct | `test_partial_month_is_excluded_when_coverage_declares_it_partial` | Partial | Support counts not emitted. |
-| T9 flat verified month contributes zero trades | `test_flat_verified_zero_trade_month_remains_sampleable` | Covered | Real coverage metadata still needs scenario config. |
-| T10 merged stream D1 ordering including ties | `test_stable_deterministic_tie_ordering_uses_source_row_id` | Covered | Future cash-flow event order not implemented. |
-| T11 fixed-contract dollar P&L equals qty times per-contract P&L | `test_fixed_size_replay_matches_original_ledger_net_of_commissions` | Covered | Larger fixture advisable. |
-| T12 deposits not P&L; withdrawals symmetric | Not implemented | Missing | Cash flows are outside V1 implementation pass per user instruction. |
-| T13 equity can go <= 0 and is not floored | `ruin_probability` coverage only | Partial | Add explicit negative-equity fixture. |
-| T14 return measures differ on deposit fixture | Not implemented | Missing | Requires cash-flow ledger and return metrics. |
-| T15 five named rates with breakevens around eps | `test_explicit_outcome_taxonomy_excludes_breakevens_from_true_rate` | Partial | Add tolerance-boundary cases. |
-| T16 drawdown depth/duration/recovery | `test_metrics_report_drawdown_ruin_and_monthly_percentiles` | Partial | Duration/recovery not implemented. |
-| T17 cross-path monthly percentiles | `test_metrics_report_drawdown_ruin_and_monthly_percentiles` | Partial | Add skewed median-change non-equivalence fixture. |
-| T18 validation ERROR rules reject bad CSVs | Several ingestion tests | Partial | Need table-driven coverage for all rules. |
-| T19 validation WARNING rules fire without aborting | Not implemented | Missing | No warning report object yet. |
-| T20 regression file convention | Not implemented | Missing | Add `tests/regression/` once first regression bug is logged. |
+| `strategy_id` | req* | str | *required if combined file; else from filename/arg |
+| `symbol` | req | str | maps to an `Instrument` (point_value/tick_size lookup) |
+| `entry_ts` | req | datetime tz-aware | parse with explicit tz; reject naive unless tz supplied |
+| `exit_ts` | req | datetime tz-aware | must be `>= entry_ts` |
+| `direction` | req | enum{long,short} | needed for exposure later; validate now |
+| `qty_historical` | req | int > 0 | metadata only; used to derive per-contract P&L |
+| `pnl_gross` | cond | float | realized gross currency P&L for the historical qty |
+| `pnl_per_contract_gross` | cond | float | provide this OR `pnl_gross`+`qty_historical` |
+| `commission` | opt | float | as recorded; modeled commission is a separate stress |
+| `entry_price` / `exit_price` | opt | float | enables recompute + tick checks |
+| `mae` / `mfe` | opt | float | per-contract excursions; needed for V2 exposure |
 
-Additional requested checks:
+Loader derives `pnl_per_contract_gross = pnl_gross / qty_historical` when only
+gross is given, and validates consistency when both are present.
 
-| Requirement | Existing Codex test | Status | Missing work |
-|---|---|---|---|
-| Complete versus partial month handling | `test_partial_month_is_excluded_when_coverage_declares_it_partial` | Partial | Complete month coverage exists; support reports missing. |
-| Seasonal month matching | `test_seasonal_month_matching_over_many_seeds` | Covered | None for V1. |
-| Synchronized source-month selection | `test_multiple_strategies_use_synchronized_source_months` | Covered | None for default mode. |
-| Stable deterministic tie ordering | `test_stable_deterministic_tie_ordering_uses_source_row_id` | Covered | None for trade settlements. |
-| Cross-path percentile calculations | `test_metrics_report_drawdown_ruin_and_monthly_percentiles` | Partial | More robust skew fixture needed. |
-| Explicit win-rate taxonomy | `test_explicit_outcome_taxonomy_excludes_breakevens_from_true_rate` | Partial | Boundary/tolerance tests needed. |
-| Contract metadata isolation | `test_registry_explicitly_maps_underlying_to_micro_contract`, metadata isolation tests | Covered | Real ledger audit needed. |
-| Full historical replay equality | `test_historical_replay_preserves_full_ledger_order_and_equity` | Partial | Needs real-ledger golden output. |
-| Export consistency | `test_export_consistency_round_trips_equity_path_columns` | Covered | Scenario assumption export missing. |
-| Flat verified zero-trade months | `test_flat_verified_zero_trade_month_remains_sampleable` | Covered | Scenario config support missing. |
+**Validation rules (fail-closed = ERROR; otherwise WARNING):**
+- ERROR: missing required column; unparseable/naive timestamp; `exit_ts <
+  entry_ts`; `qty_historical <= 0`; neither P&L form present; unknown `symbol`
+  with no `Instrument` definition; mixed currencies without conversion policy.
+- ERROR: `pnl_gross` and `pnl_per_contract_gross` disagree beyond `eps`.
+- WARNING: partial first/last month; gaps/overlaps in time; duplicate trade
+  rows; a single year backing a month-of-year (thin support); commission column
+  absent; timezone differs across rows of one strategy.
 
-## Remaining Blockers Before V1 Acceptance
+### Unresolved decisions (Codex/user to confirm — implementing the default and
+### recording it in DECISIONS.md is acceptable)
+- **D1 — Event ordering key.** Proposed: order the merged stream by `exit_ts`
+  (P&L books at close), ties → `entry_ts` → `strategy_id`. Alternative: order by
+  `entry_ts`. This matters for the equity path shape and for any future
+  intratrade exposure. **Need a decision before merge.py is final.**
+- **D2 — Cash-flow timing.** Proposed: apply a scheduled deposit/withdrawal at
+  the start of its calendar date, before that date's first settlement. Confirm.
+- **D3 — Horizon vs data span.** When the simulated horizon (e.g. 24 months)
+  exceeds available distinct historical months, we resample with replacement
+  across years for each month-of-year. Confirm this is intended (it is the point
+  of the bootstrap) and confirm whether sampling is uniform over years or
+  recency-weighted (proposed: uniform; recency-weighting is a labeled option).
+- **D4 — Strategy flat in a drawn month.** ADR-004 says contribute zero. Confirm
+  no backfill default.
+- **D5 — Instrument reference data.** Where do `point_value`/`tick_size` come
+  from — a checked-in `instruments.json`, or columns in the CSV? Proposed:
+  checked-in registry, overridable per scenario.
+- **D6 — Currency.** V1 assumes a single account currency and rejects mixed-
+  currency inputs. Confirm.
 
-- Run canonical integration against the real uploaded
-  `nq_es_margin_sim_master_2025_2026.csv`.
-- Implement or explicitly defer missing Claude acceptance items T3, T12, T14,
-  T19, and T20.
-- Add support-count reporting for bootstrap pools.
-- Add scenario/result JSON serialization with data hashes if required before the
-  V1 gate.
-- Decide whether drawdown duration/recovery are required before acceptance.
+### Test plan (V1 acceptance — all must pass before the Gate to V2)
+Determinism & reproducibility
+- T1: same seed + config + data ⇒ bit-identical `ResultDistribution` (hash equal).
+- T2: different seed ⇒ different paths but identical summary invariants
+  (trade universe, support counts).
+- T3: no use of global RNG (`random`/`np.random` module functions) — grep guard
+  in CI.
 
-## Specific Claude Audit Areas
+Resampling correctness
+- T4: historical replay reproduces the exact original chronological trade order
+  for each strategy and for the merged stream (golden fixture).
+- T5: seasonal draw only ever selects blocks whose month-of-year matches the
+  target slot (property test over many seeds).
+- T6: synchronization — for a multi-strategy fixture, the source `(year, month)`
+  chosen in a slot is identical across all strategies for the default mode, and
+  independent mode is the only mode where they differ.
+- T7: within-block order preserved (no intra-month shuffle).
+- T8: partial months excluded from the pool; support counts correct (ADR-010).
+- T9: a strategy flat in the drawn month contributes zero trades (ADR-004).
 
-- Canonical schema mapping and explicit NQ/MNQ, ES/MES registry behavior.
-- Event ordering and `source_row_id` preservation through bootstrap resampling.
-- Coverage model for flat versus missing versus partial months.
-- Statistical implications of month-start timestamp shifting.
-- Whether local `default_rng(seed)` determinism is acceptable for this V1
-  branch or must move to `SeedSequence.spawn()` now.
+Merge & accounting
+- T10: merged stream ordering obeys D1 key exactly (including tie-breaks).
+- T11: fixed-contract dollar P&L = `qty_sim × pnl_per_contract` per trade; a
+  strategy with `qty=2` books exactly 2× the `qty=1` path on the same draws.
+- T12: deposit increases equity and contributions but not any P&L/return-from-
+  trading measure; withdrawal symmetric. (ADR-007)
+- T13: equity can go ≤ 0 (ruin fixture) and is recorded, not floored. (ADR-006)
+- T14: the three return measures differ correctly on a deposit-mid-path fixture
+  (TWR unaffected by timing of an external deposit; simple/MWR affected).
+
+Win-rate & metrics
+- T15: the five named rates match hand-computed values on a fixture containing
+  wins, losses, and breakevens straddling `eps`.
+- T16: drawdown depth/duration/recovery match a hand-built equity curve.
+- T17: cross-path monthly percentiles equal the ensemble percentiles, and the
+  "median monthly change" ≠ difference of medians on a skewed fixture. (ADR-009)
+
+Validation
+- T18: each ERROR rule rejects a crafted bad CSV with a precise message.
+- T19: each WARNING rule fires without aborting the load.
+
+Regression
+- T20: a `tests/regression/` file is created now (empty), with the convention
+  that every bug found later gets a named regression test here.
+
+### What Codex should do next
+1. Confirm or push back on D1–D6 (a single reply in this file is fine).
+2. Confirm the CSV schema against at least one real trade log so the column
+   mapping is right before building the loader.
+3. Build in the order under "Required fixes", but **stop at the Gate to V2** —
+   do not start reinvestment, margin, exposure, prop, optimization, or Streamlit.
+4. When V1 is ready, post a handoff entry here listing which T1–T20 pass, the
+   data hash + seed of a sample run, and any deviations from this spec.
+
+### Gate to V2 (do not pass without lead sign-off)
+All of T1–T20 green, BLOCKER-1..6 satisfied, D1–D6 recorded in `DECISIONS.md`,
+and `KNOWN_LIMITATIONS.md` `[SCOPE]` caveats wired into the exported report.
+Only then do reinvestment / margin / exposure / prop / optimization unlock.
+
+---
+
+### Questions for the user (non-blocking)
+- Do you have a sample trade-log CSV (NQ/ES or similar) we can pin as the
+  canonical fixture? It would let Codex lock the schema (D5/D6) immediately
+  rather than guessing column names.

@@ -54,25 +54,31 @@ def load_trade_csv(
     path: str | Path,
     *,
     metadata: StrategyMetadata | None = None,
+    source_timezone: str | None = None,
 ) -> list[Trade]:
     """Load one timestamped strategy ledger CSV into normalized Trade objects."""
 
     source_path = Path(path)
     frame = pd.read_csv(source_path)
-    return normalize_trade_frame(frame, source_path=source_path, metadata=metadata)
+    return normalize_trade_frame(
+        frame,
+        source_path=source_path,
+        metadata=metadata,
+        source_timezone=source_timezone,
+    )
 
 
 def load_canonical_margin_csv(
     path: str | Path,
     *,
-    instrument_registry: dict[str, InstrumentSpec] | None = None,
+    contract_specs_by_strategy: dict[str, InstrumentSpec],
 ) -> list[Trade]:
     source_path = Path(path)
     frame = pd.read_csv(source_path)
     normalized = normalize_canonical_margin_frame(
         frame,
         source_path=source_path,
-        instrument_registry=instrument_registry,
+        contract_specs_by_strategy=contract_specs_by_strategy,
     )
     return normalize_trade_frame(normalized, source_path=source_path)
 
@@ -81,11 +87,10 @@ def normalize_canonical_margin_frame(
     frame: pd.DataFrame,
     *,
     source_path: Path | None = None,
-    instrument_registry: dict[str, InstrumentSpec] | None = None,
+    contract_specs_by_strategy: dict[str, InstrumentSpec],
 ) -> pd.DataFrame:
     """Map nq_es_margin_sim_master_2025_2026.csv columns into the V1 schema."""
 
-    registry = instrument_registry or DEFAULT_INSTRUMENT_REGISTRY
     required = {
         "strategy",
         "inst",
@@ -108,12 +113,28 @@ def normalize_canonical_margin_frame(
     issues: list[ValidationIssue] = []
     for index, row in frame.iterrows():
         row_number = int(index) + 2
+        strategy_id = _required_str(row.get("strategy"), "strategy", row_number, issues)
         underlying = _required_str(row.get("inst"), "inst", row_number, issues)
-        if underlying is None:
+        if underlying is None or strategy_id is None:
             continue
-        spec = registry.get(underlying)
+        spec = contract_specs_by_strategy.get(strategy_id)
         if spec is None:
-            issues.append(ValidationIssue(row_number, "inst", "missing instrument registry entry"))
+            issues.append(
+                ValidationIssue(
+                    row_number,
+                    "strategy",
+                    "missing explicit contract specification for strategy",
+                )
+            )
+            continue
+        if spec.underlying != underlying:
+            issues.append(
+                ValidationIssue(
+                    row_number,
+                    "inst",
+                    f"row underlying {underlying} does not match declared {spec.underlying}",
+                )
+            )
             continue
         if spec.currency != "USD":
             issues.append(ValidationIssue(row_number, "inst", "Version 1 supports USD only"))
@@ -121,7 +142,14 @@ def normalize_canonical_margin_frame(
 
         dpp = _optional_float(row.get("dpp"))
         if dpp is None:
-            dpp = spec.dollars_per_point
+            issues.append(
+                ValidationIssue(
+                    row_number,
+                    "dpp",
+                    "dpp is required unless an explicit fill policy is configured",
+                )
+            )
+            continue
         elif abs(dpp - spec.dollars_per_point) > 1e-9:
             issues.append(
                 ValidationIssue(
@@ -142,7 +170,7 @@ def normalize_canonical_margin_frame(
         }
         rows.append(
             {
-                "strategy_id": _required_str(row.get("strategy"), "strategy", row_number, issues),
+                "strategy_id": strategy_id,
                 "instrument": spec.underlying,
                 "contract_symbol": spec.contract_symbol,
                 "entry_time": row.get("entry_utc"),
@@ -186,6 +214,7 @@ def normalize_trade_frame(
     *,
     source_path: Path | None = None,
     metadata: StrategyMetadata | None = None,
+    source_timezone: str | None = None,
 ) -> list[Trade]:
     issues: list[ValidationIssue] = []
     missing = sorted(REQUIRED_COLUMNS - set(frame.columns))
@@ -211,8 +240,12 @@ def normalize_trade_frame(
     for column in NUMERIC_COLUMNS & set(normalized.columns):
         normalized[column] = pd.to_numeric(normalized[column], errors="coerce")
 
-    entry_times = _parse_timestamp_column(normalized["entry_time"], "entry_time", issues)
-    exit_times = _parse_timestamp_column(normalized["exit_time"], "exit_time", issues)
+    entry_times = _parse_timestamp_column(
+        normalized["entry_time"], "entry_time", issues, source_timezone=source_timezone
+    )
+    exit_times = _parse_timestamp_column(
+        normalized["exit_time"], "exit_time", issues, source_timezone=source_timezone
+    )
 
     trades: list[Trade] = []
     seen_keys: set[tuple[Any, ...]] = set()
@@ -330,13 +363,45 @@ def sort_trades_chronologically(trades: Iterable[Trade]) -> list[Trade]:
 
 
 def _parse_timestamp_column(
-    values: pd.Series, column: str, issues: list[ValidationIssue]
+    values: pd.Series,
+    column: str,
+    issues: list[ValidationIssue],
+    *,
+    source_timezone: str | None,
 ) -> pd.Series:
-    parsed = pd.to_datetime(values, errors="coerce", format="mixed")
-    invalid_rows = values.notna() & parsed.isna()
-    for index in values[invalid_rows].index:
-        issues.append(ValidationIssue(int(index) + 2, column, "unsupported timestamp format"))
-    return parsed
+    parsed_values: list[pd.Timestamp] = []
+    for index, value in values.items():
+        row_number = int(index) + 2
+        if value is None or pd.isna(value):
+            parsed_values.append(pd.NaT)
+            continue
+        try:
+            timestamp = pd.Timestamp(value)
+        except Exception:
+            issues.append(ValidationIssue(row_number, column, "unsupported timestamp format"))
+            parsed_values.append(pd.NaT)
+            continue
+        if timestamp.tzinfo is None or timestamp.tz is None:
+            if source_timezone is None:
+                issues.append(
+                    ValidationIssue(
+                        row_number,
+                        column,
+                        "naive timestamp rejected; configure source_timezone explicitly",
+                    )
+                )
+                parsed_values.append(pd.NaT)
+                continue
+            try:
+                timestamp = timestamp.tz_localize(source_timezone)
+            except Exception as exc:
+                issues.append(
+                    ValidationIssue(row_number, column, f"cannot localize timestamp: {exc}")
+                )
+                parsed_values.append(pd.NaT)
+                continue
+        parsed_values.append(timestamp.tz_convert("UTC"))
+    return pd.Series(parsed_values, index=values.index)
 
 
 def _required_str(

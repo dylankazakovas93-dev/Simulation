@@ -21,16 +21,16 @@ def test_stable_deterministic_tie_ordering_uses_source_row_id():
                 {
                     "strategy_id": "b",
                     "instrument": "ES",
-                    "entry_time": "2025-01-02 09:31",
-                    "exit_time": "2025-01-02 10:00",
+                    "entry_time": "2025-01-02T09:31:00Z",
+                    "exit_time": "2025-01-02T10:00:00Z",
                     "pnl_dollars": 1,
                     "source_row_id": "row-2",
                 },
                 {
                     "strategy_id": "a",
                     "instrument": "ES",
-                    "entry_time": "2025-01-02 09:31",
-                    "exit_time": "2025-01-02 10:00",
+                    "entry_time": "2025-01-02T09:31:00Z",
+                    "exit_time": "2025-01-02T10:00:00Z",
                     "pnl_dollars": 1,
                     "source_row_id": "row-1",
                 },
@@ -53,16 +53,16 @@ def test_historical_replay_preserves_full_ledger_order_and_equity():
                 {
                     "strategy_id": "s1",
                     "instrument": "ES",
-                    "entry_time": "2025-01-01 09:30",
-                    "exit_time": "2025-01-01 10:00",
+                    "entry_time": "2025-01-01T09:30:00Z",
+                    "exit_time": "2025-01-01T10:00:00Z",
                     "pnl_dollars": 10,
                     "source_row_id": "1",
                 },
                 {
                     "strategy_id": "s2",
                     "instrument": "NQ",
-                    "entry_time": "2025-01-01 09:40",
-                    "exit_time": "2025-01-01 10:10",
+                    "entry_time": "2025-01-01T09:40:00Z",
+                    "exit_time": "2025-01-01T10:10:00Z",
                     "pnl_dollars": -5,
                     "source_row_id": "2",
                 },
@@ -84,22 +84,22 @@ def test_seasonal_month_matching_over_many_seeds():
                 {
                     "strategy_id": "s",
                     "instrument": "ES",
-                    "entry_time": "2024-01-03 09:30",
-                    "exit_time": "2024-01-03 10:00",
+                    "entry_time": "2024-01-03T09:30:00Z",
+                    "exit_time": "2024-01-03T10:00:00Z",
                     "pnl_dollars": 1,
                 },
                 {
                     "strategy_id": "s",
                     "instrument": "ES",
-                    "entry_time": "2025-01-03 09:30",
-                    "exit_time": "2025-01-03 10:00",
+                    "entry_time": "2025-01-03T09:30:00Z",
+                    "exit_time": "2025-01-03T10:00:00Z",
                     "pnl_dollars": 2,
                 },
                 {
                     "strategy_id": "s",
                     "instrument": "ES",
-                    "entry_time": "2024-02-03 09:30",
-                    "exit_time": "2024-02-03 10:00",
+                    "entry_time": "2024-02-03T09:30:00Z",
+                    "exit_time": "2024-02-03T10:00:00Z",
                     "pnl_dollars": 3,
                 },
             ]
@@ -122,8 +122,8 @@ def test_flat_verified_zero_trade_month_remains_sampleable():
                 {
                     "strategy_id": "s",
                     "instrument": "ES",
-                    "entry_time": "2025-01-03 09:30",
-                    "exit_time": "2025-01-03 10:00",
+                    "entry_time": "2025-01-03T09:30:00Z",
+                    "exit_time": "2025-01-03T10:00:00Z",
                     "pnl_dollars": 1,
                 }
             ]
@@ -139,7 +139,7 @@ def test_flat_verified_zero_trade_month_remains_sampleable():
         pd.Period("2025-01", "M"),
         pd.Period("2025-02", "M"),
     ]
-    assert [trade.entry_time.to_period("M") for trade in path.trades] == [
+    assert [pd.Period(trade.entry_time.strftime("%Y-%m"), "M") for trade in path.trades] == [
         pd.Period("2026-01", "M")
     ]
 
@@ -151,8 +151,8 @@ def test_partial_month_is_excluded_when_coverage_declares_it_partial():
                 {
                     "strategy_id": "s",
                     "instrument": "ES",
-                    "entry_time": "2025-02-03 09:30",
-                    "exit_time": "2025-02-03 10:00",
+                    "entry_time": "2025-02-03T09:30:00Z",
+                    "exit_time": "2025-02-03T10:00:00Z",
                     "pnl_dollars": 1,
                 }
             ]
@@ -177,15 +177,15 @@ def test_stationary_bootstrap_resamples_at_source_boundary_without_silent_wrap()
                 {
                     "strategy_id": "s",
                     "instrument": "ES",
-                    "entry_time": "2025-01-03 09:30",
-                    "exit_time": "2025-01-03 10:00",
+                    "entry_time": "2025-01-03T09:30:00Z",
+                    "exit_time": "2025-01-03T10:00:00Z",
                     "pnl_dollars": 1,
                 },
                 {
                     "strategy_id": "s",
                     "instrument": "ES",
-                    "entry_time": "2025-02-03 09:30",
-                    "exit_time": "2025-02-03 10:00",
+                    "entry_time": "2025-02-03T09:30:00Z",
+                    "exit_time": "2025-02-03T10:00:00Z",
                     "pnl_dollars": 2,
                 },
             ]
@@ -208,22 +208,22 @@ def test_explicit_outcome_taxonomy_excludes_breakevens_from_true_rate():
                 {
                     "strategy_id": "s",
                     "instrument": "ES",
-                    "entry_time": "2025-01-01 09:30",
-                    "exit_time": "2025-01-01 10:00",
+                    "entry_time": "2025-01-01T09:30:00Z",
+                    "exit_time": "2025-01-01T10:00:00Z",
                     "pnl_dollars": 10,
                 },
                 {
                     "strategy_id": "s",
                     "instrument": "ES",
-                    "entry_time": "2025-01-02 09:30",
-                    "exit_time": "2025-01-02 10:00",
+                    "entry_time": "2025-01-02T09:30:00Z",
+                    "exit_time": "2025-01-02T10:00:00Z",
                     "pnl_dollars": -5,
                 },
                 {
                     "strategy_id": "s",
                     "instrument": "ES",
-                    "entry_time": "2025-01-03 09:30",
-                    "exit_time": "2025-01-03 10:00",
+                    "entry_time": "2025-01-03T09:30:00Z",
+                    "exit_time": "2025-01-03T10:00:00Z",
                     "pnl_dollars": 0,
                 },
             ]
@@ -243,8 +243,8 @@ def test_export_consistency_round_trips_equity_path_columns(tmp_path):
                 {
                     "strategy_id": "s",
                     "instrument": "ES",
-                    "entry_time": "2025-01-01 09:30",
-                    "exit_time": "2025-01-01 10:00",
+                    "entry_time": "2025-01-01T09:30:00Z",
+                    "exit_time": "2025-01-01T10:00:00Z",
                     "pnl_dollars": 10,
                     "source_row_id": "row-1",
                 }

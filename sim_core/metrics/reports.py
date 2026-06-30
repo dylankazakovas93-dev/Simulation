@@ -37,20 +37,49 @@ def monthly_equity_percentiles(
     results: Sequence[SimulationResult],
     *,
     percentiles: Sequence[float] = (5, 50, 95),
+    months: Sequence[pd.Period | str] | None = None,
 ) -> pd.DataFrame:
     rows: list[dict[str, object]] = []
+    if months is None:
+        observed_months: list[pd.Period] = []
+        for result in results:
+            frame = result.to_equity_frame()
+            if not frame.empty:
+                observed_months.extend(
+                    _timestamp_to_month(timestamp) for timestamp in frame["timestamp"]
+                )
+        if not observed_months:
+            return pd.DataFrame(columns=["month", *[f"p{int(p)}" for p in percentiles]])
+        start = min(observed_months)
+        end = max(observed_months)
+        month_list = []
+        current = start
+        while current <= end:
+            month_list.append(current)
+            current += 1
+    else:
+        month_list = [pd.Period(month, "M") for month in months]
+
     for path_index, result in enumerate(results):
         frame = result.to_equity_frame()
         if frame.empty:
-            continue
-        frame["month"] = frame["timestamp"].dt.to_period("M").astype(str)
-        month_end = frame.sort_values("timestamp").groupby("month", as_index=False).tail(1)
-        for _, row in month_end.iterrows():
+            equity_by_month: dict[pd.Period, float] = {}
+        else:
+            frame["month_period"] = frame["timestamp"].map(_timestamp_to_month)
+            month_end = frame.sort_values("timestamp").groupby("month_period", as_index=False).tail(1)
+            equity_by_month = {
+                pd.Period(row["month_period"], "M"): float(row["equity"])
+                for _, row in month_end.iterrows()
+            }
+        carried_equity = result.account.initial_equity
+        for month in month_list:
+            if month in equity_by_month:
+                carried_equity = equity_by_month[month]
             rows.append(
                 {
                     "path_index": path_index,
-                    "month": row["month"],
-                    "equity": float(row["equity"]),
+                    "month": str(month),
+                    "equity": float(carried_equity),
                 }
             )
     if not rows:
@@ -100,3 +129,10 @@ def trade_outcome_taxonomy(trades: Sequence[Trade], *, tolerance: float = 1e-9) 
         "loss_rate_over_total": n_loss / n_total if n_total else 0.0,
         "breakeven_frequency_over_total": n_breakeven / n_total if n_total else 0.0,
     }
+
+
+def _timestamp_to_month(value: object) -> pd.Period:
+    timestamp = pd.Timestamp(value)
+    if timestamp.tzinfo is not None and timestamp.tz is not None:
+        timestamp = timestamp.tz_convert("UTC")
+    return pd.Period(f"{timestamp.year}-{timestamp.month:02d}", "M")

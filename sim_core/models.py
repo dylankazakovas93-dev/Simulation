@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
+import json
 from pathlib import Path
 from typing import Any, Literal
 
 import pandas as pd
 
+ENGINE_VERSION = "0.1.0"
 TradeResult = Literal["win", "loss", "breakeven"]
 
 
@@ -107,6 +109,7 @@ class Trade:
     currency: str = "USD"
     commission_round_turn: float = 0.0
     source_path: Path | None = None
+    target_month: pd.Period | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -120,6 +123,12 @@ class Trade:
             raise ValueError("instrument is required")
         if self.currency != "USD":
             raise ValueError("Version 1 supports USD trades only")
+        if self.entry_time.tzinfo is None or self.entry_time.tz is None:
+            raise ValueError("entry_time must be timezone-aware UTC")
+        if self.exit_time.tzinfo is None or self.exit_time.tz is None:
+            raise ValueError("exit_time must be timezone-aware UTC")
+        object.__setattr__(self, "entry_time", self.entry_time.tz_convert("UTC"))
+        object.__setattr__(self, "exit_time", self.exit_time.tz_convert("UTC"))
         if self.exit_time < self.entry_time:
             raise ValueError("exit_time cannot precede entry_time")
         if self.commission_round_turn < 0:
@@ -129,23 +138,34 @@ class Trade:
 
     @property
     def source_month(self) -> pd.Period:
-        return self.entry_time.to_period("M")
+        timestamp = self.entry_time.tz_convert("UTC")
+        return pd.Period(f"{timestamp.year}-{timestamp.month:02d}", "M")
 
     def shifted_to_month(self, target_month: pd.Period) -> Trade:
-        """Return a copy with entry/exit shifted by month-start offset."""
+        """Return a copy shifted inside the authoritative target month.
 
-        source_start = self.source_month.to_timestamp()
-        target_start = target_month.to_timestamp()
+        The original offset from the source month start is preserved when it
+        fits. If it would land outside the target month, the timestamp is
+        clamped to the final valid instant of the target month. Exit duration is
+        preserved when possible without crossing the target-month boundary.
+        """
+
+        target_month = pd.Period(target_month, "M")
+        source_start = _month_start_utc(self.source_month)
+        target_start = _month_start_utc(target_month)
+        target_end = _month_end_utc(target_month)
         entry_offset = self.entry_time - source_start
-        exit_offset = self.exit_time - source_start
+        duration = self.exit_time - self.entry_time
+        shifted_entry = min(target_start + entry_offset, target_end)
+        shifted_exit = min(shifted_entry + duration, target_end)
         return Trade(
             trade_id=f"{self.trade_id}@{target_month}",
             source_row_id=self.source_row_id,
             strategy_id=self.strategy_id,
             instrument=self.instrument,
             contract_symbol=self.contract_symbol,
-            entry_time=target_start + entry_offset,
-            exit_time=target_start + exit_offset,
+            entry_time=shifted_entry,
+            exit_time=shifted_exit,
             pnl_dollars=self.pnl_dollars,
             direction=self.direction,
             entry_price=self.entry_price,
@@ -161,10 +181,13 @@ class Trade:
             currency=self.currency,
             commission_round_turn=self.commission_round_turn,
             source_path=self.source_path,
+            target_month=target_month,
             metadata={
                 **self.metadata,
                 "source_trade_id": self.trade_id,
                 "source_month": str(self.source_month),
+                "target_month": str(target_month),
+                "month_shift_policy": "preserve_offset_then_clamp_to_target_month_end",
             },
         )
 
@@ -306,9 +329,84 @@ class SimulationResult:
         return pd.DataFrame(rows)
 
 
+@dataclass(frozen=True)
+class Scenario:
+    scenario_id: str
+    name: str
+    master_seed: int
+    number_of_paths: int
+    horizon_months: int
+    starting_equity: float
+    selected_strategies: list[str]
+    fixed_contract_quantities: dict[str, int]
+    commission_assumptions: dict[str, float]
+    resampling_method: str
+    resampling_params: dict[str, Any]
+    coverage_policy: dict[str, Any]
+    ruin_threshold: float
+    currency: str
+    contract_mappings: dict[str, dict[str, Any]]
+    input_data_hash: str
+    engine_version: str = ENGINE_VERSION
+
+    def __post_init__(self) -> None:
+        if self.currency != "USD":
+            raise ValueError("Version 1 supports USD scenarios only")
+        if self.number_of_paths <= 0:
+            raise ValueError("number_of_paths must be positive")
+        if self.horizon_months <= 0:
+            raise ValueError("horizon_months must be positive")
+        if self.starting_equity <= 0:
+            raise ValueError("starting_equity must be positive")
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), sort_keys=True)
+
+    @classmethod
+    def from_json(cls, payload: str) -> "Scenario":
+        return cls(**json.loads(payload))
+
+
+@dataclass(frozen=True)
+class ResultDistribution:
+    scenario: Scenario
+    monthly_percentiles: list[dict[str, Any]]
+    terminal_equity_distribution: dict[str, float]
+    drawdown_metrics: list[dict[str, float]]
+    ruin_probability: float
+    outcome_taxonomy: dict[str, float]
+    resampling_diagnostics: dict[str, Any]
+    warnings: list[str]
+    known_limitations: list[str]
+    data_hash: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), sort_keys=True)
+
+    @classmethod
+    def from_json(cls, payload: str) -> "ResultDistribution":
+        data = json.loads(payload)
+        data["scenario"] = Scenario(**data["scenario"])
+        return cls(**data)
+
+
 def classify_result(pnl_dollars: float, tolerance: float = 1e-9) -> TradeResult:
     if pnl_dollars > tolerance:
         return "win"
     if pnl_dollars < -tolerance:
         return "loss"
     return "breakeven"
+
+
+def _month_start_utc(month: pd.Period) -> pd.Timestamp:
+    return pd.Timestamp(month.start_time).tz_localize("UTC")
+
+
+def _month_end_utc(month: pd.Period) -> pd.Timestamp:
+    return _month_start_utc(month + 1) - pd.Timedelta(nanoseconds=1)

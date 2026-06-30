@@ -63,17 +63,20 @@ A complete verified month containing zero trades is valid and remains available
 for sampling through `StrategyCoverage`. An absent month is not automatically a
 zero-trade month. Declared partial months are excluded from bootstrap pools.
 
-## 2026-06-30: D5 Instrument Registry
+## 2026-06-30: D5 Explicit Per-Strategy Contract Declarations
 
 Status: accepted and implemented for the canonical NQ/ES fixture.
 
-Version 1 uses explicit `InstrumentSpec` metadata. The default registry maps:
+Version 1 uses explicit `InstrumentSpec` metadata per strategy for canonical
+ledger ingestion. The user confirmed the real ledger uses micro contracts:
 
-- `NQ` underlying -> `MNQ`, USD 2/point
-- `ES` underlying -> `MES`, USD 5/point
+- NQ strategies represent `MNQ`, USD 2/point.
+- ES strategies represent `MES`, USD 5/point.
 
-The loader validates canonical `dpp` against the registry. It does not infer
-micro versus full-size contracts from `NQ` or `ES` without registry metadata.
+The canonical loader requires a declared contract specification for every
+strategy and validates the file's authoritative `dpp` against that declaration.
+Blank or missing `dpp` fails closed unless a future explicit fill policy is
+configured. Declared full-size NQ/ES with micro `dpp` values fails validation.
 
 ## 2026-06-30: D6 Currency
 
@@ -82,11 +85,39 @@ Status: accepted and implemented.
 Version 1 supports USD only. Non-USD instruments/trades are rejected through
 model validation or ingestion validation.
 
+## 2026-06-30: UTC Timestamp Policy
+
+Status: accepted and implemented.
+
+All normalized timestamps are timezone-aware UTC. Naive timestamps are rejected
+unless the caller explicitly configures a source timezone. Timezone conversion
+is performed during ingestion and stored on normalized `Trade` objects; timezone
+information is not silently dropped.
+
 ## 2026-06-30: Month Bootstrap Timestamp Shifting
 
-Status: accepted with limitation.
+Status: accepted and implemented.
 
 Sampled trades are shifted from source month start to target month start using
-timestamp offsets. This preserves intra-month spacing and intraday times, but
-month-end trades can overflow into the next calendar month when shifted into
-shorter months. This remains a model-risk limitation for Claude audit.
+timestamp offsets when possible. If a source offset would land outside the
+target month, entry is clamped to the final valid instant of the target month.
+Exit duration is preserved when possible without crossing the target-month
+boundary. Every resampled trade carries explicit `target_month` metadata.
+
+## 2026-06-30: Independent Path RNG Streams
+
+Status: accepted and implemented.
+
+Bootstrap policies derive each path's RNG from `numpy.random.SeedSequence` using
+the scenario master seed and `path_index`. This makes same-seed ensembles
+reproducible while allowing different path indices to sample independently. No
+global RNG state is used.
+
+## 2026-06-30: Scenario and ResultDistribution Provenance
+
+Status: accepted and implemented for V1 core outputs.
+
+Version 1 includes typed serializable `Scenario` and `ResultDistribution`
+models. Batch exports write result-distribution JSON so CSV outputs are
+accompanied by scenario assumptions, data hash, resampling diagnostics, warnings
+and known limitations.

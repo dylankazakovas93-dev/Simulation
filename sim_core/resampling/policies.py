@@ -63,7 +63,7 @@ class SameCalendarMonthBootstrap(ResamplingPolicy):
         path_index: int = 0,
         coverage: Sequence[StrategyCoverage] | None = None,
     ) -> ResampledPath:
-        rng = np.random.default_rng(seed)
+        rng = _rng_for_path(seed, path_index)
         source_months = _sorted_source_months(trades, coverage=coverage)
         if not source_months:
             raise ValueError("no source months available for requested bootstrap")
@@ -100,7 +100,7 @@ class MovingBlockBootstrap(ResamplingPolicy):
         path_index: int = 0,
         coverage: Sequence[StrategyCoverage] | None = None,
     ) -> ResampledPath:
-        rng = np.random.default_rng(seed)
+        rng = _rng_for_path(seed, path_index)
         source_months = _sorted_source_months(trades, coverage=coverage)
         if not source_months:
             raise ValueError("no source months available for requested bootstrap")
@@ -146,7 +146,7 @@ class StationaryBlockBootstrap(ResamplingPolicy):
         path_index: int = 0,
         coverage: Sequence[StrategyCoverage] | None = None,
     ) -> ResampledPath:
-        rng = np.random.default_rng(seed)
+        rng = _rng_for_path(seed, path_index)
         source_months = _sorted_source_months(trades, coverage=coverage)
         if not source_months:
             raise ValueError("no source months available for requested bootstrap")
@@ -178,6 +178,15 @@ def _sorted_source_months(
             months.update(item.complete_months())
         months.difference_update(partial_months)
     return sorted(months)
+
+
+def _rng_for_path(master_seed: int | None, path_index: int) -> np.random.Generator:
+    if path_index < 0:
+        raise ValueError("path_index cannot be negative")
+    if master_seed is None:
+        return np.random.default_rng()
+    seed_sequence = np.random.SeedSequence(master_seed)
+    return np.random.default_rng(seed_sequence.spawn(path_index + 1)[path_index])
 
 
 def _materialize_months(

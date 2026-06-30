@@ -16,8 +16,15 @@ from sim_core.models import InstrumentSpec, TradeValidationError
 FIXTURE = Path("sample_data/nq_es_margin_sim_master_2025_2026.csv")
 
 
+def _micro_specs():
+    return {
+        "nq_open": InstrumentSpec("NQ", "MNQ", 2.0),
+        "es_open": InstrumentSpec("ES", "MES", 5.0),
+    }
+
+
 def test_canonical_margin_fixture_maps_source_columns_and_preserves_metadata():
-    trades = load_canonical_margin_csv(FIXTURE)
+    trades = load_canonical_margin_csv(FIXTURE, contract_specs_by_strategy=_micro_specs())
 
     assert len(trades) == 4
     assert trades[0].strategy_id == "nq_open"
@@ -31,7 +38,10 @@ def test_canonical_margin_fixture_maps_source_columns_and_preserves_metadata():
 
 
 def test_canonical_mult_is_metadata_not_position_sizing():
-    normalized = normalize_canonical_margin_frame(pd.read_csv(FIXTURE))
+    normalized = normalize_canonical_margin_frame(
+        pd.read_csv(FIXTURE),
+        contract_specs_by_strategy=_micro_specs(),
+    )
 
     assert "mult" not in normalized.columns
     assert normalized.iloc[0]["metadata"]["mult"] == 3.0
@@ -65,4 +75,22 @@ def test_canonical_dpp_must_match_explicit_registry():
     frame.loc[0, "dpp"] = 20.0
 
     with pytest.raises(TradeValidationError):
-        normalize_canonical_margin_frame(frame)
+        normalize_canonical_margin_frame(frame, contract_specs_by_strategy=_micro_specs())
+
+
+def test_declared_full_size_contract_with_micro_dpp_fails():
+    full_size_specs = {
+        "nq_open": InstrumentSpec("NQ", "NQ", 20.0),
+        "es_open": InstrumentSpec("ES", "ES", 50.0),
+    }
+
+    with pytest.raises(TradeValidationError):
+        load_canonical_margin_csv(FIXTURE, contract_specs_by_strategy=full_size_specs)
+
+
+def test_missing_canonical_dpp_fails_closed():
+    frame = pd.read_csv(FIXTURE)
+    frame.loc[0, "dpp"] = pd.NA
+
+    with pytest.raises(TradeValidationError):
+        normalize_canonical_margin_frame(frame, contract_specs_by_strategy=_micro_specs())
