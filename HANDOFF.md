@@ -5,6 +5,87 @@ top. Findings are classified `BLOCKER` / `HIGH` / `MEDIUM` / `LOW` / `OPTIONAL`.
 
 ---
 
+## Review 004 — 2026-06-30 — V1.1 hardening delivered; real-ledger verification PENDING
+
+### Status: work implemented & independently tested; **final V1 approval NOT issued**
+Implemented on `codex/v1-core` at head **`3387d3a`** (parent `094fe61`), delivered
+as `handoff_artifacts/codex-v1-core-review004.bundle` + `094fe61..3387d3a.patch`
+(GitHub push of that branch still unavailable). Independently run here
+(numpy 2.4.6 / pandas 3.0.3): **88 passed, 1 skipped** (the skipped test is the
+`real_ledger` integration, which runs only when `SIM_REAL_LEDGER_PATH` is set).
+Diff: 29 files, +1443/-85.
+
+This work was done at the user's explicit direction; it is implementation by the
+review lead, and still requires Codex/owner sign-off and the real-ledger run
+before V1 is production-accepted.
+
+### HIGH-R3-1 closure — **CLOSED (pending real-ledger confirmation)**
+- `normalize_canonical_margin_frame` / `load_canonical_margin_csv` now **require**
+  `contract_specs_by_strategy`; the `_infer_strategy_specs(DEFAULT_INSTRUMENT_REGISTRY)`
+  fallback is removed. Underlying symbols never imply a contract.
+- Fail-closed on: no mapping, missing strategy (error names the strategy), unknown
+  underlying, blank `dpp`, `dpp` contradicting the declaration.
+- `instruments.build_specs_from_registry` is the explicit, opt-in convenience path.
+- Tests: `tests/test_contract_mapping.py` (6 cases) + updated `test_h1_*`.
+
+### MEDIUM closures (each verified by test)
+| Finding | Closure | Tests |
+|---|---|---|
+| R3-A provenance | `verify_result_provenance` + `scenario_hash`; computed input hash authoritative in exports | `test_provenance.py` |
+| R3-B naive tz | default `source_timezone=None`; naive rejected unless declared; DST gap/overlap fails unless `dst_resolution` | `test_timezone_policy.py` |
+| R3-C coverage | `build_coverage_report` (complete/partial/verified_flat/missing, support counts, eligibility); warning centralized across all bootstraps; wired into exports | `test_coverage_report.py` |
+| R3-D breakeven | exact-zero default; `BreakevenPolicy` (dollars/ticks) recorded in `Scenario` | `test_breakeven_policy.py` |
+| R3-E gap blocks | moving/stationary traverse only consecutive months; too-long block fails; restart diagnostics | `test_block_gaps.py` |
+
+Decisions recorded as ADR-012…016 (`DECISIONS.md`); behavior documented in
+`ARCHITECTURE.md` / `KNOWN_LIMITATIONS.md` on `codex/v1-core` and mirrored here.
+
+### Real-ledger integration — **OPEN (template to fill once the CSV exists)**
+Harness: `python -m sim_core.integration.real_ledger --csv <real.csv> --mapping
+configs/nq_es_micro_contracts.yaml --output reports/real_ledger_v1/`. It prints
+all discovered `strategy_id`s and fails closed on any unmapped strategy. Fill the
+following from the run:
+
+- Real-ledger row count: `__________`
+- Date range (UTC): `__________`
+- Discovered strategy IDs: `__________`
+- Explicit contract mapping used (per strategy → contract, dpp): `__________`
+- Timezone validation (all UTC?): `__________`
+- Coverage findings (complete / partial / missing / verified-flat by strategy): `__________`
+- Historical-replay total P&L by strategy: `__________`
+- Trade count by strategy: `__________`
+- Breakeven taxonomy (named rates): `__________`
+- Seasonal-bootstrap smoke: `__________`
+- Moving-block smoke: `__________`
+- Stationary-block smoke: `__________`
+- Chronological-order validation: `__________`
+- data_hash / scenario_hash / test seed: `__________`
+- Warnings / exclusions: `__________`
+
+### Remaining limitations (carried into V1 acceptance / V2 backlog)
+- Clamp-to-month-end still clusters shifted month-end trades at the boundary
+  (disclosed in `KNOWN_V1_LIMITATIONS`; acceptable for V1).
+- Realized-only drawdown (no intratrade/MAE); no margin, cash flows, prop, or
+  optimization (out of V1 scope by design).
+- `_sorted_source_months` still unions partial/complete across strategies — now
+  surfaced via the coverage report, but the cross-strategy union semantics remain
+  a documented modeling choice.
+- Breakeven `ticks` mode needs a per-instrument `dollars_per_tick`; not yet auto-
+  derived from `InstrumentSpec` (caller supplies it).
+
+### Final V1 verdict: **WITHHELD**
+All Review-003 HIGH/MEDIUM items are closed in code and tests, but V1 is **not**
+production-accepted until: (1) the real 1,150-row ledger integration run is
+completed and this template is filled, and (2) the `codex/v1-core` work
+(`3387d3a`) is reviewed/owned by Codex and pushed. Do not begin V2.
+
+### What Codex/owner should do next
+1. Apply the bundle/patch (`handoff_artifacts/README.md`) and push `codex/v1-core`.
+2. Run the real-ledger harness against the real CSV; fill the template above.
+3. Confirm the V1.1 changes; then I issue the final V1 verdict in Review 005.
+
+---
+
 ## Review 003 — 2026-06-30 — Re-audit of `codex/v1-core` @ 094fe61 (FINAL, independently verified)
 
 ### Independent verification performed

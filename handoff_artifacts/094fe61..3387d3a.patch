@@ -1,0 +1,2098 @@
+diff --git a/ARCHITECTURE.md b/ARCHITECTURE.md
+index 82699fd..4ec2183 100644
+--- a/ARCHITECTURE.md
++++ b/ARCHITECTURE.md
+@@ -154,3 +154,21 @@ Implemented:
+   `breakeven_frequency_over_total`
+ 
+ The engine does not expose a bare ambiguous `win_rate` metric.
++
++
++## Review-004 hardening (modules)
++
++- `sim_core/diagnostics/coverage.py` — reusable per-strategy/per-month coverage
++  report (complete/partial/verified_flat/missing, support counts, eligibility).
++- `sim_core/integration/real_ledger.py` — CLI harness:
++  `python -m sim_core.integration.real_ledger --csv ... --mapping
++  configs/nq_es_micro_contracts.yaml --output ...`. Discovers strategy IDs, fails
++  closed on any unmapped strategy, and writes a provenance-stamped integration
++  report (row count, mappings, date range, tz validation, coverage, replay P&L by
++  strategy, breakeven taxonomy, seasonal/moving/stationary smoke tests,
++  chronological-order check, data hash, scenario hash, warnings).
++- `models.BreakevenPolicy`, `models.VerificationReport`, `batch.hash_trades`,
++  `batch.verify_result_provenance`, `batch.scenario_hash` are part of the public
++  API (`sim_core.__all__`).
++- Block bootstraps now carry `ResampledPath.diagnostics` (consecutive runs,
++  restart counts).
+diff --git a/DECISIONS.md b/DECISIONS.md
+index bf27577..96b844d 100644
+--- a/DECISIONS.md
++++ b/DECISIONS.md
+@@ -122,3 +122,44 @@ Version 1 includes typed serializable `Scenario` and `ResultDistribution`
+ models. Batch exports write result-distribution JSON so CSV outputs are
+ accompanied by scenario assumptions, data hash, resampling diagnostics, warnings
+ and known limitations.
++
++
++## Review-004 hardening decisions (2026-06-30)
++
++### ADR-011 (ENFORCED) — Explicit per-strategy contract mapping
++`normalize_canonical_margin_frame` / `load_canonical_margin_csv` now REQUIRE
++`contract_specs_by_strategy`. Underlying symbols (NQ/ES) never silently imply a
++contract (MNQ/MES). Unknown strategies, missing mappings, blank `dpp`, and `dpp`
++that contradicts the declaration all fail validation. The default registry is
++explicit convenience tooling only (`instruments.build_specs_from_registry`).
++
++### ADR-012 — Breakeven epsilon policy
++Default classification is **exact zero**. An optional tolerance may be declared
++in explicit dollars or instrument ticks (`models.BreakevenPolicy`), resolved at
++classification time and recorded in `Scenario.breakeven_policy`. No undocumented
++floating-point constant.
++
++### ADR-013 — Timezone policy
++`normalize_trade_frame` default `source_timezone=None`: naive timestamps are
++rejected unless a source timezone is declared; UTC-aware inputs are accepted and
++normalized to UTC. DST-ambiguous / nonexistent local times fail clearly unless an
++explicit `dst_resolution` policy is supplied.
++
++### ADR-014 — Provenance self-verification
++`batch.verify_result_provenance(result, scenario, source_data)` recomputes the
++input-data hash and checks scenario hash, engine version, seed, path count,
++policy, strategy mappings, and commission assumptions. `build_result_distribution`
++records the *computed* input-data hash as authoritative and warns on a declared
++mismatch.
++
++### ADR-015 — Gap-aware block bootstraps
++Moving/stationary blocks traverse only calendar-consecutive ("verified
++consecutive") months. A missing/partial month breaks continuity; a block that
++cannot fit in any run fails; restarts at a gap/boundary are recorded in
++`ResampledPath.diagnostics`.
++
++### ADR-016 — Coverage diagnostics
++`diagnostics.build_coverage_report` produces per-strategy/per-month status
++(complete / partial / verified_flat / missing), seasonal support counts, trade
++counts, coverage span, and per-method eligibility. It feeds scenario-validation
++warnings and exported diagnostics.
+diff --git a/KNOWN_LIMITATIONS.md b/KNOWN_LIMITATIONS.md
+index 95bc5b1..60e78fe 100644
+--- a/KNOWN_LIMITATIONS.md
++++ b/KNOWN_LIMITATIONS.md
+@@ -72,3 +72,22 @@ Legend: **[GUARD]** enforced in code · **[WARN]** should be surfaced in reports
+   assumptions, data hash, diagnostics, and known limitations.
+ - **[WARN]** Single-path equity CSV exports include scenario metadata only when
+   a `Scenario` is supplied by the caller.
++
++
++## Review-004 status updates
++
++- **[GUARD]** Contract mapping must be declared per strategy; no silent NQ->MNQ /
++  ES->MES inference (ADR-011 enforced).
++- **[GUARD]** Naive timestamps rejected unless `source_timezone` declared; DST
++  gaps/overlaps fail unless an explicit `dst_resolution` is given (ADR-013).
++- **[GUARD]** Breakeven is exact-zero by default; tolerance is explicit and
++  recorded in the scenario (ADR-012).
++- **[GUARD]** Moving/stationary blocks never bridge calendar gaps (ADR-015).
++- **[GUARD]** Coverage report distinguishes missing vs verified-flat months; the
++  coverage-absent warning fires for every bootstrap, not only seasonal.
++- **[GUARD]** Result provenance is self-verifiable; the computed input-data hash
++  is authoritative in exports (ADR-014).
++- **[WARN/OPEN]** The real 1,150-row ledger has NOT yet been integrated; run
++  `sim_core.integration.real_ledger` against the real CSV before production
++  acceptance. The clamp-to-month-end behavior for shifted month-end trades still
++  clusters at the boundary (disclosed; acceptable for V1).
+diff --git a/configs/nq_es_micro_contracts.yaml b/configs/nq_es_micro_contracts.yaml
+new file mode 100644
+index 0000000..9bd3649
+--- /dev/null
++++ b/configs/nq_es_micro_contracts.yaml
+@@ -0,0 +1,19 @@
++# Explicit per-strategy contract mapping for the real NQ/ES micro ledger.
++#
++# ADR-011: underlying symbols (NQ/ES) NEVER silently imply a contract (MNQ/MES).
++# Every strategy_id present in the CSV MUST appear below; the loader fails closed
++# on any unmapped strategy, and the integration command prints all discovered
++# strategy IDs so you can add an entry for each. The values below are a TEMPLATE
++# using example strategy IDs — replace/extend them with the real IDs the command
++# reports. dpp in the file is cross-checked against dollars_per_point here.
++strategies:
++  NQ_LOCKED_19_11_X1_5:
++    underlying: NQ
++    contract_symbol: MNQ
++    dollars_per_point: 2
++    currency: USD
++  ES_EXPANDED_19_15_X2_0:
++    underlying: ES
++    contract_symbol: MES
++    dollars_per_point: 5
++    currency: USD
+diff --git a/pyproject.toml b/pyproject.toml
+index b5b02f5..56c81e5 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -7,6 +7,7 @@ requires-python = ">=3.12"
+ dependencies = [
+     "numpy>=2.0",
+     "pandas>=2.2",
++    "PyYAML>=6.0",
+ ]
+ 
+ [project.optional-dependencies]
+@@ -18,6 +19,9 @@ dev = [
+ testpaths = ["tests"]
+ pythonpath = ["."]
+ addopts = "-q"
++markers = [
++    "real_ledger: integration test against the real canonical ledger; skips unless SIM_REAL_LEDGER_PATH is set",
++]
+ 
+ [tool.ruff]
+ line-length = 100
+diff --git a/sim_core/__init__.py b/sim_core/__init__.py
+index b16d494..3ac6240 100644
+--- a/sim_core/__init__.py
++++ b/sim_core/__init__.py
+@@ -1,14 +1,28 @@
+ """Version 1 simulation core public API."""
+ 
+-from sim_core.batch import build_result_distribution, hash_trades, run_simulation_ensemble
++from sim_core.batch import (
++    build_result_distribution,
++    hash_trades,
++    run_simulation_ensemble,
++    scenario_hash,
++    verify_result_provenance,
++)
++from sim_core.diagnostics.coverage import CoverageReport, build_coverage_report
++from sim_core.execution.ensemble import run_path_ensemble
+ from sim_core.execution.replay import FixedContractPortfolio, run_fixed_contract_simulation
+ from sim_core.ingestion.csv_loader import (
+     load_canonical_margin_csv,
+     load_trade_csv,
+     load_trade_csvs,
+     normalize_canonical_margin_frame,
++    normalize_trade_frame,
++)
++from sim_core.instruments import (
++    DEFAULT_INSTRUMENT_REGISTRY,
++    build_specs_from_registry,
++    get_instrument_spec,
+ )
+-from sim_core.instruments import DEFAULT_INSTRUMENT_REGISTRY, get_instrument_spec
++from sim_core.integration.real_ledger import build_integration_report
+ from sim_core.metrics.reports import (
+     monthly_equity_percentiles,
+     ruin_probability,
+@@ -17,6 +31,7 @@ from sim_core.metrics.reports import (
+ )
+ from sim_core.models import (
+     AccountConfig,
++    BreakevenPolicy,
+     EquityPoint,
+     InstrumentSpec,
+     ResampledPath,
+@@ -28,6 +43,7 @@ from sim_core.models import (
+     StrategyMetadata,
+     Trade,
+     ValidationIssue,
++    VerificationReport,
+ )
+ from sim_core.resampling.policies import (
+     HistoricalReplay,
+@@ -38,7 +54,12 @@ from sim_core.resampling.policies import (
+ 
+ __all__ = [
+     "AccountConfig",
++    "BreakevenPolicy",
++    "build_coverage_report",
++    "build_integration_report",
+     "build_result_distribution",
++    "build_specs_from_registry",
++    "CoverageReport",
+     "EquityPoint",
+     "FixedContractPortfolio",
+     "HistoricalReplay",
+@@ -55,6 +76,7 @@ __all__ = [
+     "StrategyMetadata",
+     "Trade",
+     "ValidationIssue",
++    "VerificationReport",
+     "DEFAULT_INSTRUMENT_REGISTRY",
+     "get_instrument_spec",
+     "hash_trades",
+@@ -63,9 +85,13 @@ __all__ = [
+     "load_trade_csvs",
+     "monthly_equity_percentiles",
+     "normalize_canonical_margin_frame",
++    "normalize_trade_frame",
++    "run_path_ensemble",
+     "ruin_probability",
+     "run_fixed_contract_simulation",
+     "run_simulation_ensemble",
++    "scenario_hash",
+     "summarize_paths",
+     "trade_outcome_taxonomy",
++    "verify_result_provenance",
+ ]
+diff --git a/sim_core/batch.py b/sim_core/batch.py
+index 983d380..17a2ebb 100644
+--- a/sim_core/batch.py
++++ b/sim_core/batch.py
+@@ -1,11 +1,13 @@
+ from __future__ import annotations
+ 
+ import hashlib
++import warnings
+ from collections.abc import Sequence
+ 
+ import numpy as np
+ import pandas as pd
+ 
++from sim_core.diagnostics.coverage import build_coverage_report
+ from sim_core.execution.replay import run_fixed_contract_simulation
+ from sim_core.metrics.reports import (
+     max_drawdown,
+@@ -14,6 +16,7 @@ from sim_core.metrics.reports import (
+     trade_outcome_taxonomy,
+ )
+ from sim_core.models import (
++    ENGINE_VERSION,
+     AccountConfig,
+     FixedContractPortfolio,
+     ResultDistribution,
+@@ -21,6 +24,7 @@ from sim_core.models import (
+     SimulationResult,
+     StrategyCoverage,
+     Trade,
++    VerificationReport,
+ )
+ from sim_core.resampling.policies import ResamplingPolicy
+ 
+@@ -53,6 +57,48 @@ def hash_trades(trades: Sequence[Trade]) -> str:
+     return digest.hexdigest()
+ 
+ 
++def scenario_hash(scenario: Scenario) -> str:
++    """Stable hash of the fully-specified scenario configuration."""
++
++    return hashlib.sha256(scenario.to_json().encode("utf-8")).hexdigest()
++
++
++def verify_result_provenance(
++    result: ResultDistribution,
++    scenario: Scenario,
++    source_data: Sequence[Trade],
++) -> VerificationReport:
++    """Check that an exported result matches its declared scenario and input data.
++
++    Detects changed input data (via recomputed `hash_trades`), a mismatched or
++    tampered scenario (via `scenario_hash`), a different engine version, and any
++    drift in master seed, path count, resampling policy, strategy mappings, or
++    commission assumptions.
++    """
++
++    recomputed = hash_trades(source_data)
++    embedded = result.scenario
++    checks: dict[str, bool] = {
++        "input_data_hash": recomputed == scenario.input_data_hash == result.data_hash,
++        "scenario_hash": scenario_hash(scenario) == scenario_hash(embedded),
++        "engine_version": embedded.engine_version == ENGINE_VERSION == scenario.engine_version,
++        "resampling_policy": embedded.resampling_method == scenario.resampling_method,
++        "master_seed": embedded.master_seed == scenario.master_seed,
++        "number_of_paths": embedded.number_of_paths == scenario.number_of_paths,
++        "strategy_mappings": embedded.contract_mappings == scenario.contract_mappings,
++        "commission_assumptions": embedded.commission_assumptions == scenario.commission_assumptions,
++    }
++    details = {
++        "recomputed_data_hash": recomputed,
++        "scenario_declared_data_hash": scenario.input_data_hash,
++        "result_data_hash": result.data_hash,
++        "scenario_hash": scenario_hash(scenario),
++        "embedded_scenario_hash": scenario_hash(embedded),
++        "engine_version": ENGINE_VERSION,
++    }
++    return VerificationReport(ok=all(checks.values()), checks=checks, details=details)
++
++
+ def run_simulation_ensemble(
+     scenario: Scenario,
+     trades: Sequence[Trade],
+@@ -60,6 +106,7 @@ def run_simulation_ensemble(
+     *,
+     coverage: Sequence[StrategyCoverage] | None = None,
+ ) -> tuple[list[SimulationResult], ResultDistribution]:
++    """Run a path ensemble and build the result distribution with provenance."""
+     account = AccountConfig(
+         initial_equity=scenario.starting_equity,
+         ruin_threshold=scenario.ruin_threshold,
+@@ -84,7 +131,7 @@ def run_simulation_ensemble(
+             )
+         )
+ 
+-    distribution = build_result_distribution(scenario, trades, results)
++    distribution = build_result_distribution(scenario, trades, results, coverage=coverage)
+     return results, distribution
+ 
+ 
+@@ -92,14 +139,29 @@ def build_result_distribution(
+     scenario: Scenario,
+     trades: Sequence[Trade],
+     results: Sequence[SimulationResult],
++    *,
++    coverage: Sequence[StrategyCoverage] | None = None,
+ ) -> ResultDistribution:
+     months = _scenario_months(scenario)
+     monthly = monthly_equity_percentiles(results, months=months).to_dict(orient="records")
+     terminal = np.array([result.terminal_equity for result in results], dtype=float)
+     drawdowns = [max_drawdown(result) for result in results]
++    computed_data_hash = hash_trades(trades)
++    if scenario.input_data_hash and scenario.input_data_hash != computed_data_hash:
++        warnings.warn(
++            "scenario.input_data_hash does not match the supplied trades; the "
++            "computed hash is recorded as authoritative provenance",
++            RuntimeWarning,
++            stacklevel=2,
++        )
++    coverage_report = build_coverage_report(trades, coverage)
+     diagnostics = {
+         "path_count": len(results),
+         "resampling_method": scenario.resampling_method,
++        "computed_input_data_hash": computed_data_hash,
++        "scenario_declared_data_hash": scenario.input_data_hash,
++        "coverage": coverage_report.to_records(),
++        "coverage_strategies": coverage_report.strategies,
+         "sampled_blocks": [
+             {
+                 "path_index": block.path_index,
+@@ -125,9 +187,9 @@ def build_result_distribution(
+         ruin_probability=ruin_probability(results, scenario.ruin_threshold),
+         outcome_taxonomy=trade_outcome_taxonomy(trades),
+         resampling_diagnostics=diagnostics,
+-        warnings=[],
++        warnings=coverage_report.warnings(),
+         known_limitations=KNOWN_V1_LIMITATIONS,
+-        data_hash=scenario.input_data_hash,
++        data_hash=computed_data_hash,
+     )
+ 
+ 
+diff --git a/sim_core/diagnostics/__init__.py b/sim_core/diagnostics/__init__.py
+new file mode 100644
+index 0000000..e4ee8f6
+--- /dev/null
++++ b/sim_core/diagnostics/__init__.py
+@@ -0,0 +1,3 @@
++from sim_core.diagnostics.coverage import CoverageMonth, CoverageReport, build_coverage_report
++
++__all__ = ["CoverageMonth", "CoverageReport", "build_coverage_report"]
+diff --git a/sim_core/diagnostics/coverage.py b/sim_core/diagnostics/coverage.py
+new file mode 100644
+index 0000000..bcb52a0
+--- /dev/null
++++ b/sim_core/diagnostics/coverage.py
+@@ -0,0 +1,176 @@
++"""Reusable per-strategy, per-calendar-month coverage diagnostics (MEDIUM-R3-C).
++
++Distinguishes, for every strategy and month in the portfolio calendar:
++  * complete       - the strategy traded that month
++  * partial        - declared partial (excluded from sampling)
++  * verified_flat  - declared-covered but zero trades (a real flat month)
++  * missing        - no trades and not covered (cannot be assumed flat)
++
++It also reports, per month-of-year, how many eligible source months a strategy
++has (seasonal support), the trade count, coverage span, and whether each month
++is eligible for seasonal / block resampling. The report feeds scenario
++validation warnings and exported diagnostics.
++"""
++from __future__ import annotations
++
++from collections import Counter
++from collections.abc import Sequence
++from dataclasses import dataclass
++from typing import Any
++
++import pandas as pd
++
++from sim_core.models import StrategyCoverage, Trade
++
++ELIGIBLE_STATUSES = {"complete", "verified_flat"}
++
++
++@dataclass(frozen=True)
++class CoverageMonth:
++    strategy_id: str
++    instrument: str
++    month: str
++    status: str
++    trade_count: int
++    source_month_support: int
++    seasonal_eligible: bool
++    block_eligible: bool
++
++    def to_dict(self) -> dict[str, Any]:
++        return {
++            "strategy_id": self.strategy_id,
++            "instrument": self.instrument,
++            "month": self.month,
++            "status": self.status,
++            "trade_count": self.trade_count,
++            "source_month_support": self.source_month_support,
++            "seasonal_eligible": self.seasonal_eligible,
++            "block_eligible": self.block_eligible,
++        }
++
++
++@dataclass(frozen=True)
++class CoverageReport:
++    months: list[CoverageMonth]
++    strategies: dict[str, dict[str, Any]]
++
++    def status_for(self, strategy_id: str, month: str) -> str | None:
++        for record in self.months:
++            if record.strategy_id == strategy_id and record.month == month:
++                return record.status
++        return None
++
++    def to_records(self) -> list[dict[str, Any]]:
++        return [record.to_dict() for record in self.months]
++
++    def to_dict(self) -> dict[str, Any]:
++        return {"strategies": self.strategies, "months": self.to_records()}
++
++    def warnings(self) -> list[str]:
++        notes: list[str] = []
++        for strategy_id, meta in sorted(self.strategies.items()):
++            if not meta["has_coverage"]:
++                notes.append(
++                    f"strategy '{strategy_id}': no coverage declared; missing months cannot "
++                    "be distinguished from verified flat months"
++                )
++            missing = [m.month for m in self.months if m.strategy_id == strategy_id and m.status == "missing"]
++            if missing:
++                notes.append(
++                    f"strategy '{strategy_id}': {len(missing)} missing month(s): {', '.join(missing)}"
++                )
++        # Thin seasonal support: an eligible month whose month-of-year has < 2 instances.
++        for record in self.months:
++            if record.seasonal_eligible and record.source_month_support < 2:
++                notes.append(
++                    f"strategy '{record.strategy_id}': calendar month "
++                    f"{record.month[-2:]} has thin seasonal support "
++                    f"({record.source_month_support} source month(s))"
++                )
++        return notes
++
++
++def build_coverage_report(
++    trades: Sequence[Trade],
++    coverage: Sequence[StrategyCoverage] | None = None,
++) -> CoverageReport:
++    coverage_by_strategy = {item.strategy_id: item for item in (coverage or [])}
++
++    trade_months: dict[str, Counter] = {}
++    instrument_by_strategy: dict[str, str] = {}
++    for trade in trades:
++        trade_months.setdefault(trade.strategy_id, Counter())[trade.source_month] += 1
++        instrument_by_strategy.setdefault(trade.strategy_id, trade.instrument)
++
++    strategy_ids = sorted(set(trade_months) | set(coverage_by_strategy))
++
++    # Portfolio calendar range across every strategy's trades and coverage spans.
++    bounds: list[pd.Period] = []
++    for counter in trade_months.values():
++        bounds.extend(counter)
++    for item in coverage_by_strategy.values():
++        bounds.extend([item.start_month, item.end_month])
++    if not bounds:
++        return CoverageReport(months=[], strategies={})
++    calendar_start, calendar_end = min(bounds), max(bounds)
++    calendar: list[pd.Period] = []
++    current = calendar_start
++    while current <= calendar_end:
++        calendar.append(current)
++        current += 1
++
++    months: list[CoverageMonth] = []
++    strategies: dict[str, dict[str, Any]] = {}
++    for strategy_id in strategy_ids:
++        cov = coverage_by_strategy.get(strategy_id)
++        counts = trade_months.get(strategy_id, Counter())
++        instrument = instrument_by_strategy.get(strategy_id) or (cov.instrument if cov else "")
++
++        statuses: dict[pd.Period, tuple[str, int]] = {}
++        for month in calendar:
++            trade_count = int(counts.get(month, 0))
++            if cov is not None and month in cov.partial_months:
++                status = "partial"
++            elif trade_count > 0:
++                status = "complete"
++            elif cov is not None and cov.start_month <= month <= cov.end_month:
++                status = "verified_flat"
++            else:
++                status = "missing"
++            statuses[month] = (status, trade_count)
++
++        support_by_moy: Counter = Counter()
++        for month, (status, _count) in statuses.items():
++            if status in ELIGIBLE_STATUSES:
++                support_by_moy[month.month] += 1
++
++        for month in calendar:
++            status, trade_count = statuses[month]
++            eligible = status in ELIGIBLE_STATUSES
++            months.append(
++                CoverageMonth(
++                    strategy_id=strategy_id,
++                    instrument=instrument,
++                    month=str(month),
++                    status=status,
++                    trade_count=trade_count,
++                    source_month_support=int(support_by_moy.get(month.month, 0)),
++                    seasonal_eligible=eligible,
++                    block_eligible=eligible,
++                )
++            )
++
++        if cov is not None:
++            start, end = str(cov.start_month), str(cov.end_month)
++        elif counts:
++            start, end = str(min(counts)), str(max(counts))
++        else:
++            start = end = None
++        strategies[strategy_id] = {
++            "instrument": instrument,
++            "has_coverage": cov is not None,
++            "coverage_start": start,
++            "coverage_end": end,
++        }
++
++    return CoverageReport(months=months, strategies=strategies)
+diff --git a/sim_core/ingestion/csv_loader.py b/sim_core/ingestion/csv_loader.py
+index 7e9c80b..f1045a9 100644
+--- a/sim_core/ingestion/csv_loader.py
++++ b/sim_core/ingestion/csv_loader.py
+@@ -7,7 +7,6 @@ import warnings
+ 
+ import pandas as pd
+ 
+-from sim_core.instruments import DEFAULT_INSTRUMENT_REGISTRY
+ from sim_core.models import (
+     InstrumentSpec,
+     StrategyMetadata,
+@@ -73,7 +72,6 @@ def load_canonical_margin_csv(
+     path: str | Path,
+     *,
+     contract_specs_by_strategy: dict[str, InstrumentSpec] | None = None,
+-    instrument_registry: dict[str, InstrumentSpec] | None = None,
+ ) -> list[Trade]:
+     source_path = Path(path)
+     frame = pd.read_csv(source_path)
+@@ -81,9 +79,8 @@ def load_canonical_margin_csv(
+         frame,
+         source_path=source_path,
+         contract_specs_by_strategy=contract_specs_by_strategy,
+-        instrument_registry=instrument_registry,
+     )
+-    return normalize_trade_frame(normalized, source_path=source_path)
++    return normalize_trade_frame(normalized, source_path=source_path, source_timezone="UTC")
+ 
+ 
+ def normalize_canonical_margin_frame(
+@@ -91,9 +88,18 @@ def normalize_canonical_margin_frame(
+     *,
+     source_path: Path | None = None,
+     contract_specs_by_strategy: dict[str, InstrumentSpec] | None = None,
+-    instrument_registry: dict[str, InstrumentSpec] | None = None,
+ ) -> pd.DataFrame:
+-    """Map nq_es_margin_sim_master_2025_2026.csv columns into the V1 schema."""
++    """Map nq_es_margin_sim_master_2025_2026.csv columns into the V1 schema.
++
++    Explicit per-strategy contract specifications are REQUIRED (ADR-011). The
++    underlying symbol (e.g. ``NQ``/``ES``) never silently implies a contract
++    (``MNQ``/``MES``); every ``strategy_id`` present in the ledger must have a
++    declared spec. The default instrument registry may be used only as explicit,
++    user-selected convenience tooling (see
++    ``sim_core.instruments.build_specs_from_registry``), never as an unannounced
++    loader fallback. Unknown strategies, missing mappings, and blank ``dpp`` all
++    fail validation.
++    """
+ 
+     required = {
+         "strategy",
+@@ -113,12 +119,36 @@ def normalize_canonical_margin_frame(
+             [ValidationIssue(None, column, "required canonical column is missing") for column in missing]
+         )
+ 
++    if contract_specs_by_strategy is None:
++        raise TradeValidationError(
++            [
++                ValidationIssue(
++                    None,
++                    "contract_specs_by_strategy",
++                    "explicit per-strategy contract specifications are required for canonical "
++                    "margin-ledger loading; underlying symbols are not silently mapped to contracts",
++                )
++            ]
++        )
++
+     rows: list[dict[str, object]] = []
+     issues: list[ValidationIssue] = []
+-    contract_specs_by_strategy = contract_specs_by_strategy or _infer_strategy_specs(
+-        frame,
+-        instrument_registry or DEFAULT_INSTRUMENT_REGISTRY,
+-    )
++
++    # Every strategy present in the ledger must have an explicit declared spec.
++    if "strategy" in frame.columns:
++        ledger_strategies = sorted(
++            {text for text in (_optional_str(value) for value in frame["strategy"]) if text}
++        )
++        for strategy in ledger_strategies:
++            if strategy not in contract_specs_by_strategy:
++                issues.append(
++                    ValidationIssue(
++                        None,
++                        "strategy",
++                        f"no declared contract specification for strategy '{strategy}'",
++                    )
++                )
++
+     for index, row in frame.iterrows():
+         row_number = int(index) + 2
+         strategy_id = _required_str(row.get("strategy"), "strategy", row_number, issues)
+@@ -127,20 +157,15 @@ def normalize_canonical_margin_frame(
+             continue
+         spec = contract_specs_by_strategy.get(strategy_id)
+         if spec is None:
+-            issues.append(
+-                ValidationIssue(
+-                    row_number,
+-                    "strategy",
+-                    "missing explicit contract specification for strategy",
+-                )
+-            )
++            # Already reported at the aggregate level above; skip the row.
+             continue
+         if spec.underlying != underlying:
+             issues.append(
+                 ValidationIssue(
+                     row_number,
+                     "inst",
+-                    f"row underlying {underlying} does not match declared {spec.underlying}",
++                    f"row underlying {underlying} does not match declared "
++                    f"{spec.underlying} for strategy '{strategy_id}'",
+                 )
+             )
+             continue
+@@ -154,7 +179,7 @@ def normalize_canonical_margin_frame(
+                 ValidationIssue(
+                     row_number,
+                     "dpp",
+-                    "dpp is required unless an explicit fill policy is configured",
++                    "dpp is required and must not be blank; no silent fallback to a contract default",
+                 )
+             )
+             continue
+@@ -163,7 +188,8 @@ def normalize_canonical_margin_frame(
+                 ValidationIssue(
+                     row_number,
+                     "dpp",
+-                    f"does not match registry value {spec.dollars_per_point} for {underlying}",
++                    f"ledger dpp {dpp} does not match declared {spec.dollars_per_point} "
++                    f"for strategy '{strategy_id}'",
+                 )
+             )
+ 
+@@ -222,7 +248,8 @@ def normalize_trade_frame(
+     *,
+     source_path: Path | None = None,
+     metadata: StrategyMetadata | None = None,
+-    source_timezone: str | None = "UTC",
++    source_timezone: str | None = None,
++    dst_resolution: str | None = None,
+ ) -> list[Trade]:
+     issues: list[ValidationIssue] = []
+     missing = sorted(REQUIRED_COLUMNS - set(frame.columns))
+@@ -249,10 +276,12 @@ def normalize_trade_frame(
+         normalized[column] = pd.to_numeric(normalized[column], errors="coerce")
+ 
+     entry_times = _parse_timestamp_column(
+-        normalized["entry_time"], "entry_time", issues, source_timezone=source_timezone
++        normalized["entry_time"], "entry_time", issues,
++        source_timezone=source_timezone, dst_resolution=dst_resolution,
+     )
+     exit_times = _parse_timestamp_column(
+-        normalized["exit_time"], "exit_time", issues, source_timezone=source_timezone
++        normalized["exit_time"], "exit_time", issues,
++        source_timezone=source_timezone, dst_resolution=dst_resolution,
+     )
+ 
+     trades: list[Trade] = []
+@@ -376,6 +405,7 @@ def _parse_timestamp_column(
+     issues: list[ValidationIssue],
+     *,
+     source_timezone: str | None,
++    dst_resolution: str | None = None,
+ ) -> pd.Series:
+     parsed_values: list[pd.Timestamp] = []
+     for index, value in values.items():
+@@ -395,21 +425,26 @@ def _parse_timestamp_column(
+                     ValidationIssue(
+                         row_number,
+                         column,
+-                        "naive timestamp rejected; configure source_timezone explicitly",
++                        "naive timestamp with no timezone declaration; pass source_timezone explicitly",
+                     )
+                 )
+                 parsed_values.append(pd.NaT)
+                 continue
+             warnings.warn(
+-                f"{column}: localized naive timestamp to configured source_timezone={source_timezone}",
++                f"{column}: localized naive timestamp to declared source_timezone={source_timezone}",
+                 RuntimeWarning,
+                 stacklevel=2,
+             )
+             try:
+-                timestamp = timestamp.tz_localize(source_timezone)
++                timestamp = _localize_naive(timestamp, source_timezone, dst_resolution)
+             except Exception as exc:
+                 issues.append(
+-                    ValidationIssue(row_number, column, f"cannot localize timestamp: {exc}")
++                    ValidationIssue(
++                        row_number,
++                        column,
++                        f"ambiguous or nonexistent local time for {source_timezone} "
++                        f"({type(exc).__name__}); supply an explicit dst_resolution policy",
++                    )
+                 )
+                 parsed_values.append(pd.NaT)
+                 continue
+@@ -417,19 +452,31 @@ def _parse_timestamp_column(
+     return pd.Series(parsed_values, index=values.index)
+ 
+ 
+-def _infer_strategy_specs(
+-    frame: pd.DataFrame,
+-    instrument_registry: dict[str, InstrumentSpec],
+-) -> dict[str, InstrumentSpec]:
+-    specs: dict[str, InstrumentSpec] = {}
+-    if "strategy" not in frame.columns or "inst" not in frame.columns:
+-        return specs
+-    for _, row in frame.iterrows():
+-        strategy = _optional_str(row.get("strategy"))
+-        instrument = _optional_str(row.get("inst"))
+-        if strategy and instrument and instrument in instrument_registry:
+-            specs[strategy] = instrument_registry[instrument]
+-    return specs
++def _localize_naive(
++    timestamp: pd.Timestamp, source_timezone: str, dst_resolution: str | None
++) -> pd.Timestamp:
++    """Localize a naive timestamp, failing clearly on DST gaps/overlaps.
++
++    With ``dst_resolution=None`` pandas raises on nonexistent (spring-forward gap)
++    or ambiguous (fall-back overlap) local times, which we surface as a clear
++    validation error. An explicit policy resolves them:
++      * ``"shift_forward"`` / ``"shift_backward"`` / ``"NaT"`` -> nonexistent times
++      * ``"earliest"`` / ``"latest"`` -> ambiguous times
++    """
++
++    if dst_resolution is None:
++        return timestamp.tz_localize(source_timezone)
++    ambiguous: object = "raise"
++    nonexistent: str = "raise"
++    if dst_resolution == "earliest":
++        ambiguous = True
++    elif dst_resolution == "latest":
++        ambiguous = False
++    elif dst_resolution in {"shift_forward", "shift_backward", "NaT"}:
++        nonexistent = dst_resolution
++    else:
++        raise ValueError(f"unsupported dst_resolution policy: {dst_resolution!r}")
++    return timestamp.tz_localize(source_timezone, ambiguous=ambiguous, nonexistent=nonexistent)
+ 
+ 
+ def _required_str(
+diff --git a/sim_core/instruments.py b/sim_core/instruments.py
+index c885960..14ed319 100644
+--- a/sim_core/instruments.py
++++ b/sim_core/instruments.py
+@@ -28,3 +28,24 @@ def get_instrument_spec(
+         return registry[underlying]
+     except KeyError as exc:
+         raise KeyError(f"no instrument registry entry for {underlying}") from exc
++
++
++def build_specs_from_registry(
++    strategy_underlyings: dict[str, str],
++    registry: dict[str, InstrumentSpec] | None = None,
++) -> dict[str, InstrumentSpec]:
++    """Explicit convenience tooling: build per-strategy contract specifications.
++
++    The caller must name each strategy *and* its underlying explicitly. Nothing
++    is inferred from the ledger itself. This exists so a user can opt in to the
++    default registry for known instruments (ADR-011); it is never used as a
++    silent loader fallback.
++    """
++
++    registry = registry or DEFAULT_INSTRUMENT_REGISTRY
++    specs: dict[str, InstrumentSpec] = {}
++    for strategy, underlying in strategy_underlyings.items():
++        if underlying not in registry:
++            raise KeyError(f"no registry entry for underlying {underlying}")
++        specs[strategy] = registry[underlying]
++    return specs
+diff --git a/sim_core/integration/__init__.py b/sim_core/integration/__init__.py
+new file mode 100644
+index 0000000..ed5d6ed
+--- /dev/null
++++ b/sim_core/integration/__init__.py
+@@ -0,0 +1,13 @@
++from sim_core.integration.real_ledger import (
++    IntegrationError,
++    build_integration_report,
++    discover_strategy_ids,
++    load_mapping,
++)
++
++__all__ = [
++    "IntegrationError",
++    "build_integration_report",
++    "discover_strategy_ids",
++    "load_mapping",
++]
+diff --git a/sim_core/integration/real_ledger.py b/sim_core/integration/real_ledger.py
+new file mode 100644
+index 0000000..19b1719
+--- /dev/null
++++ b/sim_core/integration/real_ledger.py
+@@ -0,0 +1,220 @@
++"""Real-ledger integration harness.
++
++Loads the real canonical NQ/ES micro ledger under an EXPLICIT declared contract
++mapping (ADR-011), runs V1 smoke checks, and emits a provenance-stamped
++integration report. Usage:
++
++    python -m sim_core.integration.real_ledger \
++        --csv /path/to/nq_es_margin_sim_master_2025_2026.csv \
++        --mapping configs/nq_es_micro_contracts.yaml \
++        --output reports/real_ledger_v1/
++
++The command first prints every discovered strategy_id and fails with a useful
++message if any strategy lacks a declared mapping.
++"""
++from __future__ import annotations
++
++import argparse
++import json
++import sys
++from collections import defaultdict
++from pathlib import Path
++from typing import Any
++
++import pandas as pd
++import yaml
++
++from sim_core.batch import hash_trades, scenario_hash
++from sim_core.diagnostics.coverage import build_coverage_report
++from sim_core.execution.replay import run_fixed_contract_simulation
++from sim_core.ingestion.csv_loader import load_canonical_margin_csv
++from sim_core.metrics.reports import trade_outcome_taxonomy
++from sim_core.models import InstrumentSpec, Scenario, StrategyCoverage
++from sim_core.resampling.policies import (
++    HistoricalReplay,
++    MovingBlockBootstrap,
++    SameCalendarMonthBootstrap,
++    StationaryBlockBootstrap,
++)
++
++DEFAULT_SEED = 20260630
++
++
++class IntegrationError(RuntimeError):
++    """Raised when the ledger cannot be integrated (e.g. unmapped strategies)."""
++
++
++def load_mapping(path: str | Path) -> dict[str, InstrumentSpec]:
++    data = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
++    specs: dict[str, InstrumentSpec] = {}
++    for strategy, cfg in (data.get("strategies") or {}).items():
++        specs[strategy] = InstrumentSpec(
++            underlying=str(cfg["underlying"]),
++            contract_symbol=str(cfg["contract_symbol"]),
++            dollars_per_point=float(cfg["dollars_per_point"]),
++            currency=str(cfg.get("currency", "USD")),
++        )
++    return specs
++
++
++def discover_strategy_ids(csv_path: str | Path) -> list[str]:
++    frame = pd.read_csv(csv_path)
++    if "strategy" not in frame.columns:
++        raise IntegrationError("canonical ledger is missing the 'strategy' column")
++    return sorted({str(s).strip() for s in frame["strategy"].dropna() if str(s).strip()})
++
++
++def _distinct_months(trades) -> list[pd.Period]:
++    return sorted({trade.source_month for trade in trades})
++
++
++def _smoke(policy, trades) -> dict[str, Any]:
++    try:
++        path = policy.sample(trades, seed=DEFAULT_SEED)
++        result = run_fixed_contract_simulation(path)
++        return {
++            "ok": True,
++            "sampled_trades": len(path.trades),
++            "sampled_blocks": len(path.sampled_blocks),
++            "terminal_equity": result.terminal_equity,
++            "diagnostics": path.diagnostics,
++        }
++    except Exception as exc:  # smoke tests record failures rather than crash the report
++        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
++
++
++def build_integration_report(
++    csv_path: str | Path,
++    mapping_path: str | Path,
++    *,
++    seed: int = DEFAULT_SEED,
++    coverage: list[StrategyCoverage] | None = None,
++) -> dict[str, Any]:
++    discovered = discover_strategy_ids(csv_path)
++    specs = load_mapping(mapping_path)
++    unmapped = [s for s in discovered if s not in specs]
++    if unmapped:
++        raise IntegrationError(
++            "the following strategy_id(s) have no declared contract mapping in "
++            f"{mapping_path}: {', '.join(unmapped)}. Add an explicit entry for each "
++            "(ADR-011: underlyings are not silently mapped to contracts)."
++        )
++
++    trades = load_canonical_margin_csv(csv_path, contract_specs_by_strategy=specs)
++
++    by_strategy_pnl: dict[str, float] = defaultdict(float)
++    by_strategy_count: dict[str, int] = defaultdict(int)
++    for trade in trades:
++        by_strategy_pnl[trade.strategy_id] += trade.pnl_dollars
++        by_strategy_count[trade.strategy_id] += 1
++
++    replay = HistoricalReplay().sample(trades)
++    replay_result = run_fixed_contract_simulation(replay)
++    exit_times = [point.timestamp for point in replay_result.equity_path]
++    chronological = all(a <= b for a, b in zip(exit_times, exit_times[1:]))
++
++    months = _distinct_months(trades)
++    smoke_months = max(1, min(3, len(months)))
++    start_month = str(months[0]) if months else None
++
++    coverage_report = build_coverage_report(trades, coverage)
++
++    tz_values = {str(trade.entry_time.tz) for trade in trades} | {
++        str(trade.exit_time.tz) for trade in trades
++    }
++
++    scenario = Scenario(
++        scenario_id="real_ledger_v1",
++        master_seed=seed,
++        number_of_paths=1,
++        horizon_months=smoke_months,
++        starting_equity=100_000.0,
++        selected_strategies=discovered,
++        resampling_method="same_calendar_month_bootstrap",
++        resampling_params={"months": smoke_months, "start_month": start_month},
++        contract_mappings={
++            s: {
++                "underlying": spec.underlying,
++                "contract_symbol": spec.contract_symbol,
++                "dollars_per_point": spec.dollars_per_point,
++                "currency": spec.currency,
++            }
++            for s, spec in specs.items()
++        },
++        input_data_hash=hash_trades(trades),
++    )
++
++    smokes: dict[str, Any] = {}
++    if start_month is not None:
++        smokes["seasonal_bootstrap"] = _smoke(
++            SameCalendarMonthBootstrap(months=smoke_months, start_month=start_month), trades
++        )
++        smokes["moving_block"] = _smoke(
++            MovingBlockBootstrap(months=smoke_months, block_length=2, start_month=start_month), trades
++        )
++        smokes["stationary_block"] = _smoke(
++            StationaryBlockBootstrap(
++                months=smoke_months, expected_block_length=3.0, start_month=start_month
++            ),
++            trades,
++        )
++
++    return {
++        "engine_version": scenario.engine_version,
++        "test_seed": seed,
++        "row_count": len(trades),
++        "strategy_ids": discovered,
++        "contract_mapping": scenario.contract_mappings,
++        "date_range": {
++            "start": str(min(trade.entry_time for trade in trades)) if trades else None,
++            "end": str(max(trade.exit_time for trade in trades)) if trades else None,
++        },
++        "timezone_validation": {
++            "all_utc": tz_values == {"UTC"},
++            "observed_timezones": sorted(tz_values),
++        },
++        "coverage_months": coverage_report.to_records(),
++        "coverage_strategies": coverage_report.strategies,
++        "historical_replay_pnl_by_strategy": dict(by_strategy_pnl),
++        "trade_count_by_strategy": dict(by_strategy_count),
++        "breakeven_taxonomy": trade_outcome_taxonomy(trades),
++        "smoke_tests": smokes,
++        "chronological_order_valid": chronological,
++        "data_hash": hash_trades(trades),
++        "scenario_hash": scenario_hash(scenario),
++        "warnings": coverage_report.warnings(),
++    }
++
++
++def main(argv: list[str] | None = None) -> int:
++    parser = argparse.ArgumentParser(description="Integrate the real canonical NQ/ES ledger.")
++    parser.add_argument("--csv", required=True, help="path to the real canonical ledger CSV")
++    parser.add_argument("--mapping", required=True, help="path to the explicit contract mapping YAML")
++    parser.add_argument("--output", required=True, help="output directory for the integration report")
++    parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
++    args = parser.parse_args(argv)
++
++    discovered = discover_strategy_ids(args.csv)
++    print(f"Discovered {len(discovered)} strategy_id(s): {', '.join(discovered) or '(none)'}")
++
++    try:
++        report = build_integration_report(args.csv, args.mapping, seed=args.seed)
++    except IntegrationError as exc:
++        print(f"ERROR: {exc}", file=sys.stderr)
++        return 2
++
++    output_dir = Path(args.output)
++    output_dir.mkdir(parents=True, exist_ok=True)
++    report_path = output_dir / "integration_report.json"
++    report_path.write_text(json.dumps(report, indent=2, sort_keys=True, default=str), encoding="utf-8")
++
++    print(f"Rows: {report['row_count']}  Strategies: {len(report['strategy_ids'])}")
++    print(f"Chronological order valid: {report['chronological_order_valid']}")
++    print(f"All timestamps UTC: {report['timezone_validation']['all_utc']}")
++    print(f"data_hash: {report['data_hash']}")
++    print(f"Report written to {report_path}")
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/sim_core/metrics/reports.py b/sim_core/metrics/reports.py
+index 38d2d11..b632020 100644
+--- a/sim_core/metrics/reports.py
++++ b/sim_core/metrics/reports.py
+@@ -5,8 +5,7 @@ from collections.abc import Sequence
+ import numpy as np
+ import pandas as pd
+ 
+-from sim_core.models import SimulationResult
+-from sim_core.models import Trade
++from sim_core.models import BreakevenPolicy, SimulationResult, Trade
+ 
+ 
+ def max_drawdown(result: SimulationResult) -> dict[str, float]:
+@@ -110,8 +109,26 @@ def summarize_paths(results: Sequence[SimulationResult]) -> pd.DataFrame:
+     return pd.DataFrame(rows)
+ 
+ 
+-def trade_outcome_taxonomy(trades: Sequence[Trade], *, tolerance: float = 1e-9) -> dict[str, float]:
+-    """Return named outcome rates with explicit denominators."""
++def trade_outcome_taxonomy(
++    trades: Sequence[Trade],
++    *,
++    tolerance: float | None = None,
++    policy: "BreakevenPolicy | None" = None,
++    dollars_per_tick: float | None = None,
++) -> dict[str, float]:
++    """Return named outcome rates with explicit denominators.
++
++    Breakeven classification follows the explicit policy (ADR-012). Default is
++    exact zero. A `BreakevenPolicy` (preferred) or a raw dollar `tolerance` may
++    be supplied; they must not be combined.
++    """
++
++    if policy is not None and tolerance is not None:
++        raise ValueError("supply either a BreakevenPolicy or a raw tolerance, not both")
++    if policy is not None:
++        tolerance = policy.resolved_tolerance(dollars_per_tick)
++    if tolerance is None:
++        tolerance = 0.0
+ 
+     n_total = len(trades)
+     n_win = sum(1 for trade in trades if trade.pnl_dollars > tolerance)
+diff --git a/sim_core/models.py b/sim_core/models.py
+index c1c4ce7..87144d9 100644
+--- a/sim_core/models.py
++++ b/sim_core/models.py
+@@ -278,6 +278,7 @@ class SampledBlock:
+ class ResampledPath:
+     trades: list[Trade]
+     sampled_blocks: list[SampledBlock]
++    diagnostics: dict[str, Any] = field(default_factory=dict)
+ 
+ 
+ @dataclass(frozen=True)
+@@ -346,6 +347,7 @@ class Scenario:
+     ruin_threshold: float
+     currency: str
+     contract_mappings: dict[str, dict[str, Any]]
++    breakeven_policy: dict[str, Any]
+     input_data_hash: str
+     engine_version: str = ENGINE_VERSION
+ 
+@@ -366,6 +368,7 @@ class Scenario:
+         ruin_threshold: float | None = None,
+         currency: str = "USD",
+         contract_mappings: dict[str, dict[str, Any]] | None = None,
++        breakeven_policy: dict[str, Any] | None = None,
+         input_data_hash: str | None = None,
+         engine_version: str = ENGINE_VERSION,
+         *,
+@@ -406,6 +409,11 @@ class Scenario:
+         )
+         object.__setattr__(self, "currency", currency)
+         object.__setattr__(self, "contract_mappings", contract_mappings or {})
++        object.__setattr__(
++            self,
++            "breakeven_policy",
++            breakeven_policy or DEFAULT_BREAKEVEN_POLICY.to_dict(),
++        )
+         object.__setattr__(self, "input_data_hash", input_data_hash or data_hash or "")
+         object.__setattr__(self, "engine_version", engine_version)
+         self.__post_init__()
+@@ -498,7 +506,60 @@ class ResultDistribution:
+         return cls(**data)
+ 
+ 
+-def classify_result(pnl_dollars: float, tolerance: float = 1e-9) -> TradeResult:
++@dataclass(frozen=True)
++class BreakevenPolicy:
++    """Explicit breakeven-classification policy (ADR-012).
++
++    The default is *exact zero*: a trade is breakeven only when its P&L is
++    exactly 0. An optional tolerance may be declared either as explicit dollars
++    or as a number of instrument ticks (resolved against the contract's dollar
++    value per tick). The selected policy is recorded in `Scenario` metadata.
++    """
++
++    mode: str = "exact_zero"  # "exact_zero" | "dollars" | "ticks"
++    tolerance_dollars: float = 0.0
++    ticks: float = 0.0
++
++    def __post_init__(self) -> None:
++        if self.mode not in {"exact_zero", "dollars", "ticks"}:
++            raise ValueError(f"unsupported breakeven mode: {self.mode!r}")
++        if self.tolerance_dollars < 0 or self.ticks < 0:
++            raise ValueError("breakeven tolerance cannot be negative")
++
++    def resolved_tolerance(self, dollars_per_tick: float | None = None) -> float:
++        if self.mode == "exact_zero":
++            return 0.0
++        if self.mode == "dollars":
++            return self.tolerance_dollars
++        if dollars_per_tick is None:
++            raise ValueError("ticks mode requires an instrument dollars_per_tick value")
++        return self.ticks * dollars_per_tick
++
++    def to_dict(self) -> dict[str, Any]:
++        return {"mode": self.mode, "tolerance_dollars": self.tolerance_dollars, "ticks": self.ticks}
++
++
++DEFAULT_BREAKEVEN_POLICY = BreakevenPolicy()
++
++
++@dataclass(frozen=True)
++class VerificationReport:
++    """Result of checking exported results against their declared provenance."""
++
++    ok: bool
++    checks: dict[str, bool]
++    details: dict[str, Any]
++
++    def __bool__(self) -> bool:
++        return self.ok
++
++    def failures(self) -> list[str]:
++        return [name for name, passed in self.checks.items() if not passed]
++
++
++def classify_result(pnl_dollars: float, tolerance: float = 0.0) -> TradeResult:
++    """Classify a single trade. Default tolerance is exact zero (ADR-012)."""
++
+     if pnl_dollars > tolerance:
+         return "win"
+     if pnl_dollars < -tolerance:
+diff --git a/sim_core/resampling/policies.py b/sim_core/resampling/policies.py
+index f68ae1b..8a0f8d3 100644
+--- a/sim_core/resampling/policies.py
++++ b/sim_core/resampling/policies.py
+@@ -65,12 +65,7 @@ class SameCalendarMonthBootstrap(ResamplingPolicy):
+         coverage: Sequence[StrategyCoverage] | None = None,
+     ) -> ResampledPath:
+         rng = _rng_for_path(seed, path_index)
+-        if coverage is None:
+-            warnings.warn(
+-                "coverage metadata absent; missing months cannot be distinguished from unverified flat months",
+-                RuntimeWarning,
+-                stacklevel=2,
+-            )
++        _warn_if_coverage_absent(coverage)
+         source_months = _sorted_source_months(trades, coverage=coverage)
+         if not source_months:
+             raise ValueError("no source months available for requested bootstrap")
+@@ -108,21 +103,44 @@ class MovingBlockBootstrap(ResamplingPolicy):
+         coverage: Sequence[StrategyCoverage] | None = None,
+     ) -> ResampledPath:
+         rng = _rng_for_path(seed, path_index)
++        _warn_if_coverage_absent(coverage)
+         source_months = _sorted_source_months(trades, coverage=coverage)
+         if not source_months:
+             raise ValueError("no source months available for requested bootstrap")
++        runs = _consecutive_runs(source_months)
++        # Valid block starts must lie inside a single run of calendar-consecutive
++        # months; a gap or dataset boundary never bridges a block.
++        valid_starts = [
++            (run_index, offset)
++            for run_index, run in enumerate(runs)
++            for offset in range(len(run) - self.block_length + 1)
++        ]
++        if not valid_starts:
++            raise ValueError(
++                f"no run of consecutive verified months is long enough for "
++                f"block_length={self.block_length} (longest run="
++                f"{max(len(run) for run in runs)})"
++            )
+         target_start = self.start_month or source_months[0]
+         target_months = [target_start + offset for offset in range(self.months)]
+         sampled: list[pd.Period] = []
++        block_count = 0
+         while len(sampled) < self.months:
+-            max_start = len(source_months) - self.block_length
+-            if max_start < 0:
+-                raise ValueError("not enough complete source months for requested block_length")
+-            start = int(rng.integers(0, max_start + 1))
+-            sampled.extend(source_months[start : start + self.block_length])
+-        return _materialize_months(
++            run_index, offset = valid_starts[int(rng.integers(0, len(valid_starts)))]
++            sampled.extend(runs[run_index][offset : offset + self.block_length])
++            block_count += 1
++        path = _materialize_months(
+             trades, sampled[: self.months], target_months, self.name, path_index
+         )
++        diagnostics = {
++            "policy": self.name,
++            "consecutive_runs": len(runs),
++            "max_run_length": max(len(run) for run in runs),
++            "block_length": self.block_length,
++            "blocks_drawn": block_count,
++            "restarts_due_to_boundary": max(block_count - 1, 0),
++        }
++        return ResampledPath(path.trades, path.sampled_blocks, diagnostics)
+ 
+ 
+ class StationaryBlockBootstrap(ResamplingPolicy):
+@@ -154,22 +172,43 @@ class StationaryBlockBootstrap(ResamplingPolicy):
+         coverage: Sequence[StrategyCoverage] | None = None,
+     ) -> ResampledPath:
+         rng = _rng_for_path(seed, path_index)
++        _warn_if_coverage_absent(coverage)
+         source_months = _sorted_source_months(trades, coverage=coverage)
+         if not source_months:
+             raise ValueError("no source months available for requested bootstrap")
++        runs = _consecutive_runs(source_months)
++        # Positions are (run_index, offset); advancing only walks within a run so
++        # a gap or dataset boundary forces a restart instead of silently jumping
++        # across non-consecutive months.
++        positions = [
++            (run_index, offset) for run_index, run in enumerate(runs) for offset in range(len(run))
++        ]
+         reset_probability = min(1.0, 1.0 / self.expected_block_length)
+-        source_index = int(rng.integers(0, len(source_months)))
+-        sampled = []
++        run_index, offset = positions[int(rng.integers(0, len(positions)))]
++        sampled: list[pd.Period] = []
++        boundary_restarts = 0
++        reset_restarts = 0
+         for _ in range(self.months):
+             if sampled and rng.random() < reset_probability:
+-                source_index = int(rng.integers(0, len(source_months)))
+-            sampled.append(source_months[source_index])
+-            source_index += 1
+-            if source_index >= len(source_months):
+-                source_index = int(rng.integers(0, len(source_months)))
++                run_index, offset = positions[int(rng.integers(0, len(positions)))]
++                reset_restarts += 1
++            sampled.append(runs[run_index][offset])
++            if offset + 1 < len(runs[run_index]):
++                offset += 1
++            else:
++                run_index, offset = positions[int(rng.integers(0, len(positions)))]
++                boundary_restarts += 1
+         target_start = self.start_month or source_months[0]
+-        target_months = [target_start + offset for offset in range(self.months)]
+-        return _materialize_months(trades, sampled, target_months, self.name, path_index)
++        target_months = [target_start + offset_i for offset_i in range(self.months)]
++        path = _materialize_months(trades, sampled, target_months, self.name, path_index)
++        diagnostics = {
++            "policy": self.name,
++            "consecutive_runs": len(runs),
++            "reset_probability": reset_probability,
++            "restarts_due_to_boundary": boundary_restarts,
++            "restarts_due_to_reset": reset_restarts,
++        }
++        return ResampledPath(path.trades, path.sampled_blocks, diagnostics)
+ 
+ 
+ def _sorted_source_months(
+@@ -187,6 +226,34 @@ def _sorted_source_months(
+     return sorted(months)
+ 
+ 
++def _warn_if_coverage_absent(coverage: Sequence[StrategyCoverage] | None) -> None:
++    """Single source of the coverage-absent warning, shared by every bootstrap."""
++
++    if coverage is None:
++        warnings.warn(
++            "coverage metadata absent; missing months cannot be distinguished from "
++            "unverified flat months",
++            RuntimeWarning,
++            stacklevel=3,
++        )
++
++
++def _consecutive_runs(months: Sequence[pd.Period]) -> list[list[pd.Period]]:
++    """Split sorted unique month Periods into maximal calendar-consecutive runs.
++
++    A gap (``next != prev + 1``) starts a new run, so block bootstraps never
++    treat non-consecutive source months as contiguous.
++    """
++
++    runs: list[list[pd.Period]] = []
++    for month in months:
++        if runs and month == runs[-1][-1] + 1:
++            runs[-1].append(month)
++        else:
++            runs.append([month])
++    return runs
++
++
+ def _rng_for_path(master_seed: int | None, path_index: int) -> np.random.Generator:
+     if path_index < 0:
+         raise ValueError("path_index cannot be negative")
+diff --git a/tests/regression/test_b1_timezone.py b/tests/regression/test_b1_timezone.py
+index 73d1d42..5ca653e 100644
+--- a/tests/regression/test_b1_timezone.py
++++ b/tests/regression/test_b1_timezone.py
+@@ -17,9 +17,14 @@ from __future__ import annotations
+ import pandas as pd
+ 
+ from sim_core.ingestion.csv_loader import load_canonical_margin_csv, normalize_trade_frame
++from sim_core.models import InstrumentSpec
+ from sim_core.resampling.policies import HistoricalReplay, SameCalendarMonthBootstrap
+ 
+ CANONICAL = "sample_data/nq_es_margin_sim_master_2025_2026.csv"
++_MICRO_SPECS = {
++    "nq_open": InstrumentSpec("NQ", "MNQ", 2.0, "USD"),
++    "es_open": InstrumentSpec("ES", "MES", 5.0, "USD"),
++}
+ 
+ 
+ def _utc_frame() -> pd.DataFrame:
+@@ -59,7 +64,7 @@ def test_utc_trades_resample_without_tz_error():
+ 
+ def test_canonical_ledger_historical_and_seasonal_complete():
+     """RED: canonical UTC ledger completes historical replay but seasonal raises today (BLOCKER-1)."""
+-    trades = load_canonical_margin_csv(CANONICAL)
++    trades = load_canonical_margin_csv(CANONICAL, contract_specs_by_strategy=_MICRO_SPECS)
+     HistoricalReplay().sample(trades)  # no timestamp shift -> already works
+     path = SameCalendarMonthBootstrap(months=2, start_month="2026-01").sample(trades, seed=1)
+     assert len(path.trades) >= 1
+diff --git a/tests/regression/test_b2_rng_streams.py b/tests/regression/test_b2_rng_streams.py
+index dc58f43..3635db8 100644
+--- a/tests/regression/test_b2_rng_streams.py
++++ b/tests/regression/test_b2_rng_streams.py
+@@ -30,7 +30,7 @@ def _two_year_trades() -> list:
+                     "pnl_dollars": 10 * year + month,
+                 }
+             )
+-    return normalize_trade_frame(pd.DataFrame(rows))
++    return normalize_trade_frame(pd.DataFrame(rows), source_timezone="UTC")
+ 
+ 
+ def _source_months(path) -> tuple:
+diff --git a/tests/regression/test_b4_scenario_and_exports.py b/tests/regression/test_b4_scenario_and_exports.py
+index 09051aa..e90f99a 100644
+--- a/tests/regression/test_b4_scenario_and_exports.py
++++ b/tests/regression/test_b4_scenario_and_exports.py
+@@ -34,7 +34,8 @@ def _one_path():
+                     "source_row_id": "r1",
+                 }
+             ]
+-        )
++        ),
++        source_timezone="UTC",
+     )
+     return run_fixed_contract_simulation(trades, account=AccountConfig(initial_equity=100_000))
+ 
+diff --git a/tests/regression/test_h1_instrument_mapping.py b/tests/regression/test_h1_instrument_mapping.py
+index 7037b18..ce74555 100644
+--- a/tests/regression/test_h1_instrument_mapping.py
++++ b/tests/regression/test_h1_instrument_mapping.py
+@@ -21,21 +21,25 @@ from sim_core.models import InstrumentSpec, TradeValidationError
+ CANONICAL = "sample_data/nq_es_margin_sim_master_2025_2026.csv"
+ 
+ 
++def _micro_specs() -> dict[str, InstrumentSpec]:
++    # Explicit per-strategy declaration (ADR-011); no inference from the symbol.
++    return {
++        "nq_open": InstrumentSpec("NQ", "MNQ", 2.0, "USD"),
++        "es_open": InstrumentSpec("ES", "MES", 5.0, "USD"),
++    }
++
++
+ def test_blank_dpp_fails_validation():
+-    """RED: a blank dpp silently defaults to micro today instead of raising (HIGH-1)."""
++    """A blank dpp fails closed under an explicit declared mapping (HIGH-1)."""
+     frame = pd.read_csv(CANONICAL)
+     frame.loc[0, "dpp"] = np.nan
+     with pytest.raises(TradeValidationError):
+-        normalize_canonical_margin_frame(frame)
++        normalize_canonical_margin_frame(frame, contract_specs_by_strategy=_micro_specs())
+ 
+ 
+ def test_declared_micro_mapping_passes():
+     """GUARD: an explicit NQ->MNQ $2 / ES->MES $5 declaration loads and matches dpp."""
+-    registry = {
+-        "NQ": InstrumentSpec("NQ", "MNQ", 2.0, "USD"),
+-        "ES": InstrumentSpec("ES", "MES", 5.0, "USD"),
+-    }
+-    trades = load_canonical_margin_csv(CANONICAL, instrument_registry=registry)
++    trades = load_canonical_margin_csv(CANONICAL, contract_specs_by_strategy=_micro_specs())
+     declared = {(t.instrument, t.contract_symbol, t.dollars_per_point) for t in trades}
+     assert ("NQ", "MNQ", 2.0) in declared
+     assert ("ES", "MES", 5.0) in declared
+@@ -46,4 +50,4 @@ def test_dpp_disagreeing_with_declaration_is_rejected():
+     frame = pd.read_csv(CANONICAL)
+     frame.loc[0, "dpp"] = 20.0  # full-size value under a declared-micro mapping
+     with pytest.raises(TradeValidationError):
+-        normalize_canonical_margin_frame(frame)
++        normalize_canonical_margin_frame(frame, contract_specs_by_strategy=_micro_specs())
+diff --git a/tests/regression/test_h2_coverage.py b/tests/regression/test_h2_coverage.py
+index 3b5bc40..a13e8ea 100644
+--- a/tests/regression/test_h2_coverage.py
++++ b/tests/regression/test_h2_coverage.py
+@@ -31,7 +31,8 @@ def _jan_only():
+                     "pnl_dollars": 5,
+                 }
+             ]
+-        )
++        ),
++        source_timezone="UTC",
+     )
+ 
+ 
+@@ -63,7 +64,8 @@ def test_partial_month_excluded_even_when_it_has_trades():
+                     "pnl_dollars": 5,
+                 }
+             ]
+-        )
++        ),
++        source_timezone="UTC",
+     )
+     coverage = [StrategyCoverage("s", "ES", "2025-02", "2025-02", {"2025-02"})]
+     with pytest.raises(ValueError):
+diff --git a/tests/regression/test_h3_percentile_carryforward.py b/tests/regression/test_h3_percentile_carryforward.py
+index 89a3302..646c64a 100644
+--- a/tests/regression/test_h3_percentile_carryforward.py
++++ b/tests/regression/test_h3_percentile_carryforward.py
+@@ -30,7 +30,7 @@ def _path(entries):
+         for i, (month, pnl) in enumerate(entries)
+     ]
+     return run_fixed_contract_simulation(
+-        normalize_trade_frame(pd.DataFrame(rows)),
++        normalize_trade_frame(pd.DataFrame(rows), source_timezone="UTC"),
+         account=AccountConfig(initial_equity=1_000),
+     )
+ 
+diff --git a/tests/test_block_gaps.py b/tests/test_block_gaps.py
+new file mode 100644
+index 0000000..5a16b34
+--- /dev/null
++++ b/tests/test_block_gaps.py
+@@ -0,0 +1,60 @@
++"""MEDIUM-R3-E — moving/stationary blocks must not bridge calendar gaps.
++
++Source coverage with a missing middle month splits into two consecutive runs;
++blocks traverse only verified-consecutive months, a too-long block fails, and
++restarts at a gap/boundary are recorded in diagnostics.
++"""
++from __future__ import annotations
++
++import pandas as pd
++import pytest
++
++from sim_core.ingestion.csv_loader import normalize_trade_frame
++from sim_core.resampling.policies import MovingBlockBootstrap, StationaryBlockBootstrap
++
++VALID = {pd.Period(p, "M") for p in ("2024-01", "2024-02", "2024-04", "2024-05")}
++
++
++def _gapped_trades():
++    # 2024-03 is deliberately absent -> runs are [Jan,Feb] and [Apr,May].
++    rows = [
++        {
++            "strategy_id": "s",
++            "instrument": "ES",
++            "entry_time": f"2024-{month:02d}-05T09:30:00Z",
++            "exit_time": f"2024-{month:02d}-05T10:00:00Z",
++            "pnl_dollars": float(month),
++        }
++        for month in (1, 2, 4, 5)
++    ]
++    return normalize_trade_frame(pd.DataFrame(rows))
++
++
++def test_moving_block_never_bridges_a_gap():
++    path = MovingBlockBootstrap(months=4, block_length=2, start_month="2026-01").sample(
++        _gapped_trades(), seed=3
++    )
++    assert path.diagnostics["consecutive_runs"] == 2
++    blocks = path.sampled_blocks
++    # length-2 blocks are aligned at indices (0,1) and (2,3); each pair must be
++    # calendar-consecutive (never the Feb->Apr jump across the missing March).
++    for lo, hi in ((0, 1), (2, 3)):
++        assert blocks[hi].source_month == blocks[lo].source_month + 1
++    assert all(b.source_month in VALID for b in blocks)
++
++
++def test_moving_block_too_long_for_any_run_fails():
++    with pytest.raises(ValueError, match="long enough"):
++        MovingBlockBootstrap(months=3, block_length=3, start_month="2026-01").sample(
++            _gapped_trades(), seed=1
++        )
++
++
++def test_stationary_block_restarts_at_gap_and_never_uses_missing_month():
++    path = StationaryBlockBootstrap(months=8, expected_block_length=2.0, start_month="2026-01").sample(
++        _gapped_trades(), seed=7
++    )
++    assert path.diagnostics["consecutive_runs"] == 2
++    assert "restarts_due_to_boundary" in path.diagnostics
++    # The missing month (2024-03) must never appear as a source month.
++    assert all(b.source_month in VALID for b in path.sampled_blocks)
+diff --git a/tests/test_breakeven_policy.py b/tests/test_breakeven_policy.py
+new file mode 100644
+index 0000000..95f87a5
+--- /dev/null
++++ b/tests/test_breakeven_policy.py
+@@ -0,0 +1,64 @@
++"""ADR-012 / MEDIUM-R3-D — explicit breakeven epsilon policy.
++
++Exact zero by default; optional explicit dollar or tick tolerance; the selected
++policy is recorded in Scenario metadata.
++"""
++from __future__ import annotations
++
++import pandas as pd
++
++from sim_core.metrics.reports import trade_outcome_taxonomy
++from sim_core.models import BreakevenPolicy, Scenario, Trade
++
++
++def _trade(pnl: float) -> Trade:
++    return Trade(
++        trade_id="t",
++        source_row_id="r",
++        strategy_id="s",
++        instrument="ES",
++        contract_symbol="MES",
++        entry_time=pd.Timestamp("2025-01-02 09:30", tz="UTC"),
++        exit_time=pd.Timestamp("2025-01-02 10:00", tz="UTC"),
++        pnl_dollars=pnl,
++    )
++
++
++def test_default_is_exact_zero():
++    tax = trade_outcome_taxonomy([_trade(0.0), _trade(0.01), _trade(-0.01)])
++    assert tax["n_breakeven"] == 1.0
++    assert tax["n_win"] == 1.0
++    assert tax["n_loss"] == 1.0
++
++
++def test_dollar_tolerance_boundary_below_at_above():
++    policy = BreakevenPolicy(mode="dollars", tolerance_dollars=5.0)
++    trades = [_trade(4.0), _trade(5.0), _trade(5.01), _trade(-5.0), _trade(-5.01)]
++    tax = trade_outcome_taxonomy(trades, policy=policy)
++    # below tolerance and exactly at tolerance -> breakeven; strictly above -> win/loss
++    assert tax["n_breakeven"] == 3.0  # 4.0, 5.0, -5.0
++    assert tax["n_win"] == 1.0  # 5.01
++    assert tax["n_loss"] == 1.0  # -5.01
++
++
++def test_tick_tolerance_resolves_against_dollars_per_tick():
++    policy = BreakevenPolicy(mode="ticks", ticks=2.0)
++    # MES tick value $1.25 -> tolerance = 2 * 1.25 = $2.50
++    tax = trade_outcome_taxonomy(
++        [_trade(2.5), _trade(2.51)], policy=policy, dollars_per_tick=1.25
++    )
++    assert tax["n_breakeven"] == 1.0  # 2.50 at tolerance
++    assert tax["n_win"] == 1.0  # 2.51 above
++
++
++def test_breakeven_policy_recorded_in_scenario_metadata_round_trips():
++    policy = BreakevenPolicy(mode="dollars", tolerance_dollars=5.0)
++    scenario = Scenario(
++        master_seed=1,
++        resampling_policy="historical_replay",
++        policy_params={},
++        breakeven_policy=policy.to_dict(),
++    )
++    assert scenario.breakeven_policy["mode"] == "dollars"
++    assert scenario.breakeven_policy["tolerance_dollars"] == 5.0
++    assert Scenario.from_dict(scenario.to_dict()).breakeven_policy == scenario.breakeven_policy
+diff --git a/tests/test_contract_mapping.py b/tests/test_contract_mapping.py
+new file mode 100644
+index 0000000..dc1e4c9
+--- /dev/null
++++ b/tests/test_contract_mapping.py
+@@ -0,0 +1,92 @@
++"""HIGH-R3-1 / ADR-011 — explicit per-strategy contract mapping is required.
++
++Underlying symbols (NQ/ES) must never silently imply a contract (MNQ/MES). The
++canonical loader requires `contract_specs_by_strategy`; unknown strategies,
++missing mappings, blank `dpp`, and `dpp` that contradicts the declaration all
++fail validation. The default registry is convenience tooling only.
++"""
++from __future__ import annotations
++
++import numpy as np
++import pandas as pd
++import pytest
++
++from sim_core.ingestion.csv_loader import (
++    load_canonical_margin_csv,
++    normalize_canonical_margin_frame,
++)
++from sim_core.instruments import DEFAULT_INSTRUMENT_REGISTRY, build_specs_from_registry
++from sim_core.models import InstrumentSpec, TradeValidationError
++
++CANONICAL = "sample_data/nq_es_margin_sim_master_2025_2026.csv"
++
++
++def _micro_specs() -> dict[str, InstrumentSpec]:
++    return {
++        "nq_open": InstrumentSpec("NQ", "MNQ", 2.0, "USD"),
++        "es_open": InstrumentSpec("ES", "MES", 5.0, "USD"),
++    }
++
++
++def test_case1_no_mapping_supplied_fails_with_clear_error():
++    frame = pd.read_csv(CANONICAL)
++    with pytest.raises(TradeValidationError) as exc:
++        normalize_canonical_margin_frame(frame)
++    assert "contract_specs_by_strategy" in str(exc.value)
++
++
++def test_case2_one_strategy_mapping_missing_names_the_strategy():
++    frame = pd.read_csv(CANONICAL)
++    partial = {"nq_open": InstrumentSpec("NQ", "MNQ", 2.0, "USD")}  # es_open missing
++    with pytest.raises(TradeValidationError) as exc:
++        normalize_canonical_margin_frame(frame, contract_specs_by_strategy=partial)
++    assert "es_open" in str(exc.value)
++
++
++def test_case3_explicit_micro_mappings_load_successfully():
++    trades = load_canonical_margin_csv(CANONICAL, contract_specs_by_strategy=_micro_specs())
++    assert len(trades) == 4
++    by_strategy = {(t.strategy_id, t.contract_symbol, t.dollars_per_point) for t in trades}
++    assert ("nq_open", "MNQ", 2.0) in by_strategy
++    assert ("es_open", "MES", 5.0) in by_strategy
++
++
++def test_case4_full_size_mapping_against_micro_dpp_fails():
++    full_size = {
++        "nq_open": InstrumentSpec("NQ", "NQ", 20.0, "USD"),
++        "es_open": InstrumentSpec("ES", "ES", 50.0, "USD"),
++    }
++    with pytest.raises(TradeValidationError) as exc:
++        load_canonical_margin_csv(CANONICAL, contract_specs_by_strategy=full_size)
++    assert "does not match declared" in str(exc.value)
++
++
++def test_case5_blank_dpp_fails():
++    frame = pd.read_csv(CANONICAL)
++    frame.loc[0, "dpp"] = np.nan
++    with pytest.raises(TradeValidationError) as exc:
++        normalize_canonical_margin_frame(frame, contract_specs_by_strategy=_micro_specs())
++    assert "dpp" in str(exc.value)
++
++
++def test_case6_unknown_underlying_for_declared_strategy_fails():
++    # Declared underlying does not match the ledger's row underlying for nq_open.
++    wrong_underlying = {
++        "nq_open": InstrumentSpec("CL", "MCL", 100.0, "USD"),
++        "es_open": InstrumentSpec("ES", "MES", 5.0, "USD"),
++    }
++    with pytest.raises(TradeValidationError) as exc:
++        normalize_canonical_margin_frame(
++            pd.read_csv(CANONICAL), contract_specs_by_strategy=wrong_underlying
++        )
++    assert "does not match declared" in str(exc.value)
++
++
++def test_build_specs_from_registry_is_explicit_and_rejects_unknown_underlying():
++    specs = build_specs_from_registry(
++        {"nq_open": "NQ", "es_open": "ES"}, DEFAULT_INSTRUMENT_REGISTRY
++    )
++    assert specs["nq_open"].contract_symbol == "MNQ"
++    assert specs["es_open"].contract_symbol == "MES"
++    with pytest.raises(KeyError):
++        build_specs_from_registry({"x": "ZZ"}, DEFAULT_INSTRUMENT_REGISTRY)
+diff --git a/tests/test_coverage_report.py b/tests/test_coverage_report.py
+new file mode 100644
+index 0000000..304f0b4
+--- /dev/null
++++ b/tests/test_coverage_report.py
+@@ -0,0 +1,66 @@
++"""MEDIUM-R3-C — coverage diagnostics distinguish missing vs verified-flat.
++
++Strategy 'a' is declared covered Jan-Feb but trades only in January, so its
++February is a verified flat month. Strategy 'b' trades only in January with no
++coverage, so its February is missing (cannot be assumed flat).
++"""
++from __future__ import annotations
++
++import pandas as pd
++
++from sim_core.diagnostics.coverage import build_coverage_report
++from sim_core.ingestion.csv_loader import normalize_trade_frame
++from sim_core.models import StrategyCoverage
++
++
++def _trades():
++    rows = [
++        {
++            "strategy_id": "a",
++            "instrument": "ES",
++            "entry_time": "2025-01-06T09:30:00Z",
++            "exit_time": "2025-01-06T10:00:00Z",
++            "pnl_dollars": 5,
++        },
++        {
++            "strategy_id": "b",
++            "instrument": "NQ",
++            "entry_time": "2025-01-06T09:30:00Z",
++            "exit_time": "2025-01-06T10:00:00Z",
++            "pnl_dollars": -3,
++        },
++    ]
++    return normalize_trade_frame(pd.DataFrame(rows))
++
++
++def test_missing_and_verified_flat_are_distinct():
++    coverage = [StrategyCoverage("a", "ES", "2025-01", "2025-02")]
++    report = build_coverage_report(_trades(), coverage)
++
++    assert report.status_for("a", "2025-01") == "complete"
++    assert report.status_for("a", "2025-02") == "verified_flat"
++    assert report.status_for("b", "2025-01") == "complete"
++    assert report.status_for("b", "2025-02") == "missing"
++
++
++def test_report_records_support_counts_and_coverage_span():
++    coverage = [StrategyCoverage("a", "ES", "2025-01", "2025-02")]
++    report = build_coverage_report(_trades(), coverage)
++    records = {(r["strategy_id"], r["month"]): r for r in report.to_records()}
++
++    # January for 'a' is eligible with one same-calendar-month source instance.
++    assert records[("a", "2025-01")]["seasonal_eligible"] is True
++    assert records[("a", "2025-01")]["source_month_support"] == 1
++    # 'b' has no coverage; its missing February is not seasonal-eligible.
++    assert records[("b", "2025-02")]["seasonal_eligible"] is False
++
++    assert report.strategies["a"]["has_coverage"] is True
++    assert report.strategies["a"]["coverage_end"] == "2025-02"
++    assert report.strategies["b"]["has_coverage"] is False
++
++
++def test_warnings_flag_missing_months_and_absent_coverage():
++    report = build_coverage_report(_trades(), [StrategyCoverage("a", "ES", "2025-01", "2025-02")])
++    joined = " | ".join(report.warnings())
++    assert "no coverage declared" in joined  # strategy b
++    assert "missing month" in joined  # strategy b February
+diff --git a/tests/test_provenance.py b/tests/test_provenance.py
+new file mode 100644
+index 0000000..9c9b9a1
+--- /dev/null
++++ b/tests/test_provenance.py
+@@ -0,0 +1,90 @@
++"""MEDIUM-R3-A — provenance self-verification.
++
++verify_result_provenance detects changed input data, a tampered/mismatched
++scenario, a different engine version, and drift in seed/paths/policy/mappings/
++commissions.
++"""
++from __future__ import annotations
++
++import pandas as pd
++
++from sim_core.batch import hash_trades, run_simulation_ensemble, scenario_hash, verify_result_provenance
++from sim_core.ingestion.csv_loader import normalize_trade_frame
++from sim_core.models import Scenario
++from sim_core.resampling.policies import SameCalendarMonthBootstrap
++
++POLICY = SameCalendarMonthBootstrap(months=2, start_month="2026-01")
++
++
++def _trades(bump: float = 0.0):
++    rows = []
++    for year in (2024, 2025):
++        for month in (1, 2):
++            rows.append(
++                {
++                    "strategy_id": "s",
++                    "instrument": "ES",
++                    "entry_time": f"{year}-{month:02d}-05T09:30:00Z",
++                    "exit_time": f"{year}-{month:02d}-05T10:00:00Z",
++                    "pnl_dollars": 10 + month + bump,
++                }
++            )
++    return normalize_trade_frame(pd.DataFrame(rows))
++
++
++def _scenario(trades, *, seed: int = 1234, engine_version: str | None = None) -> Scenario:
++    kwargs = dict(
++        scenario_id="prov",
++        master_seed=seed,
++        number_of_paths=4,
++        horizon_months=2,
++        starting_equity=100_000,
++        resampling_method="same_calendar_month_bootstrap",
++        resampling_params={"months": 2, "start_month": "2026-01"},
++        contract_mappings={"s": {"underlying": "ES", "contract_symbol": "MES", "dpp": 5.0}},
++        commission_assumptions={"s": 0.0},
++        input_data_hash=hash_trades(trades),
++    )
++    if engine_version is not None:
++        kwargs["engine_version"] = engine_version
++    return Scenario(**kwargs)
++
++
++def test_provenance_round_trip_ok():
++    trades = _trades()
++    scenario = _scenario(trades)
++    _, distribution = run_simulation_ensemble(scenario, trades, POLICY)
++    report = verify_result_provenance(distribution, scenario, trades)
++    assert report.ok
++    assert all(report.checks.values())
++
++
++def test_provenance_detects_changed_input_data():
++    trades = _trades()
++    scenario = _scenario(trades)
++    _, distribution = run_simulation_ensemble(scenario, trades, POLICY)
++    report = verify_result_provenance(distribution, scenario, _trades(bump=1.0))
++    assert not report.ok
++    assert report.checks["input_data_hash"] is False
++    assert "input_data_hash" in report.failures()
++
++
++def test_provenance_detects_tampered_scenario():
++    trades = _trades()
++    scenario = _scenario(trades, seed=1234)
++    _, distribution = run_simulation_ensemble(scenario, trades, POLICY)
++    tampered = _scenario(trades, seed=9999)
++    report = verify_result_provenance(distribution, tampered, trades)
++    assert not report.ok
++    assert report.checks["master_seed"] is False
++    assert report.checks["scenario_hash"] is False
++    assert scenario_hash(scenario) != scenario_hash(tampered)
++
++
++def test_provenance_detects_engine_version_drift():
++    trades = _trades()
++    scenario = _scenario(trades, engine_version="9.9.9")
++    _, distribution = run_simulation_ensemble(scenario, trades, POLICY)
++    report = verify_result_provenance(distribution, scenario, trades)
++    assert report.checks["engine_version"] is False
++    assert not report.ok
+diff --git a/tests/test_real_ledger_integration.py b/tests/test_real_ledger_integration.py
+new file mode 100644
+index 0000000..5094059
+--- /dev/null
++++ b/tests/test_real_ledger_integration.py
+@@ -0,0 +1,85 @@
++"""Real-ledger integration harness tests.
++
++The harness is exercised end-to-end against the canonical-schema fixture. The
++`real_ledger`-marked test runs only when SIM_REAL_LEDGER_PATH points at the real
++1,150-row ledger, and skips cleanly otherwise.
++"""
++from __future__ import annotations
++
++import json
++import os
++from pathlib import Path
++
++import pytest
++import yaml
++
++from sim_core.integration.real_ledger import (
++    IntegrationError,
++    build_integration_report,
++    discover_strategy_ids,
++    main,
++)
++
++FIXTURE = "sample_data/nq_es_margin_sim_master_2025_2026.csv"
++
++
++def _mapping(tmp_path: Path, strategies: dict) -> Path:
++    path = tmp_path / "mapping.yaml"
++    path.write_text(yaml.safe_dump({"strategies": strategies}), encoding="utf-8")
++    return path
++
++
++def _both() -> dict:
++    return {
++        "nq_open": {"underlying": "NQ", "contract_symbol": "MNQ", "dollars_per_point": 2, "currency": "USD"},
++        "es_open": {"underlying": "ES", "contract_symbol": "MES", "dollars_per_point": 5, "currency": "USD"},
++    }
++
++
++def test_discovery_lists_strategy_ids():
++    assert discover_strategy_ids(FIXTURE) == ["es_open", "nq_open"]
++
++
++def test_harness_runs_against_canonical_schema_fixture(tmp_path):
++    report = build_integration_report(FIXTURE, _mapping(tmp_path, _both()))
++    assert report["row_count"] == 4
++    assert set(report["strategy_ids"]) == {"nq_open", "es_open"}
++    assert report["timezone_validation"]["all_utc"] is True
++    assert report["chronological_order_valid"] is True
++    for name in ("seasonal_bootstrap", "moving_block", "stationary_block"):
++        assert report["smoke_tests"][name]["ok"] is True
++    assert report["historical_replay_pnl_by_strategy"]["nq_open"] == 20.0
++    assert report["historical_replay_pnl_by_strategy"]["es_open"] == 10.0
++    assert report["trade_count_by_strategy"] == {"nq_open": 2, "es_open": 2}
++    assert report["data_hash"] and report["scenario_hash"]
++
++
++def test_unmapped_strategy_fails_with_useful_message(tmp_path):
++    only_nq = {"nq_open": _both()["nq_open"]}
++    with pytest.raises(IntegrationError) as exc:
++        build_integration_report(FIXTURE, _mapping(tmp_path, only_nq))
++    assert "es_open" in str(exc.value)
++
++
++def test_cli_writes_report(tmp_path):
++    out = tmp_path / "out"
++    rc = main(["--csv", FIXTURE, "--mapping", str(_mapping(tmp_path, _both())), "--output", str(out)])
++    assert rc == 0
++    data = json.loads((out / "integration_report.json").read_text())
++    assert data["row_count"] == 4
++    assert data["timezone_validation"]["all_utc"] is True
++
++
++@pytest.mark.real_ledger
++def test_real_ledger_when_available(tmp_path):
++    csv_path = os.environ.get("SIM_REAL_LEDGER_PATH")
++    if not csv_path:
++        pytest.skip("SIM_REAL_LEDGER_PATH not set; real 1,150-row ledger unavailable")
++    mapping = os.environ.get("SIM_REAL_LEDGER_MAPPING", "configs/nq_es_micro_contracts.yaml")
++    report = build_integration_report(csv_path, mapping)
++    assert report["row_count"] > 0
++    assert report["strategy_ids"]
++    assert report["timezone_validation"]["all_utc"] is True
++    assert report["chronological_order_valid"] is True
++    for name in ("seasonal_bootstrap", "moving_block", "stationary_block"):
++        assert report["smoke_tests"][name]["ok"] is True
+diff --git a/tests/test_timezone_policy.py b/tests/test_timezone_policy.py
+new file mode 100644
+index 0000000..2166ff4
+--- /dev/null
++++ b/tests/test_timezone_policy.py
+@@ -0,0 +1,75 @@
++"""MEDIUM-R3-B — explicit timezone policy for ingestion.
++
++Default `source_timezone=None`:
++  * UTC-aware timestamp -> accepted and normalized to UTC.
++  * Naive timestamp with explicit source_timezone -> localized then UTC.
++  * Naive timestamp with no declaration -> validation error.
++  * DST-ambiguous / nonexistent local time -> clear error unless dst_resolution.
++"""
++from __future__ import annotations
++
++import pandas as pd
++import pytest
++
++from sim_core.ingestion.csv_loader import normalize_trade_frame
++from sim_core.models import TradeValidationError
++
++
++def _frame(entry: str, exit_: str) -> pd.DataFrame:
++    return pd.DataFrame(
++        [
++            {
++                "strategy_id": "s",
++                "instrument": "ES",
++                "entry_time": entry,
++                "exit_time": exit_,
++                "pnl_dollars": 1,
++            }
++        ]
++    )
++
++
++def test_utc_aware_accepted_and_normalized():
++    trades = normalize_trade_frame(_frame("2025-01-02T09:30:00Z", "2025-01-02T10:00:00Z"))
++    assert str(trades[0].entry_time.tz) == "UTC"
++    assert trades[0].entry_time.isoformat() == "2025-01-02T09:30:00+00:00"
++
++
++def test_naive_with_explicit_timezone_localized_then_utc():
++    # 09:30 America/Chicago (CST, UTC-6 in January) -> 15:30 UTC.
++    trades = normalize_trade_frame(
++        _frame("2025-01-02 09:30", "2025-01-02 10:00"), source_timezone="America/Chicago"
++    )
++    assert str(trades[0].entry_time.tz) == "UTC"
++    assert trades[0].entry_time.hour == 15 and trades[0].entry_time.minute == 30
++
++
++def test_naive_without_timezone_declaration_is_rejected():
++    with pytest.raises(TradeValidationError) as exc:
++        normalize_trade_frame(_frame("2025-01-02 09:30", "2025-01-02 10:00"))
++    assert "naive timestamp" in str(exc.value)
++
++
++def test_dst_nonexistent_local_time_fails_without_policy_and_resolves_with_one():
++    # 2025-03-09 02:30 America/Chicago is in the spring-forward gap (does not exist).
++    gap = _frame("2025-03-09 02:30", "2025-03-09 02:45")
++    with pytest.raises(TradeValidationError) as exc:
++        normalize_trade_frame(gap, source_timezone="America/Chicago")
++    assert "dst_resolution" in str(exc.value)
++
++    resolved = normalize_trade_frame(
++        gap, source_timezone="America/Chicago", dst_resolution="shift_forward"
++    )
++    assert str(resolved[0].entry_time.tz) == "UTC"
++
++
++def test_dst_ambiguous_local_time_fails_without_policy_and_resolves_with_one():
++    # 2025-11-02 01:30 America/Chicago is ambiguous (fall-back overlap).
++    overlap = _frame("2025-11-02 01:30", "2025-11-02 01:45")
++    with pytest.raises(TradeValidationError):
++        normalize_trade_frame(overlap, source_timezone="America/Chicago")
++
++    resolved = normalize_trade_frame(
++        overlap, source_timezone="America/Chicago", dst_resolution="earliest"
++    )
++    assert str(resolved[0].entry_time.tz) == "UTC"

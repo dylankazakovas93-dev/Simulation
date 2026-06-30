@@ -113,3 +113,41 @@ explicit and auditable.
 `DEFAULT_INSTRUMENT_REGISTRY` fallback with a required declared mapping;
 `normalize_canonical_margin_frame` must raise (not default) on a blank `dpp`.
 Covered by `tests/regression/test_h1_instrument_mapping.py`.
+
+## ADR-012 — Breakeven epsilon policy
+**Status:** ACCEPTED (Review 004)
+**Decision:** Default classification is exact zero. An optional tolerance may be
+declared in explicit dollars or instrument ticks (`BreakevenPolicy`), resolved at
+classification time and recorded in `Scenario.breakeven_policy`. No undocumented
+floating-point constant; `classify_result` and `trade_outcome_taxonomy` agree.
+
+## ADR-013 — Timezone ingestion policy
+**Status:** ACCEPTED (Review 004)
+**Decision:** `normalize_trade_frame` default `source_timezone=None`. UTC-aware
+inputs are accepted and normalized to UTC; naive timestamps are rejected unless a
+source timezone is explicitly declared; DST-ambiguous/nonexistent local times fail
+clearly unless an explicit `dst_resolution` policy is supplied.
+
+## ADR-014 — Provenance self-verification
+**Status:** ACCEPTED (Review 004)
+**Decision:** `verify_result_provenance(result, scenario, source_data)` recomputes
+the input-data hash and checks scenario hash, engine version, master seed, path
+count, resampling policy, strategy mappings, and commission assumptions.
+`build_result_distribution` records the computed input-data hash as authoritative
+and warns on a declared-vs-computed mismatch.
+
+## ADR-015 — Gap-aware block bootstraps
+**Status:** ACCEPTED (Review 004)
+**Decision:** Moving and stationary block bootstraps traverse only calendar-
+consecutive ("verified consecutive") months. A missing/partial month breaks
+continuity; a block that cannot fit within any run fails; restarts at a gap or
+dataset boundary are recorded in `ResampledPath.diagnostics`. Non-consecutive
+source months are never treated as contiguous.
+
+## ADR-016 — Coverage diagnostics
+**Status:** ACCEPTED (Review 004)
+**Decision:** `build_coverage_report` produces per-strategy/per-month status
+(complete / partial / verified_flat / missing), seasonal support counts, trade
+counts, coverage span, and per-method eligibility. It feeds scenario-validation
+warnings and exported diagnostics. The coverage-absent warning is centralized
+across every bootstrap policy, not only seasonal.
