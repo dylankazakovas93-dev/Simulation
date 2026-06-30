@@ -25,10 +25,8 @@ Legend: **[GUARD]** enforced in code · **[WARN]** should be surfaced in reports
 
 - **[GUARD]** `StrategyCoverage` can distinguish verified flat zero-trade months
   from missing data.
-- **[WARN]** The real uploaded
-  `nq_es_margin_sim_master_2025_2026.csv` was not present in the local
-  workspace. The branch includes a representative fixture with the requested
-  filename and schema, but Claude should rerun against the real ledger.
+- **[GUARD]** The real 1,150-row ledger was integrated in approved V1.1; the
+  integration report is committed under `reports/real_ledger_v1/`.
 - **[GUARD/WARN]** Normalized timestamps are UTC-aware. Naive timestamps are
   localized through `source_timezone` with an explicit warning; callers can set
   `source_timezone=None` to fail closed.
@@ -46,8 +44,9 @@ Legend: **[GUARD]** enforced in code · **[WARN]** should be surfaced in reports
 - **[GUARD]** Equity is not capped or floored; ruin can be measured.
 - **[GUARD]** Realized P&L is ordered by `exit_time`, `entry_time`,
   `strategy_id`, `source_row_id`.
-- **[SCOPE]** No deposits, withdrawals, contributions ledger, time-weighted
-  returns, or money-weighted returns in V1.
+- **[GUARD]** V2 milestone adds explicit deposits, withdrawals, contribution
+  tracking, time-weighted returns, and money-weighted returns in
+  `sim_core.live_account`.
 - **[SCOPE]** No open-position mark-to-market. Drawdown is realized-only and can
   understate intratrade risk.
 
@@ -61,9 +60,11 @@ Legend: **[GUARD]** enforced in code · **[WARN]** should be surfaced in reports
   declared strategy contract. Missing `dpp` fails closed.
 - **[GUARD]** `mult` from the canonical file is preserved as metadata and is not
   used as position sizing.
-- **[SCOPE]** No reinvestment, percentage-equity sizing, fixed-dollar risk,
-  margin restrictions, forced size-down, exposure analytics, prop-firm rules, or
-  optimizer.
+- **[GUARD]** V2 milestone adds fixed contracts, fixed-dollar risk,
+  percentage-equity risk, independent strategy allocations, reinvestment,
+  contract caps, cash reserve, and forced size-down reporting.
+- **[SCOPE]** No full margin/exposure analytics, prop-firm rules, optimizer, or
+  shared portfolio-level constraints yet.
 
 ## Outputs
 
@@ -87,7 +88,20 @@ Legend: **[GUARD]** enforced in code · **[WARN]** should be surfaced in reports
   coverage-absent warning fires for every bootstrap, not only seasonal.
 - **[GUARD]** Result provenance is self-verifiable; the computed input-data hash
   is authoritative in exports (ADR-014).
-- **[WARN/OPEN]** The real 1,150-row ledger has NOT yet been integrated; run
-  `sim_core.integration.real_ledger` against the real CSV before production
-  acceptance. The clamp-to-month-end behavior for shifted month-end trades still
-  clusters at the boundary (disclosed; acceptable for V1).
+- **[GUARD]** The real 1,150-row ledger was integrated and approved for V1.
+  The clamp-to-month-end behavior for shifted month-end trades still clusters at
+  the boundary (disclosed; acceptable for V1).
+
+## Version 2 milestone limitations
+
+- **[SCOPE]** Live-account sizing is recomputed at trade-entry events and cash
+  flows; there is no intratrade mark-to-market or margin liquidation.
+- **[SCOPE]** Shared portfolio constraints are reserved for a later V2 slice.
+  Strategy sizing is intentionally independent in this milestone.
+- **[SCOPE]** Operational ruin is a configured account-equity threshold; it does
+  not yet model broker margin, exchange exposure, prop-firm trailing rules, or
+  human operational constraints.
+- **[SCOPE]** Money-weighted return uses a deterministic XIRR-style numeric
+  solver and is intended for path reporting, not for optimization.
+- **[SCOPE]** The engine reports drawdown duration and recovery duration from
+  realized account events only.

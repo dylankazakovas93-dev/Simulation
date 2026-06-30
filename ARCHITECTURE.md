@@ -172,3 +172,60 @@ The engine does not expose a bare ambiguous `win_rate` metric.
   API (`sim_core.__all__`).
 - Block bootstraps now carry `ResampledPath.diagnostics` (consecutive runs,
   restart counts).
+
+## Version 2 Live-Account Layer
+
+Version 2 starts on `codex/v2-live-account` from approved V1 head
+`8a81536e6335b5b4250b3ce9658fef3fe51af561`. The V1 path generator remains the
+source of ordered `Trade` events. Live-account accounting is additive and lives
+outside `sim_core/resampling/`.
+
+New module:
+
+```text
+sim_core/live_account.py
+```
+
+Typed V2 concepts:
+
+- `LiveAccountConfig`: starting equity, currency, operational ruin threshold,
+  and drawdown thresholds.
+- `CashFlow` and `CashFlowPolicy`: explicit non-P&L deposits and withdrawals.
+- `FixedContractSizing`, `FixedDollarRiskSizing`, and `PercentEquitySizing`:
+  strategy-level sizing policies.
+- `StrategyAllocation`: one independent sizing policy per strategy.
+- `AccountState`, `AccountEvent`, and `SizingDecision`: deterministic event and
+  sizing audit records.
+- `LiveAccountPathResult`: account events, sizing decisions, monthly reports,
+  summary risk/return metrics, and JSON round-trip support.
+
+The event engine processes:
+
+1. Cash-flow events.
+2. Trade-entry sizing decisions.
+3. Trade-exit realized P&L events.
+
+At equal timestamps, priority is:
+
+1. Deposits.
+2. Trade exits and realized P&L.
+3. Withdrawals.
+4. Trade entries / next sizing decisions.
+
+Deposits never count as trading profit. Withdrawals never count as trading
+losses. Monthly and path reports expose trading P&L, deposits, withdrawals, net
+external contributions, ending equity, simple return on contributions,
+time-weighted return, money-weighted return, and trading return before cash
+flows.
+
+Fixed-dollar and percentage-equity sizing derive per-contract risk in this
+order:
+
+1. Explicit stop-loss dollar risk in trade metadata.
+2. `stop_points * dollars_per_point`.
+3. Configured strategy risk proxy.
+4. Validation error.
+
+Average realized loss is intentionally not used as a silent stop-risk proxy.
+Sizing is independent per strategy; MES quantity is never mechanically tied to
+MNQ quantity.

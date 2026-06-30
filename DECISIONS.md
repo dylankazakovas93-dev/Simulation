@@ -163,3 +163,45 @@ cannot fit in any run fails; restarts at a gap/boundary are recorded in
 (complete / partial / verified_flat / missing), seasonal support counts, trade
 counts, coverage span, and per-method eligibility. It feeds scenario-validation
 warnings and exported diagnostics.
+
+## Version 2 decisions (2026-06-30)
+
+### ADR-017 — Additive live-account layer
+V2 live-account accounting is additive and separate from V1 resampling. The V1
+path generator produces ordered per-contract `Trade` events; `sim_core.live_account`
+consumes those events and produces account events, sizing decisions, monthly
+reports, and return/risk metrics. Resampling modules must not contain
+live-account logic.
+
+### ADR-018 — Cash flows are non-P&L events
+Deposits and withdrawals are explicit `CashFlow` events. Deposits increase
+equity and external contributions but never trading profit. Withdrawals reduce
+equity and increase withdrawals but never trading loss. At equal timestamps,
+processing priority is deposits, trade exits, withdrawals, then trade entries /
+next sizing decisions.
+
+### ADR-019 — Independent strategy sizing
+Every strategy must have its own `StrategyAllocation` and `SizingPolicy`.
+Portfolio-level shared constraints can be added later, but the first V2
+milestone intentionally makes NQ and ES sizing independent and forbids coupling
+MES quantity mechanically to MNQ quantity.
+
+### ADR-020 — Stop-risk precedence for fixed-dollar and percent-equity sizing
+Per-contract trade risk is derived in this order: explicit stop-loss dollars in
+trade metadata, `stop_points * dollars_per_point`, configured strategy
+`risk_proxy_dollars`, then validation failure. Average realized loss is not a
+default proxy and must require an explicit future policy if added.
+
+### ADR-021 — Reinvestment and symmetric size-down
+Risk sizing uses external capital plus reinvested trading P&L. Positive trading
+P&L is included according to `reinvestment_rate`; trading losses reduce sizing
+basis immediately. Optional contract caps, minimum reserve, and scale up/down
+buffers are applied after the raw contract count is computed. Size-down is
+reported through forced size-reduction counts.
+
+### ADR-022 — Return and risk metric separation
+Reports separate trading P&L, deposits, withdrawals, ending equity, simple
+return on contributions, time-weighted return, money-weighted return, and
+trading return before cash flows. Drawdown is measured on account equity
+including cash flows, with cash-flow context reported separately. Operational
+ruin is configured independently from zero-equity ruin.

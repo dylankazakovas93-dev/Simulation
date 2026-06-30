@@ -5,6 +5,53 @@ top. Findings are classified `BLOCKER` / `HIGH` / `MEDIUM` / `LOW` / `OPTIONAL`.
 
 ---
 
+## Review 006 prep — 2026-06-30 — Codex V2 live-account milestone
+
+### Context
+
+Claude Code gave final **APPROVE V1** in Review 005 at `d196ed1`. Approved V1
+head is `8a81536e6335b5b4250b3ce9658fef3fe51af561`. Codex created
+`codex/v2-live-account` from that head and implemented the first narrow V2
+milestone.
+
+### Scope implemented
+
+- New additive `sim_core.live_account` module.
+- V1 path generator and resampling modules are unchanged in role: they produce
+  ordered `Trade` events.
+- Live-account engine consumes trades and explicit `CashFlow` events.
+- Supports starting equity, deposits, withdrawals, fixed-contract sizing,
+  fixed-dollar risk sizing, percentage-equity risk sizing, independent
+  per-strategy allocations, reinvestment, immediate size-down, contract caps,
+  minimum reserve, monthly reports, TWR, MWR/XIRR-style return, drawdown
+  thresholds, forced size-reduction probability, and operational ruin distinct
+  from zero-equity ruin.
+
+### Key audit files
+
+- `sim_core/live_account.py`
+- `tests/test_live_account.py`
+- `ARCHITECTURE.md`
+- `DECISIONS.md`
+- `KNOWN_LIMITATIONS.md`
+- `PROJECT_STATUS.md`
+
+### Deliberately not implemented
+
+- Prop-firm rules.
+- Optimization.
+- Streamlit/UI.
+- Full margin/exposure modeling.
+- Shared portfolio-level constraints across strategies.
+
+### Review focus
+
+Please audit whether V2 preserves V1 behavior, keeps live-account logic out of
+resampling, separates cash flows from P&L, handles independent sizing per
+strategy, and reports returns/drawdowns without cash-flow ambiguity.
+
+---
+
 ## Review 002 — 2026-06-30 — Codex V1 implementation audit
 
 ### Verdict
