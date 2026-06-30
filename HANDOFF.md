@@ -5,6 +5,134 @@ top. Findings are classified `BLOCKER` / `HIGH` / `MEDIUM` / `LOW` / `OPTIONAL`.
 
 ---
 
+## Review 006 — 2026-06-30 — V2 live-account milestone audit (codex/v1-core → ecf5502)
+
+### Verdict: **CONDITIONAL APPROVAL**
+One **HIGH** defect (money-weighted return reported on an annualized basis,
+breaking the no-flow MWR==TWR invariant and producing absurd magnitudes) plus a
+**MEDIUM** (drawdown-% distorted by deposit-inflated equity base). Several of the
+15 required checks **cannot yet be certified**: the diff
+(`v2_live_account_diff.patch.txt`) did **not** transfer — only `MANIFEST.txt` and
+four sample JSONs arrived — and those four samples exercise only fixed-contract
+(1 & 2) + fixed-dollar-risk (reinvestment=0) + deposits. No withdrawal,
+reinvestment, scale-down, percentage-equity, or multi-strategy sample was
+provided. This verdict is final on what was auditable and **conditional** on the
+items below.
+
+### What was independently machine-verified (the four sample JSONs)
+- **Deposits are never profit (pt 1):** `trading_pnl` and
+  `trading_return_before_cash_flows` (0.55) are **identical** with and without the
+  $15k of deposits (sample 01 vs 02); deposit events carry `trading_pnl` unchanged.
+- **Trading vs contributed capital separated (pt 15):** outputs expose
+  `trading_pnl`, `trading_return_before_cash_flows`, `net_external_contributions`,
+  `deposits`, `withdrawals`, and `simple_return_on_total_contributions` distinctly.
+- **TWR math correct:** independent recompute of the flow-segmented equity curve
+  matches reported TWR exactly (0.55, 0.3533, 1.1, 1.1). With fixed-contract dollar
+  P&L, deposits legitimately dilute TWR (0.55→0.3533) because position size doesn't
+  scale — correct, and `trading_return_before_cash_flows` preserves the undiluted
+  figure.
+- **Fixed-contract sizing:** qty=2 books exactly 2× the qty=1 dollar P&L.
+- **Fixed-dollar risk uses DECLARED risk (pt 7):** `per_contract_trade_risk = 500
+  = stop_points(100) × dpp(5)`; `contracts = risk_dollars(1000) / 500 = 2`. Not
+  realized average loss. ✓
+- **Cash-flow timing/ordering (pt 3, partial):** event priorities order deposit(0)
+  → trade_exit(1) → trade_entry(3); a same-day deposit is applied before that day's
+  sizing/entry (sample 02 Jan basis = 15000). Correct for the cases shown.
+- **Ruin (pt 11, partial):** explicit `operational_ruin` + `zero_equity_ruin`
+  flags with a configured `operational_ruin_threshold`; both false here (no ruin).
+  Definition stability to be confirmed in `live_account.py`.
+- **V1 safety (pt 13, strongly supported):** the MANIFEST shows the diff is
+  **additive** — only `sim_core/__init__.py` changed plus new `live_account.py` and
+  `tests/test_live_account.py`; the V1 engine (`models/policies/csv_loader/batch/
+  metrics`) is untouched. Reported `tests/regression -q` = 22 passed. (Not yet
+  re-run by me — see conditions.)
+
+### Findings
+**HIGH-V2-1 — MWR is annualized; no-flow invariant broken.** Samples 01/03/04
+have **no cash flows**, so money-weighted (IRR) return must equal TWR on the same
+basis; instead MWR = 14.06 / 97.64 vs TWR = 0.55 / 1.10. The MWR is an annualized
+IRR over ~59 days (10000·(1+r)^(59/365)=15500 ⇒ r≈14.06), which (a) is not
+comparable to the period-basis TWR and (b) produces 1,406% / 9,764% figures that
+are meaningless from a sub-quarter sample — the charter's "huge uncapped
+compounding presented as realistic" failure mode. *Fix:* report MWR on the **same
+basis as TWR** (period IRR, so no-flow ⇒ MWR==TWR), or annualize both **and**
+suppress/caveat annualization below a minimum horizon. *Regression:* (a) zero-flow
+fixture ⇒ `abs(MWR − TWR) < 1e-9`; (b) deposit-timing fixture ⇒ MWR ≠ TWR with the
+sign/direction of the flow effect asserted; (c) sub-annual window does not emit a
+>X% annualized figure without an explicit `annualized=True` label.
+
+**MEDIUM-V2-2 — drawdown % distorted by external flows.** The same $250 dollar
+drawdown reports `max_drawdown_pct` 0.0167 (no deposits) vs 0.01 (with deposits)
+purely because deposits inflated the equity base/peak. Deposit/withdrawal timing
+can therefore mask or fabricate percentage drawdowns, and a withdrawal could
+create a false drawdown. *Fix:* compute drawdown on a flow-neutral equity curve
+(or report both raw and flow-adjusted), and disclose the basis. *Regression:* same
+trades ± a deposit ⇒ identical dollar drawdown; pct-drawdown basis documented; a
+withdrawal does not register as a trading drawdown.
+
+**LOW-V2-3 — operational-ruin definition** must be a single stable rule held
+across reports (verify in `live_account.py`); confirm it is distinct from
+`zero_equity_ruin` and documented.
+
+### Checklist status (1–15)
+| # | Item | Status |
+|---|---|---|
+| 1 | Deposits never profit | **PASS** (machine-verified) |
+| 2 | Withdrawals never losses | **UNVERIFIED** — no withdrawal sample |
+| 3 | Cash-flow timing affects sizing only when it should | **PARTIAL** — ordering correct; reinvestment/pct-equity cases not shown |
+| 4 | TWR vs MWR distinct | **FAIL (HIGH-V2-1)** — distinct but inconsistent basis; no-flow invariant broken |
+| 5 | Strategy quantities independent | **UNVERIFIED** — single-strategy samples only |
+| 6 | MES not mechanically from MNQ | **UNVERIFIED** — no multi-strategy/instrument sample |
+| 7 | Fixed-dollar uses declared risk | **PASS** (machine-verified) |
+| 8 | Reinvestment both directions | **UNVERIFIED** — reinvestment_rate=0 in all samples |
+| 9 | Size-down not delayed/omitted | **UNVERIFIED** — no size change in any sample |
+| 10 | Drawdown not distorted by deposits w/o disclosure | **FAIL (MEDIUM-V2-2)** |
+| 11 | Operational ruin stable/explicit | **PARTIAL** — flags present; confirm definition in source |
+| 12 | Percentiles consistent path counts | **UNVERIFIED** — single-path account outputs only |
+| 13 | V1 historical/bootstrap unchanged | **LIKELY PASS** — additive diff; not yet re-run by me |
+| 14 | Optimizer can't access incomplete V2 | **UNVERIFIED** — needs source; no optimizer exists |
+| 15 | Outputs separate trading vs contributed capital | **PASS** (machine-verified) |
+
+### Architecture note (future-milestone support only, not an audit)
+The event-driven account (typed deposit/withdrawal/trade_entry/trade_exit events
+with explicit priority ordering, a `sizing_decisions` ledger, and per-event
+equity/contribution separation) is a sound substrate that can later carry margin
+(margin-check events), exposure (intratrade events), and a prop state machine —
+provided the event stream stays the single source of truth and remains
+serializable with provenance. No prop/optimizer/margin/exposure work was audited.
+
+### Conditions to clear before APPROVE
+1. Fix **HIGH-V2-1** with the three regression tests above.
+2. Resolve **MEDIUM-V2-2** (flow-neutral drawdown or disclosed basis) + test.
+3. Send the actual **`v2_live_account_diff.patch.txt`** so I can read
+   `live_account.py`, independently run `pytest -q` + `tests/regression -q`
+   (confirm pt 13/14), and verify the operational-ruin definition and that no
+   half-built V2 component is reachable by any optimizer entry point.
+4. Send machine-checkable samples (+ unit tests) for the unverified behaviors:
+   a **withdrawal** run (pt 2), a **reinvestment** run showing size-**up and
+   down** (pt 8), a **forced size-down / drawdown** run (pt 9), a
+   **percentage-equity** run, and a **multi-strategy NQ+ES** run proving
+   independent quantities with **MES qty not equal to MNQ qty** (pt 5–6).
+
+### Exact gate for beginning the margin/exposure milestone
+Do **not** start margin/exposure until **all** hold:
+- HIGH-V2-1 closed and MEDIUM-V2-2 resolved, with the regression tests above green.
+- Checklist items 2, 5, 6, 8, 9, 12 each demonstrated by a machine-checkable
+  sample **and** a unit test (withdrawals non-loss; independent per-strategy
+  quantities with MES≠MNQ; reinvestment up **and** down; size-down neither delayed
+  nor omitted on the drawdown leg; percentage-equity sizing; consistent percentile
+  path counts).
+- I have read `live_account.py` and **independently re-run** the full + regression
+  suites on the reconstructed tree (confirming V1 unchanged, pt 13, and that the
+  optimizer cannot reach incomplete V2 components, pt 14).
+- Live-account result objects are fully serializable with provenance (data hash +
+  scenario hash + sizing/cash-flow policy), consistent with ADR-014.
+
+Until then the milestone stays **CONDITIONAL** — sound core accounting, one HIGH
+return-reporting defect, and material verification gaps pending source + samples.
+
+---
+
 ## Review 005 — 2026-06-30 — FINAL V1 audit of `codex/v1-core` @ 8a81536 (reconstructed)
 
 ### Final verdict: **APPROVE V1**
