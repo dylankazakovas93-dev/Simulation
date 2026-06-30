@@ -5,6 +5,157 @@ top. Findings are classified `BLOCKER` / `HIGH` / `MEDIUM` / `LOW` / `OPTIONAL`.
 
 ---
 
+## Review 005 — 2026-06-30 — FINAL V1 audit of `codex/v1-core` @ 8a81536 (reconstructed)
+
+### Final verdict: **APPROVE V1**
+All Review-002 blockers and Review-003 HIGH/MEDIUM findings are closed and
+independently re-verified; the real-ledger integration is certified (scoped
+below); only LOW/scope items remain. **Version 2 may begin** under the scope in
+the last section.
+
+### How this was verified (no trust in Codex's summary)
+The bundle could not transfer, so I reconstructed the final head by applying the
+attached binary-safe diff to my existing `3387d3a` clone:
+- `3387d3a` confirmed as the base; `git apply --check` of `review005_diff.patch`
+  is clean; applied cleanly.
+- The patch's embedded `integration_report.json` is **byte-identical** to the
+  separately-attached report.
+- Independent test runs (numpy 2.4.6 / pandas 3.0.3) on the reconstructed tree:
+  `pytest tests/regression -q` → **22 passed**; `pytest -q` → **90 passed,
+  1 skipped** (matches MANIFEST). The `real_ledger`-marked test is the skip.
+- The `3387d3a→8a81536` delta is small (8 tracked files + the new report) and was
+  read in full.
+
+**Scope caveat (honest):** I did **not** independently re-run the 1,150-row CSV —
+that file is not present in this container — and I could **not** verify the exact
+commit SHA `8a81536` because the bundle never transferred. I certify (a) the
+committed report's internal consistency, (b) the explicit-mapping + integration
+code path, and (c) the reconstructed final implementation. Final sign-off of the
+exact published SHA should occur when `codex/v1-core` is pushed.
+
+### Audit checklist (1–15)
+| # | Item | Result |
+|---|---|---|
+| 1 | Bundle/head correct | PARTIAL — base `3387d3a` + clean diff + report match verified; SHA `8a81536` not verifiable (no bundle) |
+| 2 | Full suite passes | **PASS** — 90 passed, 1 skipped (independent) |
+| 3 | Regression suite passes | **PASS** — 22 passed (independent) |
+| 4 | Report internally consistent | **PASS** — 20/20 machine checks (see below) |
+| 5 | All five mappings explicit | **PASS** — config + report; NQ→MNQ $2, ES→MES $5 ×4 |
+| 6 | No silent NQ→MNQ/ES→MES fallback | **PASS** — loader raises without `contract_specs_by_strategy`; `_infer_strategy_specs` gone |
+| 7 | Real-ledger historical replay correct | **CERTIFIED (consistency)** — per-strategy coverage-month trade counts sum exactly to per-strategy totals; replay P&L present; not independently recomputed from CSV |
+| 8 | Seasonal/moving/stationary smokes genuinely ran | **PASS** — concrete sampled_trades/blocks/terminal_equity + diagnostics; reproduced on fixture |
+| 9 | UTC stays tz-aware through resampling | **PASS** — report all_utc; `Trade` forces UTC; B-1 tests pass |
+| 10 | Month shift can't escape target month | **PASS** — clamp unchanged; B-3 tests pass |
+| 11 | Ensembles independent + reproducible | **PASS** — `SeedSequence.spawn`; B-2 tests pass |
+| 12 | Monthly percentile denominators consistent | **PASS** — carry-forward unchanged; H-3 test passes |
+| 13 | Provenance/hashes complete | **PASS** — data_hash + scenario_hash (64-hex); `verify_result_provenance` |
+| 14 | Coverage distinguishes complete/partial/missing/verified-flat | **PASS** — model distinguishes all four (tests); real data is all "complete" |
+| 15 | Remaining warnings benign | **PASS** — coverage-absent + thin-support (Jul–Dec) are correct disclosures, not defects |
+
+### Report internal-consistency checks (all PASS)
+- `Σ trade_count_by_strategy == row_count == 1150`; 5 strategies.
+- Taxonomy partitions: `n_win 534 + n_loss 299 + n_breakeven 317 == 1150`; all six
+  named rates equal their definitions (wins/total 0.4643, loss 0.26, breakeven
+  0.2757, non-loss 0.74, true-win 534/833 0.6411).
+- `Σ coverage_month.trade_count` per strategy **equals** `trade_count_by_strategy`
+  exactly (e.g. ES_EXPANDED 328).
+- Seasonal support = 2 for calendar months 01–06 (2025+2026) and 1 for 07–12
+  (2025 only) — matches the Jan-2025→partial-Jun-2026 span.
+- all_utc true; chronological true; three smokes ok; hashes 64-hex;
+  `data_hash == 4225…d006c7a` (matches MANIFEST); all `has_coverage` false.
+
+### Verification of prior blockers / HIGH (carried forward, still closed)
+- **B-1 tz**, **B-2 RNG**, **B-3 clamp**, **B-4 Scenario/serialization/hash**,
+  **H-3 carry-forward** — untouched by the delta; all corresponding tests pass.
+- **HIGH-R3-1 (ADR-011 silent inference)** — CLOSED; canonical loader requires an
+  explicit per-strategy mapping; the real ledger loaded under five explicit specs
+  with no fallback. **This was the one item Review 003/004 left open; it is now
+  confirmed against real data.**
+- MEDIUMs R3-A…E (provenance, tz default, coverage diagnostics, breakeven policy,
+  gap-aware blocks) — closed in V1.1; tests pass.
+
+### Codex post-review fixes in the delta (audited, all sound)
+1. Five real strategy IDs added to `configs/nq_es_micro_contracts.yaml` — matches the report.
+2. `pyproject` setuptools package discovery — benign packaging fix.
+3. Canonical `exit` column is now preserved as `metadata["exit_reason"]` and
+   `result_type` is classified from realized P&L (not from the source label).
+   **Correct and important:** real exit reasons (e.g. "cutoff") are not in the
+   win/loss/breakeven alias set and would otherwise have failed validation; this
+   also aligns outcome classification with ADR-012. Proven by
+   `test_canonical_exit_reason_is_not_used_as_outcome`.
+4. Duplicate detection keys on explicit `source_row_id`/`trade_id` identity when
+   present, else the semantic tuple — fixes the over-strict dedup (old Review-002
+   LOW-3). Generic semantic dedup still fires (`test_duplicate_trades...` passes).
+5. Lazy integration imports in `sim_core/__init__` and `sim_core/integration/__init__`
+   — avoids importing the yaml-dependent harness as a package side effect.
+
+### Remaining MEDIUM/LOW limitations (none blocking)
+- **LOW (new):** because the canonical loader always assigns a unique positional
+  `source_row_id`, semantic duplicate detection is effectively disabled on the
+  canonical path — accidental exact-duplicate rows in a real CSV would not be
+  flagged. Defensible (each row is a distinct trade) but a weakened guard; consider
+  an optional content-hash duplicate check for canonical ingestion.
+- **MEDIUM (carryover):** `_sorted_source_months` still unions partial/complete
+  across strategies (now surfaced by the coverage report).
+- **LOW (carryover):** clamp-to-month-end clusters shifted month-end trades at the
+  boundary (disclosed in KNOWN_LIMITATIONS).
+- **LOW:** breakeven `ticks` mode needs a per-instrument `dollars_per_tick` not yet
+  derived from `InstrumentSpec` (caller supplies it).
+- **Scope:** realized-only drawdown (no intratrade/MAE); no drawdown
+  duration/recovery; no scenario config-file/CLI runner; thin seasonal support
+  Jul–Dec is a data property, correctly warned.
+
+### T1–T20 final matrix
+| T | Status | Note |
+|---|---|---|
+| T1 same seed ⇒ identical distribution | **PASS** | spawned per-path RNG; Scenario+hash |
+| T2 diff seed ⇒ diff paths, invariants | **PASS** | + support counts now emitted |
+| T3 no global RNG | **PASS** | local `default_rng`/`SeedSequence` |
+| T4 historical replay exact order + merge | **PASS** | real-ledger replay chronological=true |
+| T5 seasonal month matching | **PASS** | |
+| T6 synchronized source-month across strategies | **PASS** | |
+| T7 within-block order preserved | **PASS** | |
+| T8 partial months excluded; support counts | **PASS** | coverage report emits support counts |
+| T9 flat verified month contributes zero | **PASS** | coverage model; real data all complete |
+| T10 merged D1 ordering incl. ties | **PASS** | source_row_id tie-break |
+| T11 fixed-contract P&L = qty × per-contract | **PASS** | MES≠MNQ test |
+| T12 deposits≠P&L; withdrawals symmetric | **N/A (V2)** | cash flows deferred |
+| T13 equity ≤0 not floored | **PASS** | ruin recorded |
+| T14 return measures differ on deposit | **N/A (V2)** | with cash flows |
+| T15 five named rates around eps | **PASS** | ADR-012 policy; report rates exact |
+| T16 drawdown depth/duration/recovery | **PARTIAL** | depth/pct only (duration/recovery = V2) |
+| T17 cross-path monthly percentiles | **PASS** | carry-forward, constant denominator |
+| T18 validation ERROR rules | **PASS** | table covered incl. mapping/tz/dpp |
+| T19 validation WARNING rules fire, don't abort | **PASS** | coverage/tz warnings emitted non-fatally |
+| T20 regression-test convention | **PASS** | `tests/regression/` + per-finding suites |
+
+T12/T14 are correctly **N/A for V1** (cash flows are V2). T16 is partial by V1 scope.
+
+### Version 2 — may begin. Recommended scope & sequencing
+Gate each stage on the V1 invariants remaining green.
+1. **Cash flows & return measures** (ADR-007): deposits/withdrawals on a separate
+   ledger lane; simple vs time-weighted vs money-weighted returns. Unlocks T12/T14.
+2. **Sizing policies**: fixed-dollar risk, %-equity, reinvestment ladders;
+   symmetric size-up/size-down; per-strategy capital allocation.
+3. **Exposure & margin**: intratrade/MAE-based exposure, time-in-market, peak
+   simultaneous risk, margin checks during trades, forced size reduction. Requires
+   MAE/MFE (already carried in metadata) and an intratrade model.
+4. **Prop-firm engine**: event-driven account state machine (evaluation → funded →
+   payout), EOD/trailing drawdown, daily-loss limits, min trading days,
+   consistency, payout eligibility/caps/splits, resets, max payouts, copied
+   accounts — reporting **real net cash economics**, not notional balances.
+5. **Optimization**: multi-objective (median, P5, expected log-growth, ruin,
+   payout probability, expected net cash) with explicit constraints and a Pareto
+   frontier — only after exposure/prop so objectives are well-defined.
+6. **Streamlit UI** last (ADR-001), on the headless core's public API.
+
+Plus V1 follow-ups to fold in early: drawdown duration/recovery; scenario
+config-file/CLI runner; wire `dollars_per_tick` into `InstrumentSpec` for
+breakeven ticks mode; optional canonical content-hash duplicate check; the
+labeled independent-sampling alternative scenario.
+
+---
+
 ## Review 004 — 2026-06-30 — V1.1 hardening delivered; real-ledger verification PENDING
 
 ### Status: work implemented & independently tested; **final V1 approval NOT issued**
