@@ -1,0 +1,334 @@
+--- a/sim_core/live_account.py
++++ b/sim_core/live_account.py
+@@ -1,18 +1,24 @@
+ from __future__ import annotations
+ 
+ from dataclasses import asdict, dataclass, field
++import hashlib
+ import json
+ import math
+ from typing import Any, Literal
+ 
+ import pandas as pd
+ 
++from sim_core.batch import hash_trades
+ from sim_core.ingestion.csv_loader import sort_trades_chronologically
+ from sim_core.models import ResampledPath, Trade
+ 
+ CashFlowType = Literal["deposit", "withdrawal"]
+ AccountEventType = Literal["deposit", "trade_entry", "trade_exit", "withdrawal"]
+ 
++# Below this measurement horizon, an annualized XIRR is flagged as potentially
++# extreme (Review 007 finding C).
++SHORT_HORIZON_WARNING_DAYS = 30.0
++
+ 
+ @dataclass(frozen=True)
+ class LiveAccountConfig:
+@@ -476,6 +482,9 @@
+             raise ValueError(f"unknown event type: {event_type!r}")
+ 
+     summary = _build_summary(config, state, events, sizing_decisions)
++    # Finding D: stamp the result with input-data + config provenance (ADR-014).
++    summary["input_data_hash"] = hash_trades(trade_list)
++    summary["config_hash"] = _config_hash(config, allocations, cash_flow_policy)
+     monthly = _build_monthly_reports(config, events)
+     return LiveAccountPathResult(
+         config=config,
+@@ -678,6 +687,8 @@
+     sizing_decisions: list[SizingDecision],
+ ) -> dict[str, Any]:
+     drawdown = _drawdown_metrics(config, events)
++    trading_drawdown = _trading_drawdown_metrics(config, events)
++    ruin = _ruin_metrics(config, events)
+     returns = _return_metrics(config.starting_equity, events)
+     min_contract = min((decision.contracts for decision in sizing_decisions), default=0)
+     return {
+@@ -690,7 +701,13 @@
+         "simple_return_on_total_contributions": returns["simple_return_on_total_contributions"],
+         "time_weighted_return": returns["time_weighted_return"],
+         "money_weighted_return": returns["money_weighted_return"],
++        "period_money_weighted_return": returns["period_money_weighted_return"],
++        "annualized_xirr": returns["annualized_xirr"],
++        "annualized_xirr_status": returns["annualized_xirr_status"],
++        "measurement_period_days": returns["measurement_period_days"],
++        "annualization_warning": returns["annualization_warning"],
+         "trading_return_before_cash_flows": state.trading_pnl / config.starting_equity,
++        # Account-equity drawdown (includes external flows) — labeled as such.
+         "peak_equity": drawdown["peak_equity"],
+         "current_drawdown": drawdown["current_drawdown"],
+         "max_drawdown": drawdown["max_drawdown"],
+@@ -698,11 +715,22 @@
+         "drawdown_duration_seconds": drawdown["drawdown_duration_seconds"],
+         "recovery_duration_seconds": drawdown["recovery_duration_seconds"],
+         "drawdown_thresholds_reached": drawdown["thresholds_reached"],
++        # Flow-neutral trading drawdown (Review 007 finding A).
++        "trading_peak_equity": trading_drawdown["trading_peak_equity"],
++        "trading_current_drawdown": trading_drawdown["trading_current_drawdown"],
++        "trading_max_drawdown": trading_drawdown["trading_max_drawdown"],
++        "trading_max_drawdown_pct": trading_drawdown["trading_max_drawdown_pct"],
++        "trading_drawdown_thresholds_reached": trading_drawdown["trading_drawdown_thresholds_reached"],
+         "forced_size_reductions": state.forced_size_reductions,
+         "time_spent_below_prior_peak_size_seconds": drawdown["drawdown_duration_seconds"],
+         "minimum_contract_size_reached": min_contract,
+-        "operational_ruin": state.equity <= config.operational_ruin_threshold,
+-        "zero_equity_ruin": state.equity <= 0,
++        # Absorbing-barrier ruin (Review 007 finding B).
++        "operational_ruin": ruin["operational_ruin"],
++        "operational_ruin_first_timestamp": ruin["operational_ruin_first_timestamp"],
++        "operational_ruin_trigger_event_id": ruin["operational_ruin_trigger_event_id"],
++        "operational_ruin_min_equity": ruin["operational_ruin_min_equity"],
++        "zero_equity_ruin": ruin["zero_equity_ruin"],
++        "zero_equity_ruin_first_timestamp": ruin["zero_equity_ruin_first_timestamp"],
+     }
+ 
+ 
+@@ -734,51 +762,48 @@
+     return rows
+ 
+ 
+-def _return_metrics(starting_equity: float, events: list[AccountEvent]) -> dict[str, float]:
++def _return_metrics(starting_equity: float, events: list[AccountEvent]) -> dict[str, Any]:
+     ending_equity = events[-1].equity if events else starting_equity
+     deposits = sum(event.amount for event in events if event.event_type == "deposit")
+     withdrawals = -sum(event.amount for event in events if event.event_type == "withdrawal")
+     trading_pnl = sum(event.amount for event in events if event.event_type == "trade_exit")
+     simple = trading_pnl / max(starting_equity + deposits, 1e-12)
+     twr = _time_weighted_return(starting_equity, events)
+-    mwr = _money_weighted_return(starting_equity, ending_equity, events)
++    # Finding C: the primary money-weighted figure is on the SAME (whole-period)
++    # basis as TWR, so with no external flows period-MWR == TWR. The annualized
++    # XIRR is reported separately and labeled, and flagged for short horizons.
++    period_mwr = _period_money_weighted_return(starting_equity, ending_equity, events)
++    annualized = _annualized_xirr(starting_equity, ending_equity, events)
++    days = _measurement_period_days(events)
++    warning: str | None = None
++    if days is not None and 0.0 < days < SHORT_HORIZON_WARNING_DAYS:
++        warning = (
++            f"annualized_xirr is based on a short {days:.2f}-day measurement period "
++            f"below the configured {int(SHORT_HORIZON_WARNING_DAYS)}-day warning "
++            "threshold and can be extreme"
++        )
+     return {
+         "simple_return_on_total_contributions": simple,
+         "time_weighted_return": twr,
+-        "money_weighted_return": mwr,
++        # Primary MWR is period-basis (Review 007 finding C); alias kept for callers.
++        "money_weighted_return": period_mwr,
++        "period_money_weighted_return": period_mwr,
++        "annualized_xirr": annualized,
++        "annualized_xirr_status": "ok",
++        "measurement_period_days": days,
++        "annualization_warning": warning,
+     }
+ 
+ 
+-def _time_weighted_return(starting_equity: float, events: list[AccountEvent]) -> float:
+-    factor = 1.0
+-    subperiod_start_value = starting_equity
+-    last_equity = starting_equity
+-    for event in events:
+-        if event.event_type in {"deposit", "withdrawal"}:
+-            if subperiod_start_value != 0:
+-                factor *= 1 + ((last_equity - subperiod_start_value) / subperiod_start_value)
+-            subperiod_start_value = event.equity
+-        last_equity = event.equity
+-    if subperiod_start_value != 0:
+-        factor *= 1 + ((last_equity - subperiod_start_value) / subperiod_start_value)
+-    return factor - 1
++def _measurement_period_days(events: list[AccountEvent]) -> float | None:
++    if not events:
++        return None
++    return (events[-1].timestamp - events[0].timestamp).total_seconds() / 86_400.0
+ 
+ 
+-def _money_weighted_return(
+-    starting_equity: float,
+-    ending_equity: float,
+-    events: list[AccountEvent],
+-) -> float:
+-    if not events:
+-        return 0.0
+-    start = events[0].timestamp
+-    cash_flows: list[tuple[float, float]] = [(0.0, -starting_equity)]
+-    for event in events:
+-        if event.event_type == "deposit":
+-            cash_flows.append((_year_fraction(start, event.timestamp), -event.amount))
+-        elif event.event_type == "withdrawal":
+-            cash_flows.append((_year_fraction(start, event.timestamp), -event.amount))
+-    cash_flows.append((_year_fraction(start, events[-1].timestamp), ending_equity))
++def _solve_irr(cash_flows: list[tuple[float, float]]) -> float:
++    """Bisection IRR solve; `cash_flows` is a list of (time_exponent, amount)."""
++
+     has_positive = any(amount > 0 for _, amount in cash_flows)
+     has_negative = any(amount < 0 for _, amount in cash_flows)
+     if not has_positive or not has_negative:
+@@ -791,7 +816,7 @@
+     high = 10.0
+     while npv(high) > 0 and high < 1_000_000:
+         high *= 2
+-    for _ in range(120):
++    for _ in range(200):
+         mid = (low + high) / 2
+         if npv(mid) > 0:
+             low = mid
+@@ -800,6 +825,63 @@
+     return (low + high) / 2
+ 
+ 
++def _dated_cash_flows(
++    starting_equity: float, ending_equity: float, events: list[AccountEvent]
++) -> list[tuple[float, float]]:
++    """Investor cash flows in YEARS: start outflow, flows, ending inflow."""
++
++    start = events[0].timestamp
++    flows: list[tuple[float, float]] = [(0.0, -starting_equity)]
++    for event in events:
++        if event.event_type in {"deposit", "withdrawal"}:
++            flows.append((_year_fraction(start, event.timestamp), -event.amount))
++    flows.append((_year_fraction(start, events[-1].timestamp), ending_equity))
++    return flows
++
++
++def _annualized_xirr(
++    starting_equity: float, ending_equity: float, events: list[AccountEvent]
++) -> float:
++    if not events:
++        return 0.0
++    return _solve_irr(_dated_cash_flows(starting_equity, ending_equity, events))
++
++
++def _period_money_weighted_return(
++    starting_equity: float, ending_equity: float, events: list[AccountEvent]
++) -> float:
++    """Whole-period money-weighted return (not annualized).
++
++    Time exponents are normalized to the total measurement window so the terminal
++    exponent is 1.0; the solved rate is the return over the whole period. With no
++    external flows this reduces to `ending/starting - 1`, i.e. the period TWR.
++    """
++
++    if not events:
++        return 0.0
++    dated = _dated_cash_flows(starting_equity, ending_equity, events)
++    total = dated[-1][0]  # year-fraction of the terminal flow == full period
++    if total <= 0:
++        return ending_equity / starting_equity - 1 if starting_equity else 0.0
++    normalized = [(years / total, amount) for years, amount in dated]
++    return _solve_irr(normalized)
++
++
++def _time_weighted_return(starting_equity: float, events: list[AccountEvent]) -> float:
++    factor = 1.0
++    subperiod_start_value = starting_equity
++    last_equity = starting_equity
++    for event in events:
++        if event.event_type in {"deposit", "withdrawal"}:
++            if subperiod_start_value != 0:
++                factor *= 1 + ((last_equity - subperiod_start_value) / subperiod_start_value)
++            subperiod_start_value = event.equity
++        last_equity = event.equity
++    if subperiod_start_value != 0:
++        factor *= 1 + ((last_equity - subperiod_start_value) / subperiod_start_value)
++    return factor - 1
++
++
+ def _drawdown_metrics(config: LiveAccountConfig, events: list[AccountEvent]) -> dict[str, Any]:
+     if not events:
+         return {
+@@ -853,6 +935,95 @@
+     }
+ 
+ 
++def _trading_drawdown_metrics(config: LiveAccountConfig, events: list[AccountEvent]) -> dict[str, Any]:
++    """Finding A: drawdown of the TRADING equity curve (starting + cumulative
++    trading P&L), which excludes deposits/withdrawals so external flows can never
++    create or mask a trading drawdown or trip a trading threshold."""
++
++    thresholds = {str(threshold): False for threshold in config.drawdown_thresholds}
++    if not events:
++        return {
++            "trading_peak_equity": config.starting_equity,
++            "trading_current_drawdown": 0.0,
++            "trading_max_drawdown": 0.0,
++            "trading_max_drawdown_pct": 0.0,
++            "trading_drawdown_thresholds_reached": thresholds,
++        }
++    start = config.starting_equity
++    peak = start
++    max_drawdown = 0.0
++    max_drawdown_pct = 0.0
++    for event in events:
++        trading_equity = start + event.trading_pnl
++        if trading_equity >= peak:
++            peak = trading_equity
++            continue
++        drawdown = peak - trading_equity
++        pct = drawdown / peak if peak else 0.0
++        max_drawdown = max(max_drawdown, drawdown)
++        max_drawdown_pct = max(max_drawdown_pct, pct)
++        for threshold in config.drawdown_thresholds:
++            if pct >= threshold:
++                thresholds[str(threshold)] = True
++    current = max(0.0, peak - (start + events[-1].trading_pnl))
++    return {
++        "trading_peak_equity": peak,
++        "trading_current_drawdown": current,
++        "trading_max_drawdown": max_drawdown,
++        "trading_max_drawdown_pct": max_drawdown_pct,
++        "trading_drawdown_thresholds_reached": thresholds,
++    }
++
++
++def _ruin_metrics(config: LiveAccountConfig, events: list[AccountEvent]) -> dict[str, Any]:
++    """Finding B: operational ruin is an ABSORBING barrier — true if account
++    equity ever touches <= threshold at any point in the path (like V1's
++    barrier-touch ruin), not merely at end-of-path. Records the first breach."""
++
++    threshold = config.operational_ruin_threshold
++    op_hit = False
++    op_first: str | None = None
++    op_trigger: str | None = None
++    zero_hit = False
++    zero_first: str | None = None
++    min_equity = config.starting_equity
++    for event in events:
++        min_equity = min(min_equity, event.equity)
++        if not op_hit and event.equity <= threshold:
++            op_hit = True
++            op_first = event.timestamp.isoformat()
++            op_trigger = event.trade_id or event.event_type
++        if not zero_hit and event.equity <= 0:
++            zero_hit = True
++            zero_first = event.timestamp.isoformat()
++    return {
++        "operational_ruin": op_hit,
++        "operational_ruin_first_timestamp": op_first,
++        "operational_ruin_trigger_event_id": op_trigger,
++        "operational_ruin_min_equity": min_equity,
++        "zero_equity_ruin": zero_hit,
++        "zero_equity_ruin_first_timestamp": zero_first,
++    }
++
++
++def _config_hash(
++    config: LiveAccountConfig,
++    allocations: dict[str, "StrategyAllocation"],
++    cash_flow_policy: "CashFlowPolicy",
++) -> str:
++    """Finding D: stable hash of the account configuration for provenance."""
++
++    payload = json.dumps(
++        {
++            "config": config.to_dict(),
++            "allocations": {sid: alloc.to_dict() for sid, alloc in sorted(allocations.items())},
++            "cash_flow_policy": cash_flow_policy.to_dict(),
++        },
++        sort_keys=True,
++    )
++    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
++
++
+ class _MutableAccountState:
+     def __init__(self, config: LiveAccountConfig) -> None:
+         self.timestamp = pd.Timestamp("1970-01-01T00:00:00Z")
