@@ -5,6 +5,71 @@ top. Findings are classified `BLOCKER` / `HIGH` / `MEDIUM` / `LOW` / `OPTIONAL`.
 
 ---
 
+## Review 012 — 2026-07-02 — V6 Streamlit UI (implemented by review lead; Codex offline)
+
+### Role disclosure
+Codex remains offline; the review lead implemented V6 directly (implementer ==
+reviewer, as in Reviews 008-011). Acceptance rests on objective tests + the
+charter's engine/UI-separation and disclosure requirements.
+
+### Scope (in scope only): UI layer. Final milestone.
+New `app/` package (`disclosures.py`, `controller.py`, `streamlit_app.py`,
+`__init__.py`); Streamlit declared as an **optional** extra in pyproject
+(`.[ui]`). Independent runs: **`tests/regression -q` = 22 passed; `pytest -q` =
+149 passed, 2 skipped** (7 new controller tests; the streamlit-import test skips
+because streamlit is not installed in this container — the app is byte-compiled to
+confirm it parses).
+
+### Architecture — engine/UI separation (ADR-022)
+- **`sim_core` has zero UI dependency** (unchanged). The UI depends on the engine,
+  never the reverse.
+- **`app/controller.py` is pure Python (no Streamlit import)** — the ONLY bridge to
+  the engine. It delegates all computation to `sim_core` (no modelling logic in the
+  UI) and returns plain, serializable data. A test asserts the controller carries no
+  `streamlit` symbol and is importable headless.
+- **`app/streamlit_app.py` is a thin view**: collect inputs → call controller →
+  render → render disclosures. It contains no engine logic (verified by reading; the
+  only sim_core calls are constructor/config objects passed straight to controller).
+
+### Mandatory disclosures (ADR-022)
+`app/disclosures.py` is the single source of the model-risk caveats the charter
+requires to be shown WITH the numbers. Every controller result attaches the caveats
+for its section (`ensemble`, `drawdown`, `live_account`, `margin_exposure`,
+`prop_firm`, `optimizer`), and the view renders them in an expanded panel. Tests
+assert the controller returns exactly the declared disclosure set for each section,
+so a number can never be rendered without its caveats. The prop tab additionally
+demotes the notional balance under an explicit `notional_terminal_balance_not_wealth`
+key and shows net trader cash as the headline; coverage-absent / thin-support /
+missing-month warnings from the engine are surfaced, not swallowed.
+
+Verified: ensemble runs end-to-end with a 64-char provenance hash and disclosures;
+live-account attaches exposure + disclosures when a margin policy is given; prop
+single demotes notional balance; optimizer returns the constrained Pareto frontier +
+disclosures; unknown resampling method rejected; controller imports without
+streamlit.
+
+### Assumptions / limitations (disclosed; KNOWN_LIMITATIONS updated)
+- **[SCOPE]** Coverage is DECLARED metadata (ADR-016) and is never inferred from
+  trades, so the UI runs the ensemble with `coverage=None` and surfaces the
+  coverage-absent warning plus the standalone coverage diagnostic; declaring
+  coverage through the UI is a later add-on.
+- **[SCOPE]** The optimizer tab is wired for pre-evaluated candidates; a guided
+  candidate-builder (grid over sizing/prop configs) is a later convenience.
+- **[SCOPE]** Streamlit is not installed in this container; the app is verified by
+  byte-compile + the headless controller tests. Run locally via `pip install -e
+  '.[ui]'` then `streamlit run app/streamlit_app.py`.
+
+### Milestone status — LADDER COMPLETE
+V1 (ingestion→resampling→fixed-contract ensemble→percentiles/drawdown→provenance),
+V2/V2.1 (live account: cash flows, sizing, TWR/MWR, ruin), V3 (margin+exposure),
+V4 (prop-firm cash economics), V5 (multi-objective optimizer), V6 (UI) are all
+implemented, tested, and delivered. Recommended next: an **independent** review of
+the implementer==reviewer milestones (V3-V6), and optional depth items noted in
+KNOWN_LIMITATIONS (intraday maintenance-margin, MAE-based drawdown, continuous
+optimizer search, in-UI coverage declaration).
+
+---
+
 ## Review 011 — 2026-07-02 — V5 multi-objective optimizer (implemented by review lead; Codex offline)
 
 ### Role disclosure

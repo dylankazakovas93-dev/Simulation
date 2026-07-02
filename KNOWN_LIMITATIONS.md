@@ -120,3 +120,18 @@ out of V1 scope, documented.
 - **[SCOPE]** V5 is a selection layer over a provided candidate set (grid/list), not
   a continuous search (CMA-ES/Bayesian is a later add-on). It inherits every
   upstream realized-only / notional caveat of the metrics fed into it. (ADR-021)
+
+## UI traps (V6)
+
+- **[GUARD]** Engine and UI are separate: `sim_core` has no UI dependency;
+  `app/controller.py` is pure Python (no Streamlit) and is the only bridge to the
+  engine; `app/streamlit_app.py` holds no modelling logic. (ADR-022)
+- **[GUARD]** Every controller result attaches its section's mandatory disclosures
+  (`app/disclosures.py`) and the view renders them, so no number is shown without its
+  caveats. The prop tab demotes the notional balance under an explicit not-wealth key
+  and leads with net trader cash. (ADR-022)
+- **[SCOPE]** The UI runs the ensemble with `coverage=None` (coverage is declared
+  metadata, ADR-016, never inferred) and surfaces the coverage-absent + diagnostic
+  warnings; in-UI coverage declaration is a later add-on. (ADR-022)
+- **[SCOPE]** The optimizer tab expects pre-evaluated candidates; a guided
+  candidate-builder over sizing/prop configs is a later convenience. (ADR-022)

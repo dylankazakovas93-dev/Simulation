@@ -242,3 +242,25 @@ frontier keeps trade-offs visible and auditable.
 **Scope / limitation:** V5 evaluates a provided candidate set (grid/list); it is a
 selection layer, not a continuous search. It inherits all upstream realized-only /
 notional caveats of whatever metrics are fed in. Documented in KNOWN_LIMITATIONS.
+
+## ADR-022 — Engine/UI separation; the UI must surface mandatory disclosures
+**Status:** ACCEPTED (Review 012, implemented by review lead — Codex offline)
+**Decision:** The V6 UI is strictly separate from the engine. `sim_core` keeps zero
+UI dependency. `app/controller.py` is pure Python (no Streamlit import) and is the
+only bridge to the engine — it delegates all computation to `sim_core` and returns
+plain data. `app/streamlit_app.py` is a thin view (collect inputs → call controller
+→ render → render disclosures) with no modelling logic. Streamlit is an optional
+extra (`.[ui]`), never a core dependency. `app/disclosures.py` is the single source
+of the model-risk caveats the charter requires shown WITH the numbers; every
+controller result attaches its section's disclosures and the view renders them, so
+a number cannot be shown without its caveats. The prop tab demotes the notional
+balance under an explicit not-wealth key and leads with net trader cash; engine
+warnings (coverage-absent, thin support, missing months) are surfaced, not swallowed.
+**Why:** The charter mandates that the engine and UI be separate and that
+assumptions/limitations be explicit and defensible rather than hidden behind
+attractive projections. A pure, testable controller plus a disclosure registry make
+both properties enforceable in tests.
+**Scope / limitation:** Coverage is declared metadata (ADR-016) and is not inferred
+from trades, so the UI runs with coverage=None + surfaced warnings; in-UI coverage
+declaration and a guided optimizer candidate-builder are later add-ons. Documented in
+KNOWN_LIMITATIONS.

@@ -116,3 +116,40 @@ python3 -m pytest -q                              # 142 passed, 1 skipped
 Governance: ADR-021 (multi-objective Pareto selection; refuses single-objective by
 default; frontier is the decision, scalarized rank is a labeled display aid only;
 missing metrics raise; log-growth returns -inf on total-loss periods).
+
+---
+
+# V6 — Streamlit UI (Review 012) — LADDER COMPLETE
+
+Implemented by the review lead (Codex offline). New `app/` package; engine/UI
+strictly separate; Streamlit is an optional extra (`.[ui]`).
+
+- `v6_files/app/` — `disclosures.py` (mandatory model-risk caveats),
+  `controller.py` (pure Python bridge, no Streamlit), `streamlit_app.py` (thin
+  view), `__init__.py`.
+- `v6_files/test_ui_controller.py` — 7 controller tests (+1 streamlit-import test
+  that skips when streamlit is absent).
+- `v6_ui.patch` — all V6 files as full additions.
+
+## Run the UI locally
+
+```bash
+pip install -e '.[ui]'
+streamlit run app/streamlit_app.py
+```
+
+## Verify (headless — no streamlit needed)
+
+```bash
+python3 -m pytest tests/test_ui_controller.py -q   # 7 passed, 1 skipped
+python3 -m py_compile app/streamlit_app.py         # view parses
+python3 -m pytest -q                                # 149 passed, 2 skipped
+```
+
+Governance: ADR-022 (engine/UI separation; controller has no Streamlit import;
+disclosures attached to every result; notional prop balance demoted).
+
+## Milestone ladder — COMPLETE
+V1 ingestion/resampling/ensemble · V2/V2.1 live account · V3 margin/exposure ·
+V4 prop-firm cash economics · V5 multi-objective optimizer · V6 UI. Recommended
+next: an INDEPENDENT review of the implementer==reviewer milestones (V3–V6).

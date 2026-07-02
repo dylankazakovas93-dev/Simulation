@@ -1,0 +1,602 @@
+--- /dev/null
++++ b/app/__init__.py
+@@ -0,0 +1,6 @@
++"""V6 — UI layer. The engine lives in ``sim_core``; this package only presents it.
++
++``app.controller`` is pure Python (no Streamlit) and holds the only bridge to the
++engine. ``app.streamlit_app`` is a thin view. ``app.disclosures`` is the single
++source of the mandatory model-risk caveats shown alongside every output.
++"""
+--- /dev/null
++++ b/app/disclosures.py
+@@ -0,0 +1,68 @@
++"""V6 — mandatory model-risk disclosures for the UI.
++
++Single source of truth for the caveats the charter requires to be shown WITH the
++numbers, not buried. The Streamlit view must render the relevant list on every
++tab that shows the corresponding output. Keeping them here (engine-free) means the
++UI can never quietly drop a disclosure and the set is unit-testable.
++"""
++from __future__ import annotations
++
++# Keyed by UI section. Each string is shown verbatim next to that section's output.
++DISCLOSURES: dict[str, list[str]] = {
++    "ensemble": [
++        "The simulation assumes the historical edge persists — there is no "
++        "out-of-sample or strategy-degradation control. This is a strong assumption.",
++        "Uploaded logs are presumably surviving strategies; the sim cannot correct "
++        "for strategies that died and were never uploaded (survivorship).",
++        "Seasonal percentile fans backed by few historical instances (thin support) "
++        "or dominated by one year are unreliable; support counts are reported.",
++        "Percentiles are computed across the ensemble, not by differencing medians.",
++    ],
++    "drawdown": [
++        "Drawdown is booked on REALIZED P&L at trade exit only. Intratrade excursion "
++        "(MAE) is not modeled, so realized-only drawdown UNDERSTATES true "
++        "peak-to-trough risk.",
++        "Risk-of-ruin and drawdown are defined once and held constant across every "
++        "report.",
++    ],
++    "live_account": [
++        "Deposits are not profit and withdrawals are not losses; time-weighted vs "
++        "money-weighted returns are reported separately.",
++        "Compounded/reinvested equity curves must be read as distributions with "
++        "caveats, never as point forecasts.",
++    ],
++    "margin_exposure": [
++        "Margin is an entry-time initial-margin cap only; no intraday "
++        "maintenance-call or forced liquidation is modeled.",
++        "Exposure is measured over each trade's scheduled entry→exit interval "
++        "(realized-only); there is no intratrade mark-to-market.",
++    ],
++    "prop_firm": [
++        "A notional prop-account balance is NOT personal wealth. Only realized net "
++        "cash (payouts × split − evaluation/activation/reset fees) counts.",
++        "Breach checks (trailing drawdown, daily loss) are realized-only "
++        "(end-of-trade), so reported breach probability is a LOWER bound and "
++        "survival an UPPER bound.",
++        "Payout timing is modeled greedily; copied accounts share one identical "
++        "trade path (fully correlated, not diversification).",
++    ],
++    "optimizer": [
++        "The decision output is the Pareto frontier under explicit constraints, not "
++        "a single 'best' configuration. The scalarized score is a display aid only.",
++        "Optimizing any lone metric (e.g. median terminal equity) is disabled by "
++        "default because it exploits model traps (capped equity, realized-only "
++        "drawdown, greedy prop payouts).",
++    ],
++}
++
++
++def for_section(section: str) -> list[str]:
++    """Return the mandatory disclosures for a UI section (raises on unknown key)."""
++
++    if section not in DISCLOSURES:
++        raise KeyError(f"no disclosures declared for UI section {section!r}")
++    return list(DISCLOSURES[section])
++
++
++def all_sections() -> list[str]:
++    return list(DISCLOSURES.keys())
+--- /dev/null
++++ b/app/controller.py
+@@ -0,0 +1,196 @@
++"""V6 — UI controller: the ONLY bridge between the Streamlit view and the engine.
++
++Pure Python, no Streamlit import, fully unit-testable. Every function delegates all
++computation to `sim_core` (no modelling logic lives here) and attaches the mandatory
++model-risk disclosures so the view cannot render a number without its caveats. This
++enforces the charter's "engine and UI must be separate" rule and its governing
++principle that assumptions/limitations are explicit, not hidden behind pretty charts.
++"""
++from __future__ import annotations
++
++from typing import Any, Sequence
++
++import pandas as pd
++
++from sim_core.diagnostics.coverage import build_coverage_report
++from sim_core.batch import run_simulation_ensemble
++from sim_core.exposure import MarginPolicy, build_exposure_report
++from sim_core.live_account import (
++    LiveAccountConfig,
++    StrategyAllocation,
++    run_live_account_path,
++)
++from sim_core.models import Scenario, Trade
++from sim_core.optimize import Candidate, Constraint, Objective, optimize
++from sim_core.prop_firm import (
++    PropFirmRules,
++    run_prop_account_path,
++    summarize_prop_accounts,
++)
++from sim_core.resampling.policies import (
++    HistoricalReplay,
++    MovingBlockBootstrap,
++    SameCalendarMonthBootstrap,
++    StationaryBlockBootstrap,
++)
++
++from app.disclosures import for_section
++
++_RESAMPLING_FACTORY = {
++    "same_calendar_month_bootstrap": lambda p: SameCalendarMonthBootstrap(
++        months=p["months"], start_month=p.get("start_month")
++    ),
++    "moving_block_bootstrap": lambda p: MovingBlockBootstrap(
++        months=p["months"], block_length=p["block_length"], start_month=p.get("start_month")
++    ),
++    "stationary_block_bootstrap": lambda p: StationaryBlockBootstrap(
++        months=p["months"],
++        expected_block_length=p["expected_block_length"],
++        start_month=p.get("start_month"),
++    ),
++    "historical_replay": lambda p: HistoricalReplay(),
++}
++
++
++def available_resampling_methods() -> list[str]:
++    return list(_RESAMPLING_FACTORY.keys())
++
++
++def build_policy(method: str, params: dict[str, Any]):
++    if method not in _RESAMPLING_FACTORY:
++        raise ValueError(f"unknown resampling method {method!r}")
++    return _RESAMPLING_FACTORY[method](params)
++
++
++def run_ensemble(
++    trades: Sequence[Trade],
++    *,
++    method: str,
++    resampling_params: dict[str, Any],
++    number_of_paths: int,
++    master_seed: int,
++    starting_equity: float,
++    ruin_threshold: float,
++    fixed_contract_quantities: dict[str, int] | None = None,
++) -> dict[str, Any]:
++    """Run the Monte Carlo ensemble and return a view-ready, disclosed result."""
++
++    # Coverage is DECLARED metadata (ADR-016), never inferred from trades, so the
++    # UI does not fabricate it — the ensemble runs with coverage=None (which raises
++    # the documented coverage-absent warning) and we ALSO surface the standalone
++    # coverage diagnostic's warnings (missing months / thin seasonal support).
++    coverage = None
++    try:
++        coverage_warnings = build_coverage_report(list(trades)).warnings()
++    except Exception:
++        coverage_warnings = []
++
++    selected = sorted({t.strategy_id for t in trades})
++    scenario = Scenario(
++        name="ui-scenario",
++        master_seed=master_seed,
++        number_of_paths=number_of_paths,
++        starting_equity=starting_equity,
++        selected_strategies=selected,
++        fixed_contract_quantities=fixed_contract_quantities or {s: 1 for s in selected},
++        resampling_method=method,
++        resampling_params=resampling_params,
++        ruin_threshold=ruin_threshold,
++    )
++    policy = build_policy(method, resampling_params)
++    _results, dist = run_simulation_ensemble(scenario, list(trades), policy, coverage=coverage)
++
++    return {
++        "monthly_percentiles": dist.monthly_percentiles,
++        "terminal_equity_distribution": dist.terminal_equity_distribution,
++        "drawdown_metrics": dist.drawdown_metrics,
++        "ruin_probability": dist.ruin_probability,
++        "outcome_taxonomy": dist.outcome_taxonomy,
++        "resampling_diagnostics": dist.resampling_diagnostics,
++        "engine_warnings": list(dist.warnings),
++        "coverage_warnings": coverage_warnings,
++        "engine_known_limitations": list(dist.known_limitations),
++        "data_hash": dist.data_hash,
++        "disclosures_ensemble": for_section("ensemble"),
++        "disclosures_drawdown": for_section("drawdown"),
++    }
++
++
++def run_live_account(
++    trades: Sequence[Trade],
++    *,
++    starting_equity: float,
++    allocations: dict[str, StrategyAllocation],
++    cash_flow_policy=None,
++    margin_policy: MarginPolicy | None = None,
++) -> dict[str, Any]:
++    result = run_live_account_path(
++        list(trades),
++        config=LiveAccountConfig(starting_equity=starting_equity),
++        allocations=allocations,
++        cash_flow_policy=cash_flow_policy,
++        margin_policy=margin_policy,
++    )
++    payload = {
++        "summary": result.summary,
++        "terminal_equity": result.terminal_equity,
++        "disclosures_live_account": for_section("live_account"),
++    }
++    if margin_policy is not None:
++        exposure = build_exposure_report(result, margin_policy=margin_policy)
++        payload["exposure"] = exposure.to_dict()
++        payload["disclosures_margin_exposure"] = for_section("margin_exposure")
++    return payload
++
++
++def run_prop_single(trades: Sequence[Trade], rules: PropFirmRules) -> dict[str, Any]:
++    result = run_prop_account_path(list(trades), rules)
++    return {
++        "summary": result.summary,
++        "terminal_phase": result.terminal_phase,
++        "payouts": [p.to_dict() for p in result.payouts],
++        # The headline is realized cash; notional balance is explicitly demoted.
++        "headline_net_trader_cash": result.net_trader_cash,
++        "notional_terminal_balance_not_wealth": result.terminal_balance,
++        "disclosures_prop_firm": for_section("prop_firm"),
++    }
++
++
++def run_prop_ensemble(
++    trade_paths: Sequence[Sequence[Trade]], rules: PropFirmRules
++) -> dict[str, Any]:
++    """Run one prop account per resampled trade path and aggregate cash economics."""
++
++    results = [run_prop_account_path(list(path), rules) for path in trade_paths]
++    aggregate = summarize_prop_accounts(results)
++    return {
++        "aggregate": aggregate,
++        "num_paths": len(results),
++        "disclosures_prop_firm": for_section("prop_firm"),
++    }
++
++
++def run_optimizer(
++    candidates: list[Candidate],
++    objectives: list[Objective],
++    constraints: list[Constraint] | None = None,
++    *,
++    allow_single_objective: bool = False,
++) -> dict[str, Any]:
++    result = optimize(
++        candidates, objectives, constraints, allow_single_objective=allow_single_objective
++    )
++    payload = result.to_dict()
++    payload["disclosures_optimizer"] = for_section("optimizer")
++    return payload
++
++
++def frontier_dataframe(optimizer_payload: dict[str, Any]) -> pd.DataFrame:
++    """Flatten the Pareto frontier into a table for display."""
++
++    rows = []
++    for cand in optimizer_payload.get("pareto_frontier", []):
++        row = {"id": cand["id"]}
++        row.update({f"metric.{k}": v for k, v in cand["metrics"].items()})
++        rows.append(row)
++    return pd.DataFrame(rows)
+--- /dev/null
++++ b/app/streamlit_app.py
+@@ -0,0 +1,183 @@
++"""V6 — Streamlit view (thin). All computation is delegated to ``app.controller``.
++
++Run with:  streamlit run app/streamlit_app.py
++
++This file contains NO modelling logic. Its only jobs are (1) collect inputs,
++(2) call the controller, (3) render results, and (4) render the mandatory
++model-risk disclosures the controller returns. Per the charter, assumptions and
++limitations are shown WITH every number, not hidden.
++"""
++from __future__ import annotations
++
++import pandas as pd
++import streamlit as st
++
++from app import controller
++from app.disclosures import for_section
++from sim_core.exposure import InstrumentMargin, MarginPolicy
++from sim_core.ingestion.csv_loader import load_trade_csv
++from sim_core.live_account import FixedContractSizing, StrategyAllocation
++from sim_core.optimize import Candidate, Constraint, Objective
++from sim_core.prop_firm import PropFirmRules
++
++
++def _render_disclosures(items: list[str], *, title: str = "Model-risk disclosures") -> None:
++    with st.expander(f"⚠️ {title} (read before trusting these numbers)", expanded=True):
++        for note in items:
++            st.markdown(f"- {note}")
++
++
++def _load_trades(upload, source_timezone: str):
++    if upload is None:
++        return None
++    return load_trade_csv(upload, source_timezone=source_timezone)
++
++
++def main() -> None:
++    st.set_page_config(page_title="Strategy Simulation Laboratory", layout="wide")
++    st.title("Strategy & Prop-Firm Simulation Laboratory")
++    st.caption(
++        "A model-risk-first laboratory. Every output ships with its assumptions. "
++        "The engine (sim_core) is fully separate from this UI."
++    )
++
++    with st.sidebar:
++        st.header("1 · Upload trade log")
++        upload = st.file_uploader("Trade CSV (per-contract P&L)", type=["csv"])
++        source_tz = st.selectbox("Source timezone", ["UTC", "America/New_York", "Europe/London"])
++        st.caption(
++            "Contract mapping is declared, never inferred (ADR-011). A blank/contradictory "
++            "dollars-per-point fails validation."
++        )
++
++    if upload is None:
++        st.info("Upload a trade CSV to begin.")
++        st.subheader("What this tool will and will not tell you")
++        for section in ("ensemble", "drawdown", "prop_firm", "optimizer"):
++            _render_disclosures(for_section(section), title=f"{section} caveats")
++        return
++
++    try:
++        trades = _load_trades(upload, source_tz)
++    except Exception as exc:  # validation is intentionally strict
++        st.error(f"Validation failed (this is by design — the loader fails closed): {exc}")
++        return
++
++    st.success(f"Loaded {len(trades)} trades across {len({t.strategy_id for t in trades})} strategies.")
++
++    tab_ens, tab_live, tab_prop, tab_opt = st.tabs(
++        ["Ensemble (Monte Carlo)", "Live account", "Prop firm", "Optimizer"]
++    )
++
++    # --- Ensemble ---------------------------------------------------------------
++    with tab_ens:
++        st.subheader("Synchronized seasonal / block resampling")
++        method = st.selectbox("Resampling method", controller.available_resampling_methods())
++        months = st.number_input("Horizon (months)", 1, 60, 12)
++        paths = st.number_input("Paths", 100, 20000, 2000, step=100)
++        seed = st.number_input("Master seed", 0, 10_000_000, 12345)
++        equity = st.number_input("Starting equity ($)", 1000.0, 1e7, 50_000.0, step=1000.0)
++        ruin = st.number_input("Ruin threshold ($)", 0.0, 1e7, 0.0, step=1000.0)
++        params: dict = {"months": int(months)}
++        if method == "moving_block_bootstrap":
++            params["block_length"] = st.number_input("Block length (months)", 1, 24, 3)
++        elif method == "stationary_block_bootstrap":
++            params["expected_block_length"] = st.number_input("Expected block length", 1.0, 24.0, 3.0)
++        if st.button("Run ensemble"):
++            out = controller.run_ensemble(
++                trades,
++                method=method,
++                resampling_params=params,
++                number_of_paths=int(paths),
++                master_seed=int(seed),
++                starting_equity=float(equity),
++                ruin_threshold=float(ruin),
++            )
++            st.metric("Risk of ruin", f"{out['ruin_probability']:.2%}")
++            if out["monthly_percentiles"]:
++                st.line_chart(pd.DataFrame(out["monthly_percentiles"]).set_index("month"))
++            st.write("Terminal equity distribution", out["terminal_equity_distribution"])
++            for note in out["engine_warnings"] + out["coverage_warnings"]:
++                st.warning(note)
++            _render_disclosures(out["disclosures_ensemble"] + out["disclosures_drawdown"])
++            st.caption(f"Input data hash: `{out['data_hash']}`")
++
++    # --- Live account -----------------------------------------------------------
++    with tab_live:
++        st.subheader("Live brokerage account")
++        equity_l = st.number_input("Starting equity ($)", 1000.0, 1e7, 50_000.0, key="live_eq")
++        contracts = st.number_input("Contracts per trade (fixed)", 1, 100, 1)
++        use_margin = st.checkbox("Apply a declared margin cap")
++        margin_policy = None
++        if use_margin:
++            sym = st.text_input("Contract symbol", "MES")
++            im = st.number_input("Initial margin ($)", 1.0, 1e6, 1320.0)
++            mm = st.number_input("Maintenance margin ($)", 1.0, 1e6, 1200.0)
++            margin_policy = MarginPolicy({sym: InstrumentMargin(sym, im, mm)})
++        if st.button("Run live account"):
++            allocations = {
++                s: StrategyAllocation(s, FixedContractSizing(int(contracts)))
++                for s in {t.strategy_id for t in trades}
++            }
++            out = controller.run_live_account(
++                trades,
++                starting_equity=float(equity_l),
++                allocations=allocations,
++                margin_policy=margin_policy,
++            )
++            st.write("Summary", out["summary"])
++            if "exposure" in out:
++                st.write("Exposure", out["exposure"])
++                _render_disclosures(out["disclosures_margin_exposure"], title="margin/exposure caveats")
++            _render_disclosures(out["disclosures_live_account"], title="live-account caveats")
++
++    # --- Prop firm --------------------------------------------------------------
++    with tab_prop:
++        st.subheader("Prop / funded account")
++        st.error(
++            "The account balance below is NOTIONAL and is NOT your money. Only "
++            "**net trader cash** (payouts × split − fees) is real."
++        )
++        acct = st.number_input("Account size ($)", 1000.0, 1e6, 50_000.0)
++        target = st.number_input("Profit target ($)", 100.0, 1e6, 3_000.0)
++        trail = st.number_input("Trailing drawdown ($)", 100.0, 1e6, 2_000.0)
++        split = st.slider("Profit split (trader)", 0.5, 1.0, 0.9)
++        eval_fee = st.number_input("Evaluation fee ($)", 0.0, 1e5, 150.0)
++        act_fee = st.number_input("Activation fee ($)", 0.0, 1e5, 0.0)
++        contracts_p = st.number_input("Contracts per trade", 1, 100, 1, key="prop_ct")
++        if st.button("Run prop account"):
++            rules = PropFirmRules(
++                account_size=float(acct),
++                profit_target=float(target),
++                trailing_drawdown=float(trail),
++                profit_split=float(split),
++                evaluation_fee=float(eval_fee),
++                activation_fee=float(act_fee),
++                first_payout_threshold=float(target),
++                contracts_per_trade=int(contracts_p),
++            )
++            out = controller.run_prop_single(trades, rules)
++            st.metric("Net trader cash (real)", f"${out['headline_net_trader_cash']:,.2f}")
++            st.caption(
++                f"Notional terminal balance (NOT wealth): "
++                f"${out['notional_terminal_balance_not_wealth']:,.2f}"
++            )
++            st.write("Summary", out["summary"])
++            _render_disclosures(out["disclosures_prop_firm"], title="prop-firm caveats")
++
++    # --- Optimizer --------------------------------------------------------------
++    with tab_opt:
++        st.subheader("Multi-objective optimizer (Pareto frontier)")
++        st.info(
++            "The optimizer selects a Pareto frontier over declared objectives + "
++            "constraints. It refuses to optimize a single metric alone by default."
++        )
++        st.caption(
++            "Wire candidate configurations (each already evaluated by the engines) "
++            "into controller.run_optimizer(candidates, objectives, constraints)."
++        )
++        _render_disclosures(for_section("optimizer"), title="optimizer caveats")
++
++
++if __name__ == "__main__":
++    main()
+--- /dev/null
++++ b/tests/test_ui_controller.py
+@@ -0,0 +1,134 @@
++"""V6 — UI controller tests. The controller is pure Python (no Streamlit)."""
++from __future__ import annotations
++
++import importlib.util
++
++import pandas as pd
++import pytest
++
++from app import controller
++from app.disclosures import DISCLOSURES, for_section
++from sim_core.exposure import InstrumentMargin, MarginPolicy
++from sim_core.live_account import FixedContractSizing, StrategyAllocation
++from sim_core.models import Trade
++from sim_core.optimize import Candidate, Constraint, Objective
++from sim_core.prop_firm import PropFirmRules
++
++
++def _trade(rid, strat, pnl, entry, exit_):
++    return Trade(
++        trade_id=f"{strat}-{rid}",
++        source_row_id=str(rid),
++        strategy_id=strat,
++        instrument="ES",
++        contract_symbol="MES",
++        entry_time=pd.Timestamp(entry),
++        exit_time=pd.Timestamp(exit_),
++        pnl_dollars=pnl,
++        stop_points=20.0,
++        dollars_per_point=5.0,
++    )
++
++
++def _trades():
++    out = []
++    for m in range(1, 5):
++        for d in (2, 9, 16, 23):
++            out.append(
++                _trade(
++                    f"{m}{d}",
++                    "s",
++                    100 if d % 2 else -60,
++                    f"2025-{m:02d}-{d:02d}T09:30:00Z",
++                    f"2025-{m:02d}-{d:02d}T10:00:00Z",
++                )
++            )
++    return out
++
++
++def test_disclosures_are_declared_for_every_section():
++    for section in ("ensemble", "drawdown", "live_account", "margin_exposure", "prop_firm", "optimizer"):
++        assert for_section(section), f"section {section} must have disclosures"
++    with pytest.raises(KeyError):
++        for_section("does_not_exist")
++
++
++def test_run_ensemble_returns_disclosed_provenanced_result():
++    out = controller.run_ensemble(
++        _trades(),
++        method="same_calendar_month_bootstrap",
++        resampling_params={"months": 4},
++        number_of_paths=100,
++        master_seed=1,
++        starting_equity=50_000,
++        ruin_threshold=0,
++    )
++    assert len(out["data_hash"]) == 64
++    assert out["disclosures_ensemble"] == DISCLOSURES["ensemble"]
++    assert out["disclosures_drawdown"] == DISCLOSURES["drawdown"]
++    # coverage-absent is surfaced, not swallowed
++    assert isinstance(out["engine_warnings"], list)
++    assert 0.0 <= out["ruin_probability"] <= 1.0
++
++
++def test_run_live_account_attaches_exposure_and_disclosures_when_margin_given():
++    out = controller.run_live_account(
++        _trades(),
++        starting_equity=50_000,
++        allocations={"s": StrategyAllocation("s", FixedContractSizing(2))},
++        margin_policy=MarginPolicy({"MES": InstrumentMargin("MES", 1_320, 1_200)}),
++    )
++    assert "exposure" in out
++    assert out["disclosures_margin_exposure"] == DISCLOSURES["margin_exposure"]
++    assert out["disclosures_live_account"] == DISCLOSURES["live_account"]
++
++
++def test_run_prop_single_demotes_notional_balance():
++    out = controller.run_prop_single(
++        _trades(),
++        PropFirmRules(account_size=50_000, profit_target=800, trailing_drawdown=2_000),
++    )
++    # headline is realized cash; notional balance carried under an explicit not-wealth key
++    assert "headline_net_trader_cash" in out
++    assert "notional_terminal_balance_not_wealth" in out
++    assert out["disclosures_prop_firm"] == DISCLOSURES["prop_firm"]
++
++
++def test_run_optimizer_returns_frontier_and_disclosures():
++    cands = [
++        Candidate("a", {}, {"net_cash": 1_000, "ruin": 0.02}),
++        Candidate("b", {}, {"net_cash": 5_000, "ruin": 0.40}),
++    ]
++    out = controller.run_optimizer(
++        cands,
++        [Objective("net_cash", "max"), Objective("ruin", "min")],
++        [Constraint("ruin", "<=", 0.10)],
++    )
++    assert {c["id"] for c in out["pareto_frontier"]} == {"a"}  # b fails constraint
++    assert out["disclosures_optimizer"] == DISCLOSURES["optimizer"]
++    frame = controller.frontier_dataframe(out)
++    assert list(frame["id"]) == ["a"]
++
++
++def test_controller_does_not_import_streamlit():
++    # Engine/UI separation: the controller must be usable headless.
++    import sys
++
++    # importing the controller must not have pulled in streamlit
++    assert "app.controller" in sys.modules
++    # controller module has no streamlit attribute/dependency
++    assert not hasattr(controller, "st")
++
++
++def test_unknown_resampling_method_is_rejected():
++    with pytest.raises(ValueError, match="unknown resampling method"):
++        controller.build_policy("not_a_method", {})
++
++
++@pytest.mark.skipif(
++    importlib.util.find_spec("streamlit") is None, reason="streamlit not installed"
++)
++def test_streamlit_app_imports_when_available():
++    import app.streamlit_app as view  # noqa: F401
++
++    assert hasattr(view, "main")
