@@ -201,7 +201,36 @@ reported through forced size-reduction counts.
 
 ### ADR-022 — Return and risk metric separation
 Reports separate trading P&L, deposits, withdrawals, ending equity, simple
-return on contributions, time-weighted return, money-weighted return, and
-trading return before cash flows. Drawdown is measured on account equity
-including cash flows, with cash-flow context reported separately. Operational
-ruin is configured independently from zero-equity ruin.
+return on contributions, period TWR, period money-weighted return, annualized
+XIRR, and trading return before cash flows. Account-equity drawdown remains
+available for statement history; ADR-023 establishes flow-neutral trading
+drawdown as the default risk drawdown family. Operational ruin is configured
+independently from zero-equity ruin.
+
+## Review-007 hardening decisions (2026-07-02)
+
+### ADR-023 — Separate account and flow-neutral trading drawdown
+Account-equity drawdown remains available for account-statement and liquidity
+reporting. Flow-neutral trading drawdown uses `starting_equity +
+cumulative_trading_pnl`, excludes external deposits/withdrawals, and is the
+default risk drawdown family for diagnostics and future margin/exposure logic.
+
+### ADR-024 — Operational ruin is a barrier event
+Operational ruin uses `equity <= operational_ruin_threshold`. Once touched, the
+path remains classified as ruined even if later deposits or trading gains
+recover the ending balance. V2.1 continues after ruin for diagnostics by
+default through `operational_ruin_policy="classify_and_continue"`. The explicit
+alternative is `operational_ruin_policy="stop_trading_after_ruin"`.
+
+### ADR-025 — Period returns are not annualized XIRR
+`period_twr` and `period_money_weighted_return` are period metrics. XIRR is
+serialized separately as `annualized_xirr` with status, unavailable reason,
+measurement dates, period length, and short-horizon warning. Non-unique sign
+patterns return an unavailable status rather than a misleading number.
+
+### ADR-026 — Live-account provenance hashes
+Every `LiveAccountPathResult` records deterministic SHA-256 hashes for trade
+inputs, live-account configuration, cash-flow schedule, strategy sizing
+policies, contract specifications, ruin configuration, reinvestment
+configuration, and result payload. Verification recomputes the hashes and
+returns a `VerificationReport`.

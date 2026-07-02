@@ -13,6 +13,7 @@ from sim_core.live_account import (
     LiveAccountPathResult,
     PercentEquitySizing,
     StrategyAllocation,
+    verify_live_account_result_provenance,
     run_live_account_path,
     summarize_live_account_paths,
 )
@@ -460,7 +461,7 @@ def test_twr_is_unaffected_by_external_cash_flow_timing_without_trading_pnl():
     assert late.summary["time_weighted_return"] == 0
 
 
-def test_mwr_changes_with_cash_flow_timing():
+def test_annualized_xirr_changes_with_cash_flow_timing():
     trades = _trades(
         [
             {
@@ -481,7 +482,7 @@ def test_mwr_changes_with_cash_flow_timing():
         cash_flows=[CashFlow("2025-01-31T00:00:00Z", 5_000, "deposit")],
     )
 
-    assert early.summary["money_weighted_return"] != late.summary["money_weighted_return"]
+    assert early.summary["annualized_xirr"] != late.summary["annualized_xirr"]
 
 
 def test_drawdown_uses_account_equity_and_reports_cash_flow_context():
@@ -501,10 +502,35 @@ def test_drawdown_uses_account_equity_and_reports_cash_flow_context():
         cash_flows=[CashFlow("2025-01-01T00:00:00Z", 5_000, "deposit")],
     )
 
-    assert result.summary["peak_equity"] == 15_000
-    assert result.summary["max_drawdown"] == 3_000
+    assert result.summary["account_peak_equity"] == 15_000
+    assert result.summary["account_max_drawdown_dollars"] == 3_000
+    assert result.summary["account_drawdown_duration"] >= 0
+    assert result.summary["flow_neutral_peak_equity"] == 10_000
+    assert result.summary["trading_max_drawdown_dollars"] == 3_000
+    assert result.summary["trading_drawdown_duration"] >= 0
     assert result.summary["deposits"] == 5_000
     assert result.summary["trading_pnl"] == -3_000
+
+
+def test_withdrawal_moves_account_drawdown_but_not_trading_drawdown():
+    trades = _trades(
+        [
+            {
+                "strategy_id": "s",
+                "entry_time": "2025-01-02T00:00:00Z",
+                "exit_time": "2025-01-02T01:00:00Z",
+                "pnl_dollars": -250,
+                "source_row_id": "loss",
+            }
+        ]
+    )
+    result = _fixed_result(
+        trades,
+        cash_flows=[CashFlow("2025-01-03T00:00:00Z", 2_000, "withdrawal")],
+    )
+
+    assert result.summary["account_max_drawdown_dollars"] == 2_250
+    assert result.summary["trading_max_drawdown_dollars"] == 250
 
 
 def test_operational_ruin_differs_from_zero_equity_ruin():
@@ -526,7 +552,156 @@ def test_operational_ruin_differs_from_zero_equity_ruin():
     )
 
     assert result.summary["operational_ruin"] is True
+    assert result.summary["operational_ruin_hit"] is True
     assert result.summary["zero_equity_ruin"] is False
+
+
+def test_mid_path_operational_ruin_breach_remains_ruined_after_recovery():
+    trades = _trades(
+        [
+            {
+                "strategy_id": "s",
+                "entry_time": "2025-01-02T00:00:00Z",
+                "exit_time": "2025-01-02T01:00:00Z",
+                "pnl_dollars": -2_000,
+                "source_row_id": "breach",
+            },
+            {
+                "strategy_id": "s",
+                "entry_time": "2025-01-03T00:00:00Z",
+                "exit_time": "2025-01-03T01:00:00Z",
+                "pnl_dollars": 5_000,
+                "source_row_id": "recover",
+            },
+        ]
+    )
+    result = run_live_account_path(
+        trades,
+        config=LiveAccountConfig(starting_equity=10_000, operational_ruin_threshold=9_000),
+        allocations=_allocation("s", FixedContractSizing(1)),
+    )
+
+    assert result.summary["ending_equity"] == 13_000
+    assert result.summary["operational_ruin_hit"] is True
+    assert result.summary["operational_ruin_trigger_event_id"] == trades[0].trade_id
+    assert result.summary["operational_ruin_policy"] == "classify_and_continue"
+
+
+def test_operational_ruin_barrier_handles_below_never_and_exact_touch():
+    below = run_live_account_path(
+        _trades(
+            [
+                {
+                    "strategy_id": "s",
+                    "entry_time": "2025-01-02T00:00:00Z",
+                    "exit_time": "2025-01-02T01:00:00Z",
+                    "pnl_dollars": -1_001,
+                    "source_row_id": "below",
+                }
+            ]
+        ),
+        config=LiveAccountConfig(starting_equity=10_000, operational_ruin_threshold=9_000),
+        allocations=_allocation("s", FixedContractSizing(1)),
+    )
+    never = run_live_account_path(
+        _trades(
+            [
+                {
+                    "strategy_id": "s",
+                    "entry_time": "2025-01-02T00:00:00Z",
+                    "exit_time": "2025-01-02T01:00:00Z",
+                    "pnl_dollars": -999,
+                    "source_row_id": "never",
+                }
+            ]
+        ),
+        config=LiveAccountConfig(starting_equity=10_000, operational_ruin_threshold=9_000),
+        allocations=_allocation("s", FixedContractSizing(1)),
+    )
+    touch = run_live_account_path(
+        _trades(
+            [
+                {
+                    "strategy_id": "s",
+                    "entry_time": "2025-01-02T00:00:00Z",
+                    "exit_time": "2025-01-02T01:00:00Z",
+                    "pnl_dollars": -1_000,
+                    "source_row_id": "touch",
+                }
+            ]
+        ),
+        config=LiveAccountConfig(starting_equity=10_000, operational_ruin_threshold=9_000),
+        allocations=_allocation("s", FixedContractSizing(1)),
+    )
+
+    assert below.summary["operational_ruin_hit"] is True
+    assert never.summary["operational_ruin_hit"] is False
+    assert touch.summary["operational_ruin_hit"] is True
+    assert touch.summary["operational_ruin_comparison"] == "<="
+
+
+def test_stop_trading_after_ruin_policy_halts_later_trade_events():
+    trades = _trades(
+        [
+            {
+                "strategy_id": "s",
+                "entry_time": "2025-01-02T00:00:00Z",
+                "exit_time": "2025-01-02T01:00:00Z",
+                "pnl_dollars": -2_000,
+                "source_row_id": "breach",
+            },
+            {
+                "strategy_id": "s",
+                "entry_time": "2025-01-03T00:00:00Z",
+                "exit_time": "2025-01-03T01:00:00Z",
+                "pnl_dollars": 5_000,
+                "source_row_id": "skipped",
+            },
+        ]
+    )
+
+    result = run_live_account_path(
+        trades,
+        config=LiveAccountConfig(
+            starting_equity=10_000,
+            operational_ruin_threshold=9_000,
+            operational_ruin_policy="stop_trading_after_ruin",
+        ),
+        allocations=_allocation("s", FixedContractSizing(1)),
+    )
+
+    assert result.summary["ending_equity"] == 8_000
+    assert result.summary["operational_ruin_hit"] is True
+    assert result.summary["operational_ruin_policy"] == "stop_trading_after_ruin"
+
+
+def test_operational_ruin_initial_threshold_touch_is_absorbing():
+    trades = _trades(
+        [
+            {
+                "strategy_id": "s",
+                "entry_time": "2025-01-02T00:00:00Z",
+                "exit_time": "2025-01-02T01:00:00Z",
+                "pnl_dollars": 5_000,
+                "source_row_id": "skipped",
+            }
+        ]
+    )
+
+    result = run_live_account_path(
+        trades,
+        config=LiveAccountConfig(
+            starting_equity=10_000,
+            operational_ruin_threshold=10_000,
+            operational_ruin_policy="stop_trading_after_ruin",
+        ),
+        allocations=_allocation("s", FixedContractSizing(1)),
+    )
+
+    assert result.summary["ending_equity"] == 10_000
+    assert result.summary["operational_ruin_hit"] is True
+    assert result.summary["operational_ruin_trigger_event_id"] == "initial_equity"
+    assert result.summary["operational_ruin_first_timestamp"] is None
 
 
 def test_no_equity_cap_is_applied_unless_configured():
@@ -589,6 +764,96 @@ def test_probability_outputs_cover_size_reduction_drawdown_and_ruin():
     assert summary["probability_operational_ruin"] == 0.5
 
 
+def test_return_fields_distinguish_period_twr_period_mwr_and_annualized_xirr():
+    trades = _trades(
+        [
+            {
+                "strategy_id": "s",
+                "entry_time": "2025-01-01T00:00:00Z",
+                "exit_time": "2025-04-01T00:00:00Z",
+                "pnl_dollars": 1_000,
+                "source_row_id": "quarter",
+            }
+        ]
+    )
+
+    result = _fixed_result(trades)
+
+    assert result.summary["period_money_weighted_return"] == pytest.approx(
+        result.summary["period_twr"]
+    )
+    assert result.summary["annualized_xirr_status"] == "ok"
+    assert result.summary["annualized_xirr"] != pytest.approx(result.summary["period_twr"])
+    assert "money_weighted_return" in result.summary  # deprecated compatibility alias only
+
+
+def test_cash_flow_timing_changes_xirr_but_not_twr_without_trading_difference():
+    trades = _trades(
+        [
+            {
+                "strategy_id": "s",
+                "entry_time": "2025-03-01T00:00:00Z",
+                "exit_time": "2025-04-01T00:00:00Z",
+                "pnl_dollars": 1_000,
+                "source_row_id": "trade",
+            }
+        ]
+    )
+    early = _fixed_result(
+        trades,
+        cash_flows=[CashFlow("2025-01-01T00:00:00Z", 5_000, "deposit")],
+    )
+    late = _fixed_result(
+        trades,
+        cash_flows=[CashFlow("2025-02-28T00:00:00Z", 5_000, "deposit")],
+    )
+
+    assert early.summary["period_twr"] == pytest.approx(late.summary["period_twr"])
+    assert early.summary["annualized_xirr"] != pytest.approx(late.summary["annualized_xirr"])
+
+
+def test_short_horizon_annualized_xirr_warns():
+    result = _fixed_result(
+        _trades(
+            [
+                {
+                    "strategy_id": "s",
+                    "entry_time": "2025-01-01T00:00:00Z",
+                    "exit_time": "2025-01-01T01:00:00Z",
+                    "pnl_dollars": 1_000,
+                    "source_row_id": "short",
+                }
+            ]
+        )
+    )
+
+    assert result.summary["annualization_warning"]
+    assert result.summary["annualized_twr"] is None
+
+
+def test_non_unique_xirr_returns_unavailable_status():
+    result = _fixed_result(
+        _trades(
+            [
+                {
+                    "strategy_id": "s",
+                    "entry_time": "2025-02-01T00:00:00Z",
+                    "exit_time": "2025-04-01T00:00:00Z",
+                    "pnl_dollars": 100,
+                    "source_row_id": "trade",
+                }
+            ]
+        ),
+        cash_flows=[
+            CashFlow("2025-01-15T00:00:00Z", 15_000, "withdrawal"),
+            CashFlow("2025-03-01T00:00:00Z", 1_000, "deposit"),
+        ],
+    )
+
+    assert result.summary["annualized_xirr_status"] == "unavailable"
+    assert result.summary["annualized_xirr_unavailable_reason"] == "non_unique_xirr_sign_pattern"
+
+
 def test_fixed_dollar_risk_requires_declared_stop_or_proxy():
     trades = _trades(
         [
@@ -638,3 +903,92 @@ def test_json_serialization_round_trips_for_v2_models():
     assert restored.config == result.config
     assert restored.allocations["s"].sizing_policy == result.allocations["s"].sizing_policy
     assert restored.summary == result.summary
+    assert restored.provenance == result.provenance
+
+
+def test_live_account_provenance_verifies_and_detects_mismatches():
+    trades = _trades(
+        [
+            {
+                "strategy_id": "s",
+                "entry_time": "2025-01-01T00:00:00Z",
+                "exit_time": "2025-01-01T01:00:00Z",
+                "pnl_dollars": 100,
+                "source_row_id": "t",
+            }
+        ]
+    )
+    config = LiveAccountConfig(starting_equity=10_000, scenario_id="prov", master_seed=7, path_index=2)
+    cash_flows = CashFlowPolicy([CashFlow("2025-01-01T00:00:00Z", 1_000, "deposit")])
+    allocations = _allocation(
+        "s", FixedDollarRiskSizing(1_000, risk_proxy_dollars=500, reinvestment_rate=0.5)
+    )
+    result = run_live_account_path(
+        trades,
+        config=config,
+        allocations=allocations,
+        cash_flow_policy=cash_flows,
+    )
+
+    assert verify_live_account_result_provenance(
+        result, trades, config, cash_flows, allocations
+    ).ok
+
+    changed_trade = _trades(
+        [
+            {
+                "strategy_id": "s",
+                "entry_time": "2025-01-01T00:00:00Z",
+                "exit_time": "2025-01-01T01:00:00Z",
+                "pnl_dollars": 101,
+                "source_row_id": "t",
+            }
+        ]
+    )
+    changed_deposit = CashFlowPolicy([CashFlow("2025-01-01T00:00:00Z", 2_000, "deposit")])
+    changed_sizing = _allocation(
+        "s", FixedDollarRiskSizing(1_000, risk_proxy_dollars=500, reinvestment_rate=1.0)
+    )
+    changed_config = LiveAccountConfig(starting_equity=10_000, operational_ruin_threshold=1)
+    changed_contract = _trades(
+        [
+            {
+                "strategy_id": "s",
+                "instrument": "NQ",
+                "contract_symbol": "MNQ",
+                "entry_time": "2025-01-01T00:00:00Z",
+                "exit_time": "2025-01-01T01:00:00Z",
+                "pnl_dollars": 100,
+                "dollars_per_point": 2,
+                "source_row_id": "t",
+            }
+        ]
+    )
+    mutated_payload = result.to_dict()
+    mutated_payload["summary"]["ending_equity"] += 1
+    mutated_result = LiveAccountPathResult.from_dict(mutated_payload)
+
+    assert not verify_live_account_result_provenance(
+        result, changed_trade, config, cash_flows, allocations
+    ).checks["trade_input_hash"]
+    assert not verify_live_account_result_provenance(
+        result, trades, config, changed_deposit, allocations
+    ).checks["cash_flow_schedule_hash"]
+    assert not verify_live_account_result_provenance(
+        result, trades, config, cash_flows, changed_sizing
+    ).checks["sizing_policy_hash"]
+    assert not verify_live_account_result_provenance(
+        result, trades, config, cash_flows, changed_sizing
+    ).checks["reinvestment_configuration_hash"]
+    assert not verify_live_account_result_provenance(
+        result, trades, changed_config, cash_flows, allocations
+    ).checks["live_account_config_hash"]
+    assert not verify_live_account_result_provenance(
+        result, trades, changed_config, cash_flows, allocations
+    ).checks["ruin_configuration_hash"]
+    assert not verify_live_account_result_provenance(
+        result, changed_contract, config, cash_flows, allocations
+    ).checks["contract_specification_hash"]
+    assert not verify_live_account_result_provenance(
+        mutated_result, trades, config, cash_flows, allocations
+    ).checks["result_hash"]

@@ -5,6 +5,67 @@ top. Findings are classified `BLOCKER` / `HIGH` / `MEDIUM` / `LOW` / `OPTIONAL`.
 
 ---
 
+## Review 008 prep — 2026-07-02 — Codex V2.1 live-account corrections
+
+### Context
+
+Claude Review 007 gave **CONDITIONAL APPROVAL** for the first V2 live-account
+milestone. This pass addresses only the four Review 007 findings. It does not
+start margin, exposure, prop-firm logic, optimization, or UI.
+
+### Findings Addressed
+
+- **MEDIUM-V2-A:** Account-equity drawdown and flow-neutral trading drawdown are
+  now separate serialized metric families. Trading drawdown excludes direct
+  deposit/withdrawal effects and is the default risk drawdown alias.
+- **MEDIUM-V2-B:** Operational ruin is now an absorbing path barrier using
+  `equity <= threshold`. Results record hit status, first timestamp, trigger
+  event ID, and minimum equity. Policy is explicit:
+  `classify_and_continue` or `stop_trading_after_ruin`.
+- **MEDIUM-V2-C:** Return outputs now distinguish cumulative `period_twr`,
+  `period_money_weighted_return`, and separately labeled `annualized_xirr` with
+  measurement-period metadata, short-horizon warning, and typed unavailable
+  status for invalid/non-unique cases.
+- **MEDIUM-V2-D:** Live-account result provenance now includes deterministic
+  hashes for ordered trade inputs, account config, cash-flow schedule, sizing
+  policies, contract specifications, ruin config, reinvestment config, and the
+  result payload. Verification returns `VerificationReport`.
+
+### Key Audit Files
+
+- `sim_core/live_account.py`
+- `tests/test_live_account.py`
+- `V2_METRICS.md`
+- `ARCHITECTURE.md`
+- `DECISIONS.md`
+- `KNOWN_LIMITATIONS.md`
+- `PROJECT_STATUS.md`
+
+### Verification
+
+- `python3 -m pytest tests/regression -q` -> `22 passed`
+- `python3 -m pytest -q` -> `122 passed, 1 skipped`
+
+### Sample Artifacts
+
+Directory:
+
+`/Users/mariusvidziunas/Documents/Codex/2026-06-30/x/outputs/v2_1_review007_samples/`
+
+Files:
+
+- `sample_01_withdrawal_account_vs_trading_drawdown.json`
+- `sample_02_mid_path_ruin_recovery.json`
+- `sample_03_no_flow_period_mwr_equals_twr.json`
+- `sample_04_annualized_xirr_labeled_and_warned.json`
+- `sample_05_provenance_verification_passes.json`
+- `sample_06_provenance_fails_changed_deposit.json`
+- `sample_07_provenance_fails_changed_sizing.json`
+- `sample_08_provenance_fails_changed_ruin_threshold.json`
+- `sample_index.json`
+
+---
+
 ## Review 006 prep — 2026-06-30 — Codex V2 live-account milestone
 
 ### Context

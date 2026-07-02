@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+import hashlib
 import json
 import math
 from typing import Any, Literal
@@ -8,7 +9,7 @@ from typing import Any, Literal
 import pandas as pd
 
 from sim_core.ingestion.csv_loader import sort_trades_chronologically
-from sim_core.models import ResampledPath, Trade
+from sim_core.models import ENGINE_VERSION, ResampledPath, Trade, VerificationReport
 
 CashFlowType = Literal["deposit", "withdrawal"]
 AccountEventType = Literal["deposit", "trade_entry", "trade_exit", "withdrawal"]
@@ -17,19 +18,38 @@ AccountEventType = Literal["deposit", "trade_entry", "trade_exit", "withdrawal"]
 @dataclass(frozen=True)
 class LiveAccountConfig:
     starting_equity: float
+    scenario_id: str = "live_account"
+    master_seed: int | None = None
+    path_index: int | None = None
     currency: str = "USD"
     operational_ruin_threshold: float = 0.0
+    operational_ruin_comparison: str = "<="
+    operational_ruin_policy: str = "classify_and_continue"
     drawdown_thresholds: tuple[float, ...] = (0.2, 0.5, 0.8)
+    short_horizon_annualization_days: int = 30
 
     def __post_init__(self) -> None:
         if self.starting_equity <= 0:
             raise ValueError("starting_equity must be positive")
+        if not self.scenario_id:
+            raise ValueError("scenario_id is required")
         if self.currency != "USD":
             raise ValueError("Version 2 milestone supports USD accounts only")
         if self.operational_ruin_threshold < 0:
             raise ValueError("operational_ruin_threshold cannot be negative")
+        if self.operational_ruin_comparison != "<=":
+            raise ValueError("only <= operational ruin comparison is supported")
+        if self.operational_ruin_policy not in {
+            "classify_and_continue",
+            "stop_trading_after_ruin",
+        }:
+            raise ValueError(
+                "operational_ruin_policy must be classify_and_continue or stop_trading_after_ruin"
+            )
         if any(threshold <= 0 or threshold >= 1 for threshold in self.drawdown_thresholds):
             raise ValueError("drawdown thresholds must be between 0 and 1")
+        if self.short_horizon_annualization_days < 0:
+            raise ValueError("short_horizon_annualization_days cannot be negative")
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -41,6 +61,11 @@ class LiveAccountConfig:
         data = dict(data)
         if "drawdown_thresholds" in data:
             data["drawdown_thresholds"] = tuple(data["drawdown_thresholds"])
+        if "halt_trading_after_operational_ruin" in data and "operational_ruin_policy" not in data:
+            halt = bool(data.pop("halt_trading_after_operational_ruin"))
+            data["operational_ruin_policy"] = (
+                "stop_trading_after_ruin" if halt else "classify_and_continue"
+            )
         return cls(**data)
 
 
@@ -264,6 +289,7 @@ class LiveAccountPathResult:
     sizing_decisions: list[SizingDecision]
     monthly_reports: list[dict[str, Any]]
     summary: dict[str, Any]
+    provenance: dict[str, Any] = field(default_factory=dict)
 
     @property
     def terminal_equity(self) -> float:
@@ -298,6 +324,7 @@ class LiveAccountPathResult:
             "sizing_decisions": [decision.to_dict() for decision in self.sizing_decisions],
             "monthly_reports": self.monthly_reports,
             "summary": self.summary,
+            "provenance": self.provenance,
         }
 
     def to_json(self) -> str:
@@ -336,6 +363,7 @@ class LiveAccountPathResult:
             sizing_decisions=[SizingDecision.from_dict(item) for item in data["sizing_decisions"]],
             monthly_reports=list(data["monthly_reports"]),
             summary=dict(data["summary"]),
+            provenance=dict(data.get("provenance", {})),
         )
 
     @classmethod
@@ -394,27 +422,39 @@ def run_live_account_path(
         timestamp = raw_event["timestamp"]
         state.advance(timestamp)
         event_type = raw_event["event_type"]
+        if (
+            config.operational_ruin_policy == "stop_trading_after_ruin"
+            and state.operational_ruin_hit
+            and event_type in {"trade_entry", "trade_exit"}
+        ):
+            continue
         if event_type == "deposit":
             cash_flow = raw_event["cash_flow"]
             state.apply_deposit(cash_flow.amount)
-            events.append(
+            _append_account_event(
+                events,
+                state,
+                config,
                 state.event(
                     event_type="deposit",
                     priority=_event_priority("deposit"),
                     amount=cash_flow.amount,
                     label=cash_flow.label,
-                )
+                ),
             )
         elif event_type == "withdrawal":
             cash_flow = raw_event["cash_flow"]
             state.apply_withdrawal(cash_flow.amount)
-            events.append(
+            _append_account_event(
+                events,
+                state,
+                config,
                 state.event(
                     event_type="withdrawal",
                     priority=_event_priority("withdrawal"),
                     amount=-cash_flow.amount,
                     label=cash_flow.label,
-                )
+                ),
             )
         elif event_type == "trade_entry":
             trade = raw_event["trade"]
@@ -433,7 +473,10 @@ def run_live_account_path(
             if decision.forced_reduction:
                 state.forced_size_reductions += 1
             sizing_decisions.append(decision)
-            events.append(
+            _append_account_event(
+                events,
+                state,
+                config,
                 state.event(
                     event_type="trade_entry",
                     priority=_event_priority("trade_entry"),
@@ -441,7 +484,7 @@ def run_live_account_path(
                     trade_id=trade.trade_id,
                     source_row_id=trade.source_row_id,
                     contracts=decision.contracts,
-                )
+                ),
             )
         elif event_type == "trade_exit":
             trade = raw_event["trade"]
@@ -461,7 +504,10 @@ def run_live_account_path(
             commission = trade.commission_round_turn * contracts
             net = gross - commission
             state.apply_trading_pnl(net)
-            events.append(
+            _append_account_event(
+                events,
+                state,
+                config,
                 state.event(
                     event_type="trade_exit",
                     priority=_event_priority("trade_exit"),
@@ -470,14 +516,14 @@ def run_live_account_path(
                     trade_id=trade.trade_id,
                     source_row_id=trade.source_row_id,
                     contracts=contracts,
-                )
+                ),
             )
         else:
             raise ValueError(f"unknown event type: {event_type!r}")
 
     summary = _build_summary(config, state, events, sizing_decisions)
     monthly = _build_monthly_reports(config, events)
-    return LiveAccountPathResult(
+    result = LiveAccountPathResult(
         config=config,
         allocations=allocations,
         cash_flow_policy=cash_flow_policy,
@@ -486,6 +532,17 @@ def run_live_account_path(
         sizing_decisions=sizing_decisions,
         monthly_reports=monthly,
         summary=summary,
+    )
+    return LiveAccountPathResult(
+        config=result.config,
+        allocations=result.allocations,
+        cash_flow_policy=result.cash_flow_policy,
+        trades=result.trades,
+        events=result.events,
+        sizing_decisions=result.sizing_decisions,
+        monthly_reports=result.monthly_reports,
+        summary=result.summary,
+        provenance=build_live_account_provenance(result, trade_list, config, cash_flow_policy, allocations),
     )
 
 
@@ -550,7 +607,7 @@ def summarize_live_account_paths(results: list[LiveAccountPathResult]) -> dict[s
         )
         / path_count,
         "probability_operational_ruin": sum(
-            1 for result in results if result.summary["operational_ruin"]
+            1 for result in results if result.summary["operational_ruin_hit"]
         )
         / path_count,
         "probability_zero_equity_ruin": sum(
@@ -562,9 +619,139 @@ def summarize_live_account_paths(results: list[LiveAccountPathResult]) -> dict[s
     for threshold in thresholds:
         key = f"probability_drawdown_{int(threshold * 100)}pct"
         summary[key] = sum(
-            1 for result in results if result.summary["drawdown_thresholds_reached"].get(str(threshold))
+            1
+            for result in results
+            if result.summary["trading_drawdown_thresholds_reached"].get(str(threshold))
         ) / path_count
     return summary
+
+
+def build_live_account_provenance(
+    result: LiveAccountPathResult,
+    trade_events: list[Trade],
+    account_config: LiveAccountConfig,
+    cash_flow_policy: CashFlowPolicy,
+    sizing_policies: dict[str, StrategyAllocation],
+) -> dict[str, Any]:
+    hashes = {
+        "trade_input_hash": live_account_trade_input_hash(trade_events),
+        "live_account_config_hash": _hash_payload(account_config.to_dict()),
+        "cash_flow_schedule_hash": _hash_payload(cash_flow_policy.to_dict()),
+        "sizing_policy_hash": _hash_payload(_allocations_to_dict(sizing_policies)),
+        "contract_specification_hash": contract_specification_hash(trade_events),
+        "ruin_configuration_hash": _hash_payload(_ruin_config_to_dict(account_config)),
+        "reinvestment_configuration_hash": _hash_payload(
+            _reinvestment_config_to_dict(sizing_policies)
+        ),
+    }
+    return {
+        **hashes,
+        "engine_version": ENGINE_VERSION,
+        "scenario_id": account_config.scenario_id,
+        "master_seed": account_config.master_seed,
+        "path_index": account_config.path_index,
+        "result_hash": live_account_result_hash(result),
+        "hash_algorithm": "sha256",
+        "deterministic_hash_fields": sorted(hashes),
+    }
+
+
+def verify_live_account_result_provenance(
+    result: LiveAccountPathResult,
+    trade_events: list[Trade],
+    account_config: LiveAccountConfig,
+    cash_flows: CashFlowPolicy | list[CashFlow] | tuple[CashFlow, ...],
+    sizing_policies: dict[str, StrategyAllocation],
+) -> VerificationReport:
+    cash_flow_policy = cash_flows if isinstance(cash_flows, CashFlowPolicy) else CashFlowPolicy(cash_flows)
+    provenance = result.provenance or {}
+    checks = {
+        "trade_input_hash": provenance.get("trade_input_hash")
+        == live_account_trade_input_hash(trade_events),
+        "live_account_config_hash": provenance.get("live_account_config_hash")
+        == _hash_payload(account_config.to_dict()),
+        "cash_flow_schedule_hash": provenance.get("cash_flow_schedule_hash")
+        == _hash_payload(cash_flow_policy.to_dict()),
+        "sizing_policy_hash": provenance.get("sizing_policy_hash")
+        == _hash_payload(_allocations_to_dict(sizing_policies)),
+        "contract_specification_hash": provenance.get("contract_specification_hash")
+        == contract_specification_hash(trade_events),
+        "ruin_configuration_hash": provenance.get("ruin_configuration_hash")
+        == _hash_payload(_ruin_config_to_dict(account_config)),
+        "reinvestment_configuration_hash": provenance.get("reinvestment_configuration_hash")
+        == _hash_payload(_reinvestment_config_to_dict(sizing_policies)),
+        "engine_version": provenance.get("engine_version") == ENGINE_VERSION,
+        "scenario_id": provenance.get("scenario_id") == account_config.scenario_id,
+        "master_seed": provenance.get("master_seed") == account_config.master_seed,
+        "path_index": provenance.get("path_index") == account_config.path_index,
+        "result_hash": provenance.get("result_hash") == live_account_result_hash(result),
+    }
+    return VerificationReport(
+        ok=all(checks.values()),
+        checks=checks,
+        details={
+            "declared": provenance,
+            "computed": {
+                "trade_input_hash": live_account_trade_input_hash(trade_events),
+                "live_account_config_hash": _hash_payload(account_config.to_dict()),
+                "cash_flow_schedule_hash": _hash_payload(cash_flow_policy.to_dict()),
+                "sizing_policy_hash": _hash_payload(_allocations_to_dict(sizing_policies)),
+                "contract_specification_hash": contract_specification_hash(trade_events),
+                "ruin_configuration_hash": _hash_payload(_ruin_config_to_dict(account_config)),
+                "reinvestment_configuration_hash": _hash_payload(
+                    _reinvestment_config_to_dict(sizing_policies)
+                ),
+                "engine_version": ENGINE_VERSION,
+                "scenario_id": account_config.scenario_id,
+                "master_seed": account_config.master_seed,
+                "path_index": account_config.path_index,
+                "result_hash": live_account_result_hash(result),
+            },
+        },
+    )
+
+
+def live_account_trade_input_hash(trades: list[Trade]) -> str:
+    return _hash_payload(
+        [
+            {
+                "trade_id": trade.trade_id,
+                "source_row_id": trade.source_row_id,
+                "strategy_id": trade.strategy_id,
+                "instrument": trade.instrument,
+                "contract_symbol": trade.contract_symbol,
+                "entry_time": trade.entry_time.isoformat(),
+                "exit_time": trade.exit_time.isoformat(),
+                "pnl_dollars": trade.pnl_dollars,
+                "pnl_points": trade.pnl_points,
+                "stop_points": trade.stop_points,
+                "dollars_per_point": trade.dollars_per_point,
+                "commission_round_turn": trade.commission_round_turn,
+            }
+            for trade in sorted(trades, key=lambda item: item.source_row_id)
+        ]
+    )
+
+
+def contract_specification_hash(trades: list[Trade]) -> str:
+    specs = sorted(
+        {
+            (
+                trade.strategy_id,
+                trade.instrument,
+                trade.contract_symbol or "",
+                float(trade.dollars_per_point or 0.0),
+            )
+            for trade in trades
+        }
+    )
+    return _hash_payload(specs)
+
+
+def live_account_result_hash(result: LiveAccountPathResult) -> str:
+    payload = result.to_dict()
+    payload.pop("provenance", None)
+    return _hash_payload(payload)
 
 
 def _ordered_raw_events(trades: list[Trade], cash_flows: tuple[CashFlow, ...]) -> list[dict[str, Any]]:
@@ -677,8 +864,17 @@ def _build_summary(
     events: list[AccountEvent],
     sizing_decisions: list[SizingDecision],
 ) -> dict[str, Any]:
-    drawdown = _drawdown_metrics(config, events)
-    returns = _return_metrics(config.starting_equity, events)
+    account_drawdown = _drawdown_metrics(
+        config,
+        events,
+        value_at_event=lambda event: event.equity,
+    )
+    trading_drawdown = _drawdown_metrics(
+        config,
+        events,
+        value_at_event=lambda event: config.starting_equity + event.trading_pnl,
+    )
+    returns = _return_metrics(config, events)
     min_contract = min((decision.contracts for decision in sizing_decisions), default=0)
     return {
         "starting_equity": config.starting_equity,
@@ -688,20 +884,68 @@ def _build_summary(
         "withdrawals": state.withdrawals,
         "net_external_contributions": state.deposits - state.withdrawals,
         "simple_return_on_total_contributions": returns["simple_return_on_total_contributions"],
-        "time_weighted_return": returns["time_weighted_return"],
-        "money_weighted_return": returns["money_weighted_return"],
+        "period_twr": returns["period_twr"],
+        "annualized_twr": returns["annualized_twr"],
+        "period_money_weighted_return": returns["period_money_weighted_return"],
+        "annualized_xirr": returns["annualized_xirr"],
+        "annualized_xirr_status": returns["annualized_xirr_status"],
+        "annualized_xirr_unavailable_reason": returns["annualized_xirr_unavailable_reason"],
+        "measurement_start": returns["measurement_start"],
+        "measurement_end": returns["measurement_end"],
+        "measurement_period_days": returns["measurement_period_days"],
+        "annualization_applied": returns["annualization_applied"],
+        "annualization_warning": returns["annualization_warning"],
+        # Backward-compatible aliases are kept but are not the canonical names.
+        "time_weighted_return": returns["period_twr"],
+        "money_weighted_return": returns["annualized_xirr"],
         "trading_return_before_cash_flows": state.trading_pnl / config.starting_equity,
-        "peak_equity": drawdown["peak_equity"],
-        "current_drawdown": drawdown["current_drawdown"],
-        "max_drawdown": drawdown["max_drawdown"],
-        "max_drawdown_pct": drawdown["max_drawdown_pct"],
-        "drawdown_duration_seconds": drawdown["drawdown_duration_seconds"],
-        "recovery_duration_seconds": drawdown["recovery_duration_seconds"],
-        "drawdown_thresholds_reached": drawdown["thresholds_reached"],
+        "account_peak_equity": account_drawdown["peak_equity"],
+        "account_current_drawdown_dollars": account_drawdown["current_drawdown_dollars"],
+        "account_max_drawdown_dollars": account_drawdown["max_drawdown_dollars"],
+        "account_max_drawdown_percent": account_drawdown["max_drawdown_percent"],
+        "account_drawdown_duration": account_drawdown["drawdown_duration_seconds"],
+        "account_drawdown_duration_seconds": account_drawdown["drawdown_duration_seconds"],
+        "account_recovery_duration_seconds": account_drawdown["recovery_duration_seconds"],
+        "flow_neutral_peak_equity": trading_drawdown["peak_equity"],
+        "current_trading_drawdown_dollars": trading_drawdown["current_drawdown_dollars"],
+        "trading_current_drawdown_dollars": trading_drawdown["current_drawdown_dollars"],
+        "trading_max_drawdown_dollars": trading_drawdown["max_drawdown_dollars"],
+        "trading_max_drawdown_percent": trading_drawdown["max_drawdown_percent"],
+        "trading_drawdown_duration": trading_drawdown["drawdown_duration_seconds"],
+        "trading_recovery_duration": trading_drawdown["recovery_duration_seconds"],
+        "max_trading_drawdown_dollars": trading_drawdown["max_drawdown_dollars"],
+        "max_trading_drawdown_percent": trading_drawdown["max_drawdown_percent"],
+        "trading_drawdown_duration_seconds": trading_drawdown["drawdown_duration_seconds"],
+        "trading_recovery_duration_seconds": trading_drawdown["recovery_duration_seconds"],
+        "trading_drawdown_thresholds_reached": trading_drawdown["thresholds_reached"],
+        # Default risk aliases now point to flow-neutral trading drawdown.
+        "peak_equity": trading_drawdown["peak_equity"],
+        "current_drawdown": trading_drawdown["current_drawdown_dollars"],
+        "max_drawdown": trading_drawdown["max_drawdown_dollars"],
+        "max_drawdown_pct": trading_drawdown["max_drawdown_percent"],
+        "drawdown_duration_seconds": trading_drawdown["drawdown_duration_seconds"],
+        "recovery_duration_seconds": trading_drawdown["recovery_duration_seconds"],
+        "drawdown_thresholds_reached": trading_drawdown["thresholds_reached"],
         "forced_size_reductions": state.forced_size_reductions,
-        "time_spent_below_prior_peak_size_seconds": drawdown["drawdown_duration_seconds"],
+        "time_spent_below_prior_peak_size_seconds": trading_drawdown["drawdown_duration_seconds"],
         "minimum_contract_size_reached": min_contract,
-        "operational_ruin": state.equity <= config.operational_ruin_threshold,
+        "operational_ruin": state.operational_ruin_hit,
+        "operational_ruin_hit": state.operational_ruin_hit,
+        "operational_ruin_first_timestamp": (
+            state.operational_ruin_first_timestamp.isoformat()
+            if state.operational_ruin_first_timestamp is not None
+            else None
+        ),
+        "operational_ruin_min_equity": state.operational_ruin_min_equity,
+        "operational_ruin_event_index": state.operational_ruin_event_index,
+        "operational_ruin_trade_id": state.operational_ruin_trade_id,
+        "operational_ruin_trigger_event_id": state.operational_ruin_trigger_event_id,
+        "operational_ruin_threshold": config.operational_ruin_threshold,
+        "operational_ruin_comparison": config.operational_ruin_comparison,
+        "operational_ruin_policy": config.operational_ruin_policy,
+        "halt_trading_after_operational_ruin": (
+            config.operational_ruin_policy == "stop_trading_after_ruin"
+        ),
         "zero_equity_ruin": state.equity <= 0,
     }
 
@@ -734,18 +978,43 @@ def _build_monthly_reports(config: LiveAccountConfig, events: list[AccountEvent]
     return rows
 
 
-def _return_metrics(starting_equity: float, events: list[AccountEvent]) -> dict[str, float]:
+def _return_metrics(config: LiveAccountConfig, events: list[AccountEvent]) -> dict[str, float]:
+    starting_equity = config.starting_equity
+    measurement_start = events[0].timestamp if events else None
+    measurement_end = events[-1].timestamp if events else None
+    period_days = (
+        _year_fraction(measurement_start, measurement_end) * 365.25
+        if measurement_start is not None and measurement_end is not None
+        else 0.0
+    )
     ending_equity = events[-1].equity if events else starting_equity
     deposits = sum(event.amount for event in events if event.event_type == "deposit")
-    withdrawals = -sum(event.amount for event in events if event.event_type == "withdrawal")
     trading_pnl = sum(event.amount for event in events if event.event_type == "trade_exit")
     simple = trading_pnl / max(starting_equity + deposits, 1e-12)
     twr = _time_weighted_return(starting_equity, events)
-    mwr = _money_weighted_return(starting_equity, ending_equity, events)
+    period_mwr = _period_money_weighted_return(starting_equity, ending_equity, events, twr)
+    xirr = _annualized_xirr(starting_equity, ending_equity, events)
+    minimum_days = config.short_horizon_annualization_days
+    annualized_twr = _annualize_period_return(twr, period_days) if period_days >= minimum_days else None
+    annualization_warning = None
+    if period_days < minimum_days and events:
+        annualization_warning = (
+            f"annualized_xirr is based on a short {period_days:.2f}-day measurement period "
+            f"below the configured {minimum_days}-day warning threshold and can be extreme"
+        )
     return {
         "simple_return_on_total_contributions": simple,
-        "time_weighted_return": twr,
-        "money_weighted_return": mwr,
+        "period_twr": twr,
+        "annualized_twr": annualized_twr,
+        "period_money_weighted_return": period_mwr,
+        "annualized_xirr": xirr["value"],
+        "annualized_xirr_status": xirr["status"],
+        "annualized_xirr_unavailable_reason": xirr["reason"],
+        "measurement_start": measurement_start.isoformat() if measurement_start is not None else None,
+        "measurement_end": measurement_end.isoformat() if measurement_end is not None else None,
+        "measurement_period_days": period_days,
+        "annualization_applied": xirr["status"] == "ok",
+        "annualization_warning": annualization_warning,
     }
 
 
@@ -764,13 +1033,30 @@ def _time_weighted_return(starting_equity: float, events: list[AccountEvent]) ->
     return factor - 1
 
 
-def _money_weighted_return(
+def _period_money_weighted_return(
     starting_equity: float,
     ending_equity: float,
     events: list[AccountEvent],
-) -> float:
+    period_twr: float,
+) -> float | None:
+    external_flows = [event for event in events if event.event_type in {"deposit", "withdrawal"}]
+    if not external_flows:
+        return period_twr
+    invested = starting_equity + sum(event.amount for event in events if event.event_type == "deposit")
+    withdrawals = -sum(event.amount for event in events if event.event_type == "withdrawal")
+    return (ending_equity - starting_equity - invested + starting_equity + withdrawals) / max(
+        invested,
+        1e-12,
+    )
+
+
+def _annualized_xirr(
+    starting_equity: float,
+    ending_equity: float,
+    events: list[AccountEvent],
+) -> dict[str, Any]:
     if not events:
-        return 0.0
+        return {"status": "unavailable", "value": None, "reason": "no_events"}
     start = events[0].timestamp
     cash_flows: list[tuple[float, float]] = [(0.0, -starting_equity)]
     for event in events:
@@ -782,7 +1068,11 @@ def _money_weighted_return(
     has_positive = any(amount > 0 for _, amount in cash_flows)
     has_negative = any(amount < 0 for _, amount in cash_flows)
     if not has_positive or not has_negative:
-        return 0.0
+        return {"status": "unavailable", "value": None, "reason": "missing_cash_flow_sign"}
+    signs = [1 if amount > 0 else -1 for _, amount in cash_flows if abs(amount) > 1e-12]
+    sign_changes = sum(1 for left, right in zip(signs, signs[1:]) if left != right)
+    if sign_changes > 1:
+        return {"status": "unavailable", "value": None, "reason": "non_unique_xirr_sign_pattern"}
 
     def npv(rate: float) -> float:
         return sum(amount / ((1 + rate) ** years) for years, amount in cash_flows)
@@ -791,22 +1081,29 @@ def _money_weighted_return(
     high = 10.0
     while npv(high) > 0 and high < 1_000_000:
         high *= 2
+    if npv(high) > 0:
+        return {"status": "unavailable", "value": None, "reason": "xirr_bracket_not_found"}
     for _ in range(120):
         mid = (low + high) / 2
         if npv(mid) > 0:
             low = mid
         else:
             high = mid
-    return (low + high) / 2
+    return {"status": "ok", "value": (low + high) / 2, "reason": None}
 
 
-def _drawdown_metrics(config: LiveAccountConfig, events: list[AccountEvent]) -> dict[str, Any]:
+def _drawdown_metrics(
+    config: LiveAccountConfig,
+    events: list[AccountEvent],
+    *,
+    value_at_event,
+) -> dict[str, Any]:
     if not events:
         return {
             "peak_equity": config.starting_equity,
-            "current_drawdown": 0.0,
-            "max_drawdown": 0.0,
-            "max_drawdown_pct": 0.0,
+            "current_drawdown_dollars": 0.0,
+            "max_drawdown_dollars": 0.0,
+            "max_drawdown_percent": 0.0,
             "drawdown_duration_seconds": 0.0,
             "recovery_duration_seconds": 0.0,
             "thresholds_reached": {str(threshold): False for threshold in config.drawdown_thresholds},
@@ -820,17 +1117,18 @@ def _drawdown_metrics(config: LiveAccountConfig, events: list[AccountEvent]) -> 
     max_recovery_duration = 0.0
     thresholds = {str(threshold): False for threshold in config.drawdown_thresholds}
     for event in events:
-        if event.equity >= peak:
+        value = value_at_event(event)
+        if value >= peak:
             if drawdown_start is not None:
                 max_recovery_duration = max(
                     max_recovery_duration,
                     (event.timestamp - drawdown_start).total_seconds(),
                 )
-            peak = event.equity
+            peak = value
             peak_time = event.timestamp
             drawdown_start = None
             continue
-        drawdown = peak - event.equity
+        drawdown = peak - value
         pct = drawdown / peak if peak else 0.0
         if drawdown_start is None:
             drawdown_start = peak_time
@@ -841,12 +1139,12 @@ def _drawdown_metrics(config: LiveAccountConfig, events: list[AccountEvent]) -> 
         for threshold in config.drawdown_thresholds:
             if pct >= threshold:
                 thresholds[str(threshold)] = True
-    current_drawdown = max(0.0, peak - events[-1].equity)
+    current_drawdown = max(0.0, peak - value_at_event(events[-1]))
     return {
         "peak_equity": peak,
-        "current_drawdown": current_drawdown,
-        "max_drawdown": max_drawdown,
-        "max_drawdown_pct": max_drawdown_pct,
+        "current_drawdown_dollars": current_drawdown,
+        "max_drawdown_dollars": max_drawdown,
+        "max_drawdown_percent": max_drawdown_pct,
         "drawdown_duration_seconds": max_drawdown_duration,
         "recovery_duration_seconds": max_recovery_duration,
         "thresholds_reached": thresholds,
@@ -863,6 +1161,15 @@ class _MutableAccountState:
         self.peak_equity = config.starting_equity
         self.current_contracts: dict[str, int] = {}
         self.forced_size_reductions = 0
+        initial_ruin = self.equity <= config.operational_ruin_threshold
+        self.operational_ruin_hit = initial_ruin
+        self.operational_ruin_first_timestamp: pd.Timestamp | None = None
+        self.operational_ruin_min_equity = config.starting_equity
+        self.operational_ruin_event_index: int | None = None
+        self.operational_ruin_trade_id: str | None = None
+        self.operational_ruin_trigger_event_id: str | None = (
+            "initial_equity" if initial_ruin else None
+        )
 
     def advance(self, timestamp: pd.Timestamp) -> None:
         self.timestamp = timestamp
@@ -880,6 +1187,25 @@ class _MutableAccountState:
         self.equity += amount
         self.trading_pnl += amount
         self.peak_equity = max(self.peak_equity, self.equity)
+
+    def observe_operational_ruin(
+        self,
+        config: LiveAccountConfig,
+        event: AccountEvent,
+        event_index: int,
+    ) -> None:
+        self.operational_ruin_min_equity = min(self.operational_ruin_min_equity, self.equity)
+        if self.equity <= config.operational_ruin_threshold and not self.operational_ruin_hit:
+            self.operational_ruin_hit = True
+            self.operational_ruin_first_timestamp = event.timestamp
+            self.operational_ruin_event_index = event_index
+            self.operational_ruin_trade_id = event.trade_id
+            self.operational_ruin_trigger_event_id = (
+                event.trade_id
+                or event.source_row_id
+                or event.label
+                or f"{event.event_type}:{event_index}"
+            )
 
     def snapshot(self) -> AccountState:
         return AccountState(
@@ -927,6 +1253,17 @@ def _validate_allocations(trades: list[Trade], allocations: dict[str, StrategyAl
         raise ValueError(f"missing sizing allocation(s): {', '.join(missing)}")
 
 
+def _append_account_event(
+    events: list[AccountEvent],
+    state: _MutableAccountState,
+    config: LiveAccountConfig,
+    event: AccountEvent,
+) -> None:
+    event_index = len(events)
+    state.observe_operational_ruin(config, event, event_index)
+    events.append(event)
+
+
 def _validate_risk_policy(
     value: float,
     reinvestment_rate: float,
@@ -965,7 +1302,70 @@ def _year_fraction(start: pd.Timestamp, end: pd.Timestamp) -> float:
     return max(0.0, (end - start).total_seconds() / (365.25 * 24 * 60 * 60))
 
 
+def _annualize_period_return(period_return: float | None, period_days: float) -> float | None:
+    if period_return is None or period_days <= 0:
+        return None
+    if period_return <= -1:
+        return -1.0
+    return (1 + period_return) ** (365.25 / period_days) - 1
+
+
 def _optional_float(value: object) -> float | None:
     if value is None:
         return None
     return float(value)
+
+
+def _allocations_to_dict(allocations: dict[str, StrategyAllocation]) -> dict[str, Any]:
+    return {
+        strategy_id: allocation.to_dict()
+        for strategy_id, allocation in sorted(allocations.items(), key=lambda item: item[0])
+    }
+
+
+def _ruin_config_to_dict(config: LiveAccountConfig) -> dict[str, Any]:
+    return {
+        "operational_ruin_threshold": config.operational_ruin_threshold,
+        "operational_ruin_comparison": config.operational_ruin_comparison,
+        "operational_ruin_policy": config.operational_ruin_policy,
+    }
+
+
+def _reinvestment_config_to_dict(allocations: dict[str, StrategyAllocation]) -> dict[str, Any]:
+    configs: dict[str, Any] = {}
+    for strategy_id, allocation in sorted(allocations.items(), key=lambda item: item[0]):
+        policy = allocation.sizing_policy
+        configs[strategy_id] = {
+            "policy_type": policy.policy_type,
+            "reinvestment_rate": getattr(policy, "reinvestment_rate", None),
+            "contract_cap": getattr(policy, "contract_cap", None),
+            "minimum_reserve": getattr(policy, "minimum_reserve", None),
+            "scale_up_buffer": getattr(policy, "scale_up_buffer", None),
+            "scale_down_buffer": getattr(policy, "scale_down_buffer", None),
+        }
+    return configs
+
+
+def _hash_payload(payload: Any) -> str:
+    return hashlib.sha256(_canonical_json(payload).encode("utf-8")).hexdigest()
+
+
+def _canonical_json(payload: Any) -> str:
+    return json.dumps(_canonicalize(payload), sort_keys=True, separators=(",", ":"))
+
+
+def _canonicalize(value: Any) -> Any:
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    if isinstance(value, pd.Period):
+        return str(value)
+    if isinstance(value, tuple):
+        return [_canonicalize(item) for item in value]
+    if isinstance(value, list):
+        return [_canonicalize(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            str(key): _canonicalize(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
+    return value

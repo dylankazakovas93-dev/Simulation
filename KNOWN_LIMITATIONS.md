@@ -45,7 +45,7 @@ Legend: **[GUARD]** enforced in code · **[WARN]** should be surfaced in reports
 - **[GUARD]** Realized P&L is ordered by `exit_time`, `entry_time`,
   `strategy_id`, `source_row_id`.
 - **[GUARD]** V2 milestone adds explicit deposits, withdrawals, contribution
-  tracking, time-weighted returns, and money-weighted returns in
+  tracking, period TWR, period money-weighted return, and annualized XIRR in
   `sim_core.live_account`.
 - **[SCOPE]** No open-position mark-to-market. Drawdown is realized-only and can
   understate intratrade risk.
@@ -100,8 +100,13 @@ Legend: **[GUARD]** enforced in code · **[WARN]** should be surfaced in reports
   Strategy sizing is intentionally independent in this milestone.
 - **[SCOPE]** Operational ruin is a configured account-equity threshold; it does
   not yet model broker margin, exchange exposure, prop-firm trailing rules, or
-  human operational constraints.
-- **[SCOPE]** Money-weighted return uses a deterministic XIRR-style numeric
-  solver and is intended for path reporting, not for optimization.
+  human operational constraints. It is, however, barrier-based and absorbing
+  within the path.
+- **[GUARD]** Return serialization separates cumulative period TWR, period
+  money-weighted return, and annualized XIRR. Invalid/non-unique XIRR cases are
+  reported as unavailable rather than as fake numbers.
 - **[SCOPE]** The engine reports drawdown duration and recovery duration from
   realized account events only.
+- **[GUARD]** Account-equity drawdown includes deposits/withdrawals for cash
+  statement history; flow-neutral trading drawdown excludes them and is the
+  default risk drawdown family.

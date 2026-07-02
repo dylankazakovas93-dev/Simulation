@@ -1,43 +1,42 @@
 # Project Status
 
-Last updated: 2026-06-30
+Last updated: 2026-07-02
 
 Branch: `codex/v2-live-account`
 
-Base: approved V1 head `8a81536e6335b5b4250b3ce9658fef3fe51af561`
+Approved V1 base: `8a81536e6335b5b4250b3ce9658fef3fe51af561`
 
-Claude final V1 approval: Review 005 at `d196ed1`
+First V2 milestone: `ecf5502291fb4ec554bc83a175137d2008176ffc`
+
+Claude Review 007 verdict: CONDITIONAL APPROVAL for the first V2
+live-account milestone.
 
 ## Current State
 
-Version 2 first milestone is implemented as a narrow additive live-account
-layer. No prop-firm rules, optimizer, Streamlit UI, or full margin/exposure
-modeling were added.
+Version 2.1 is a narrow correction pass on the live-account layer. It addresses
+only the four Review 007 findings and does not add margin, exposure,
+prop-firm rules, optimization, or UI.
 
-V1 behavior is preserved: the existing path generator still produces ordered
-per-contract `Trade` events, and live-account logic is isolated in
-`sim_core/live_account.py`.
+V1 behavior remains isolated and protected by `tests/regression/`. The V2
+live-account implementation remains additive in `sim_core/live_account.py`.
 
-## V2 Milestone Implemented
+## Review 007 Corrections
 
-- Starting equity through `LiveAccountConfig`.
-- External deposits and withdrawals through `CashFlow` / `CashFlowPolicy`.
-- Deterministic equal-timestamp priority:
-  deposits, trade exits, withdrawals, trade entries / next sizing decisions.
-- Fixed-contract sizing.
-- Fixed-dollar risk sizing.
-- Percentage-of-equity risk sizing.
-- Independent `StrategyAllocation` per strategy.
-- Reinvestment rate, immediate scale-down, contract cap, and minimum reserve.
-- Monthly account reports.
-- Time-weighted return and money-weighted/XIRR-style return.
-- Trading P&L, deposits, withdrawals, net external contributions, ending equity,
-  simple return on contributions, and trading return before cash flows reported
-  separately.
-- Drawdown depth, drawdown percent, drawdown duration, recovery duration,
-  configured drawdown-threshold flags, forced size reductions, minimum contract
-  size reached, and operational ruin distinct from zero-equity ruin.
-- JSON serialization round-trip for V2 configuration/result models.
+- Account-equity drawdown and flow-neutral trading drawdown are reported as
+  separate metric families. Trading drawdown is the default risk drawdown for
+  future sizing, margin, exposure, and optimization constraints.
+- Operational ruin is an absorbing `equity <= threshold` path barrier. It
+  records first timestamp, trigger event, and minimum equity, then remains
+  ruined after recovery.
+- Return metrics are explicitly named as `period_twr`,
+  `period_money_weighted_return`, and `annualized_xirr`. Short-horizon
+  annualization emits a warning, and unavailable XIRR cases return typed
+  status fields.
+- Live-account results include deterministic provenance hashes for inputs,
+  configuration, cash flows, sizing, contracts, ruin settings, reinvestment,
+  and the serialized result payload. Verification detects changed trades,
+  deposits/withdrawals, sizing, reinvestment, ruin threshold, contract specs,
+  and result payloads.
 
 ## Files Changed
 
@@ -49,122 +48,62 @@ per-contract `Trade` events, and live-account logic is isolated in
 - `HANDOFF.md`
 - `KNOWN_LIMITATIONS.md`
 - `PROJECT_STATUS.md`
+- `V2_METRICS.md`
 
 ## Tests Added
 
-`tests/test_live_account.py` adds 22 V2 tests covering:
+`tests/test_live_account.py` now includes Review 007 regression coverage for:
 
-- deposits and withdrawals as non-P&L events
-- equal-timestamp cash-flow / trade-event ordering
-- start-of-month versus end-of-month cash-flow timing
-- fixed-contract sizing
-- fixed-dollar risk sizing and stop-risk precedence
-- percentage-equity size-up and size-down
-- independent NQ and ES sizing
-- scale-down after losses and forced reduction counts
-- reinvestment percentage
-- contract caps and cash reserve
-- deterministic account paths from same sampled path seed
-- TWR and MWR behavior
-- drawdown context with cash flows
-- operational ruin versus zero-equity ruin
-- no equity cap unless configured
-- path-level probability outputs
-- JSON round-trip
+- withdrawal affecting account drawdown but not trading drawdown
+- operational ruin breach followed by recovery remaining ruined
+- exact-threshold operational ruin touch
+- initial-threshold operational ruin touch
+- ending-below-threshold operational ruin
+- never-touching-threshold non-ruin
+- stop-trading-after-ruin policy
+- no-flow period MWR equaling period TWR
+- annualized XIRR as a separate field from period return
+- deposit timing changing XIRR while leaving TWR unchanged
+- short-horizon annualization warnings
+- unavailable XIRR status for non-unique sign patterns
+- deterministic provenance verification and mismatch detection
 
 ## Test Results
 
-Claude regression suite:
+Final V2.1 verification was run with:
 
 ```bash
 python3 -m pytest tests/regression -q
+python3 -m pytest -q
 ```
 
-Result:
+The exact final counts are recorded in the handoff and final report after the
+verification run:
 
-```text
-22 passed
-```
+- Regression suite: `22 passed`
+- Full suite: `122 passed, 1 skipped`
 
-V1 + V2 full suite:
+## Sample Artifacts
 
-```bash
-python3 -m pytest
-```
+Review 007 sample JSON artifacts are exported under:
 
-Result:
+`/Users/mariusvidziunas/Documents/Codex/2026-06-30/x/outputs/v2_1_review007_samples/`
 
-```text
-112 passed, 1 skipped, 73 warnings
-```
+The sample set covers account-vs-trading drawdown, absorbing operational ruin,
+period return naming, annualized XIRR warnings, unchanged provenance, and
+provenance failures after deposit, sizing, and ruin-threshold changes.
 
-V1 + V2 full suite with real ledger enabled:
+Filenames:
 
-```bash
-SIM_REAL_LEDGER_PATH=/Users/mariusvidziunas/Downloads/nq_es_margin_sim_master_2025_2026.csv \
-SIM_REAL_LEDGER_MAPPING=configs/nq_es_micro_contracts.yaml \
-python3 -m pytest
-```
-
-Result:
-
-```text
-113 passed, 74 warnings
-```
-
-## Example Output
-
-Shared example assumptions:
-
-- Starting equity: USD 10,000
-- Three MES trades
-- Per-contract stop risk: 100 points x USD 5 = USD 500
-- Trade P&L per contract: +5,000, -250, +750
-
-```text
-10000_start_no_deposits_fixed_contracts:
-  ending_equity: 15500.0
-  trading_pnl: 5500.0
-  deposits: 0.0
-  withdrawals: 0.0
-  time_weighted_return: 0.55
-  money_weighted_return: 14.061434
-  max_drawdown: 250.0
-  forced_size_reductions: 0
-
-10000_start_5000_start_each_month_fixed_contracts:
-  ending_equity: 30500.0
-  trading_pnl: 5500.0
-  deposits: 15000.0
-  withdrawals: 0.0
-  time_weighted_return: 0.353277
-  money_weighted_return: 3.721965
-  max_drawdown: 250.0
-  forced_size_reductions: 0
-
-fixed_dollar_risk_no_reinvestment:
-  ending_equity: 21000.0
-  trading_pnl: 11000.0
-  deposits: 0.0
-  withdrawals: 0.0
-  time_weighted_return: 1.1
-  money_weighted_return: 97.639707
-  max_drawdown: 500.0
-  forced_size_reductions: 0
-
-fixed_dollar_risk_100pct_reinvestment:
-  ending_equity: 21250.0
-  trading_pnl: 11250.0
-  deposits: 0.0
-  withdrawals: 0.0
-  time_weighted_return: 1.125
-  money_weighted_return: 105.134944
-  max_drawdown: 1000.0
-  forced_size_reductions: 1
-```
-
-Money-weighted returns are annualized XIRR-style values, so short high-return
-examples can produce large annualized numbers.
+- `sample_01_withdrawal_account_vs_trading_drawdown.json`
+- `sample_02_mid_path_ruin_recovery.json`
+- `sample_03_no_flow_period_mwr_equals_twr.json`
+- `sample_04_annualized_xirr_labeled_and_warned.json`
+- `sample_05_provenance_verification_passes.json`
+- `sample_06_provenance_fails_changed_deposit.json`
+- `sample_07_provenance_fails_changed_sizing.json`
+- `sample_08_provenance_fails_changed_ruin_threshold.json`
+- `sample_index.json`
 
 ## Remaining Limitations
 
@@ -172,12 +111,12 @@ examples can produce large annualized numbers.
 - No optimizer.
 - No Streamlit/UI.
 - No full margin/exposure model.
-- No shared portfolio-level constraints yet.
+- No portfolio-level cross-strategy constraints.
 - No intratrade mark-to-market; drawdown is based on realized account events.
-- Operational ruin is a configured account-equity threshold, not a broker or
-  prop-firm liquidation model.
+- Period money-weighted return is available for supported cash-flow patterns;
+  invalid or non-unique annualized XIRR cases are reported as unavailable.
 
 ## Recommendation
 
-Stop here for the first V2 milestone and send this branch to Claude for Review
-006. The implementation is intentionally narrow and audit-ready.
+Stop after this V2.1 correction pass and send the branch plus sample artifacts
+to Claude for Review 008.

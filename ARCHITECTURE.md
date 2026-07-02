@@ -215,8 +215,29 @@ At equal timestamps, priority is:
 Deposits never count as trading profit. Withdrawals never count as trading
 losses. Monthly and path reports expose trading P&L, deposits, withdrawals, net
 external contributions, ending equity, simple return on contributions,
-time-weighted return, money-weighted return, and trading return before cash
-flows.
+period time-weighted return, period money-weighted return, annualized XIRR, and
+trading return before cash flows.
+
+Review 007 hardening names account-equity drawdown and flow-neutral trading
+drawdown separately. Account-equity drawdown includes deposits and withdrawals
+for cash-statement reconciliation. Flow-neutral trading drawdown uses
+`starting_equity + cumulative_trading_pnl`, excludes external cash flows, and is
+the default risk drawdown family exposed by the legacy drawdown aliases.
+
+Operational ruin is path-barrier based. Once equity is `<=
+operational_ruin_threshold`, `operational_ruin_hit` remains true even if the
+path later recovers. The result records the first timestamp, event index, trade
+or cash-flow trigger event ID, and minimum equity observed.
+
+Return serialization separates `period_twr`, `period_money_weighted_return`,
+and `annualized_xirr`. Short annualized XIRR horizons carry an explicit warning,
+and non-unique/unavailable XIRR cases return a typed unavailable status.
+
+Every `LiveAccountPathResult` includes deterministic provenance hashes for trade
+inputs, live-account config, cash-flow schedule, sizing policies, contract
+specifications, ruin config, reinvestment config, and the result payload.
+`verify_live_account_result_provenance` recomputes those hashes and returns a
+`VerificationReport`.
 
 Fixed-dollar and percentage-equity sizing derive per-contract risk in this
 order:
