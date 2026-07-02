@@ -105,6 +105,16 @@ out of V1 scope, documented.
 - **[SCOPE]** Copied accounts in a portfolio share one identical trade path (fully
   correlated) — a copy-trading model, not independent diversification; disclosed via
   `correlation_note`.
+- **[GUARD]** A funded withdrawal lowers the day's opening baseline so a payout is
+  never miscounted as a daily-loss breach — "withdrawals are not losses" (Review 013
+  fix, ADR-007/020).
+- **[SCOPE]** `funded_window_analysis` windows begin at real historical trade starts
+  and **overlap** — they reuse blocks of one history and are NOT independent samples.
+  The blow rate is a resampled estimate, not an i.i.d. probability, and (realized-only)
+  a lower bound. (ADR-023)
+- **[SCOPE]** `payout_mode="daily"` still enforces `first_payout_threshold` on the
+  first withdrawal; per-firm minimum-withdrawal floors are not separately modeled.
+  (ADR-023)
 
 ## Optimization traps (V5)
 

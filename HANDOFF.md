@@ -5,6 +5,115 @@ top. Findings are classified `BLOCKER` / `HIGH` / `MEDIUM` / `LOW` / `OPTIONAL`.
 
 ---
 
+## Review 014 — 2026-07-02 — Prop enhancements: daily payouts, stage stats, funded windows
+
+### Scope
+User asks: two configurable prop systems with a daily-payout toggle; evaluation-stage
+stats (pass rate, time to pass); funded-stage blow-rate from a random start over
+2/4/6/8/12-month horizons. Implemented on the V4 engine + V6 UI (implementer ==
+reviewer; Codex offline). **`pytest -q` = 159 passed, 2 skipped** (6 new engine tests,
+2 new controller tests).
+
+### Engine (ADR-023)
+- **`PropFirmRules.payout_mode`** ∈ {`standard`, `daily`}. `standard` = withdraw above
+  `first_payout_threshold`, gated by `min_days_between_payouts` (V4 behavior). `daily`
+  = at most one payout per calendar day (the instant-funding / daily-payout model).
+  Validated; in `to_dict`/`config_hash`.
+- **`run_prop_account_path(..., initial_phase="funded")`** starts an account already
+  funded (evaluation skipped) — the basis for the funded-window analysis. New summary
+  fields: `passed_evaluation`, `blew_up`, `time_to_pass_days`, `time_to_blow_days`.
+- **`summarize_evaluation_stage(results)`** over many eval accounts (one per resampled
+  path): `pass_rate`, `fail_rate`, `incomplete_rate`, mean/median/p95 `days_to_pass`,
+  mean eval trading days to pass, mean resets, mean eval cost.
+- **`funded_window_analysis(trades, rules, horizons_months=(2,4,6,8,12), num_starts,
+  seed)`**: for each horizon, samples random real trade-start timestamps whose window
+  `[start, start+H)` fits inside the data, runs an already-funded account over that
+  window, and reports per horizon: `blow_rate`, `survival_rate`, `prob_payout`,
+  `expected_num_payouts`, expected/median/P5/P95 `net_trader_cash`,
+  `prob_net_cash_positive`, `mean_days_to_blow`, `mean_trades_per_window`. Short
+  histories return `insufficient_data` per horizon.
+
+### UI (V6)
+Prop tab rebuilt: two side-by-side system forms (A defaults standard, B defaults
+daily) + a radio to pick which to analyze; three analyses — evaluation-stage stats,
+funded-stage window table, and a single full run. Every result still renders the
+mandatory prop disclosures; the notional balance stays demoted behind net cash.
+
+### Verified
+Daily mode pays at most once per calendar day (2 payouts across 3 same-strategy days,
+one shared day); `initial_phase="funded"` skips eval and pays from funded profit;
+eval-stage pass/fail split + timing; a deliberately losing stream yields
+`blow_rate > 0.5` in the 2-month windows; insufficient-history flagged.
+
+### Assumptions / limitations (disclosed; KNOWN_LIMITATIONS updated)
+- **[SCOPE]** Funded windows begin at real historical trade starts and **overlap** —
+  they reuse blocks of the same history and are **not independent samples**; treat the
+  blow-rate as a resampled estimate, not i.i.d. probability.
+- **[SCOPE]** Same realized-only caveat as all prop output: blow rate is a **lower
+  bound** (no intratrade excursion).
+- **[SCOPE]** `daily` payout still enforces `first_payout_threshold` on the first
+  withdrawal; per-firm minimum-withdrawal floors are not separately modeled.
+
+### Status
+Delivered. Ready for the user's real prop-firm rule sets (paste the numbers and they
+map directly onto `PropFirmRules`).
+
+---
+
+## Review 013 — 2026-07-02 — Independent audit of V3–V6 (2 confirmed defects fixed)
+
+### Context
+User requested an independent, adversarial review of the implementer==reviewer
+milestones (V3–V6) — "search for errors". Conducted with a reviewer hat: re-read
+the V3–V6 code, hypothesized failure modes, and reproduced each with a runnable
+probe before fixing. Two real defects were found and fixed; both are mine.
+
+### Finding 1 — HIGH — Prop: a withdrawal was miscounted as a daily loss
+**File:** `sim_core/prop_firm.py` (`_AccountMachine._maybe_payout`).
+A funded payout lowers the balance. The daily-loss check compares the current
+balance against `_day_start_balance` (that morning's opening). When a payout
+withdrew profit **carried from a prior day**, the post-withdrawal balance fell
+below the day's opening baseline, so a later small trade tripped a *spurious*
+"daily loss limit breach" — killing an account that never had a real daily loss.
+This violates the charter accounting rule "withdrawals are not losses" (ADR-007/020).
+**Reproduced:** eval passes day1; funded +2,500 (day2) carried; day3 a +600 trade
+triggers a payout to $50,000; a subsequent −$200 trade (real loss $200, limit
+$1,500) → the account was marked `failed_dead`.
+**Fix:** on payout, also reduce `_day_start_balance` by the withdrawn gross (mirrors
+the existing `peak -= gross`), so the withdrawal is neutral to the daily-loss test.
+After the fix the same case ends `funded` with the one legitimate payout.
+**Guard:** `tests/test_prop_firm.py::test_withdrawal_is_not_counted_as_a_daily_loss`.
+
+### Finding 2 — HIGH (UI) — Ensemble percentile fan was always empty
+**File:** `app/controller.py` (`run_ensemble`).
+The engine derives its monthly percentile axis from `_scenario_months`, which is
+empty unless the scenario carries **both** a `start_month` (in `resampling_params`)
+**and** a positive `horizon_months`. The controller set neither, so the ensemble
+tab's headline percentile-fan chart rendered blank on every run while everything
+else (ruin, hash) looked fine — a silent, misleading empty.
+**Reproduced:** `run_ensemble(..., resampling_params={"months":4})` → 0 percentile
+rows for any start month.
+**Fix:** the controller now defaults `start_month` to the earliest traded month and
+sets `horizon_months` to the requested resampled-month count, so the fan is always
+populated (and can still be overridden).
+**Guard:** `tests/test_ui_controller.py::test_ensemble_percentile_fan_is_populated`.
+
+### Also reviewed, found sound (no change)
+- V3 margin double-application: the `trade_exit` fallback only re-sizes when the
+  entry event was never seen, so a normal trade is not double-counted. OK.
+- V3 payout/peak interaction: reducing `peak` by the withdrawn gross correctly
+  moves the trailing floor down with the balance (no self-breach). OK.
+- V5 Pareto dominance: strict-better-on-one + at-least-as-good-on-all; ties are
+  both retained; missing metrics raise. OK.
+- V4 consistency-rule and max-payout/retire transitions. OK.
+
+### Verdict
+Both defects fixed; **`pytest -q` = 159 passed, 2 skipped; regression = 22 passed**.
+The implementer==reviewer conflict remains — a genuinely independent (different
+author) review is still recommended, but this pass materially hardened V4 and V6.
+
+---
+
 ## Review 012 — 2026-07-02 — V6 Streamlit UI (implemented by review lead; Codex offline)
 
 ### Role disclosure

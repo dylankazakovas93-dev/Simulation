@@ -1,0 +1,18 @@
+--- a/sim_core/prop_firm.py
++++ b/sim_core/prop_firm.py
+@@ full file (see review013_014_files) +718 @@
+--- a/sim_core/__init__.py
++++ b/sim_core/__init__.py
+@@ full file (see review013_014_files) +190 @@
+--- a/app/controller.py
++++ b/app/controller.py
+@@ full file (see review013_014_files) +275 @@
+--- a/app/streamlit_app.py
++++ b/app/streamlit_app.py
+@@ full file (see review013_014_files) +254 @@
+--- a/tests/test_prop_firm.py
++++ b/tests/test_prop_firm.py
+@@ full file (see review013_014_files) +343 @@
+--- a/tests/test_ui_controller.py
++++ b/tests/test_ui_controller.py
+@@ full file (see review013_014_files) +179 @@

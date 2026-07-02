@@ -264,3 +264,25 @@ both properties enforceable in tests.
 from trades, so the UI runs with coverage=None + surfaced warnings; in-UI coverage
 declaration and a guided optimizer candidate-builder are later add-ons. Documented in
 KNOWN_LIMITATIONS.
+
+## ADR-023 — Prop payout modes (standard/daily), funded-only runs, and stage analytics
+**Status:** ACCEPTED (Review 014, implemented by review lead — Codex offline)
+**Decision:** `PropFirmRules.payout_mode` is declared as `standard` (threshold +
+`min_days_between_payouts`) or `daily` (at most one payout per calendar day — the
+instant-funding model). `run_prop_account_path` accepts `initial_phase="funded"` to
+start an account already funded (evaluation skipped) for "assume funded" analyses.
+`summarize_evaluation_stage` reports pass/fail/incomplete rates and time-to-pass;
+`funded_window_analysis` runs an already-funded account over windows that begin at
+random real historical trade-start dates and reports, per horizon (default
+2/4/6/8/12 months), blow rate, survival, payout probability, and realized net-cash
+distribution. All keep the ADR-020 rules: realized net cash is the headline, notional
+balance is not wealth, and breach checks are realized-only (a lower bound).
+**Why:** Real prop firms differ most in payout cadence and in funded-stage survival,
+which is what actually determines take-home cash. A declared payout mode plus a
+random-start funded-window blow-rate analysis answer "how often do I blow up in N
+months and what do I clear" without hardcoding any firm.
+**Also (Review 013 fix, under ADR-020):** a funded withdrawal now lowers the current
+day's opening baseline so a payout is never miscounted as a daily-loss breach
+("withdrawals are not losses").
+**Scope / limitation:** Funded windows overlap (reuse blocks of one history) and are
+not independent samples; documented in KNOWN_LIMITATIONS.

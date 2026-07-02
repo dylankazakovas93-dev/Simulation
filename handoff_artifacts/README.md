@@ -153,3 +153,36 @@ disclosures attached to every result; notional prop balance demoted).
 V1 ingestion/resampling/ensemble · V2/V2.1 live account · V3 margin/exposure ·
 V4 prop-firm cash economics · V5 multi-objective optimizer · V6 UI. Recommended
 next: an INDEPENDENT review of the implementer==reviewer milestones (V3–V6).
+
+---
+
+# Review 013 (independent audit + 2 fixes) & Review 014 (prop enhancements)
+
+Implemented by the review lead (Codex offline).
+
+**Review 013 — fixes**
+- Prop `_maybe_payout`: a withdrawal was miscounted as a daily loss → fixed by
+  lowering the day's opening baseline on payout.
+- UI `run_ensemble`: percentile fan was always empty → controller now defaults
+  `start_month` + `horizon_months`.
+
+**Review 014 — features**
+- `PropFirmRules.payout_mode` = "standard" | "daily".
+- `run_prop_account_path(initial_phase="funded")`.
+- `summarize_evaluation_stage` (pass rate, time-to-pass, resets).
+- `funded_window_analysis` (blow rate / survival / payout economics over
+  2/4/6/8/12-month windows from random historical starts).
+- UI prop tab: two configurable systems (A standard / B daily) + eval-stage stats +
+  funded-window table.
+
+- `review013_014_files/` — full source of the changed files (`prop_firm.py`,
+  `__init__.py`, `app/controller.py`, `app/streamlit_app.py`, tests).
+
+## Verify
+```bash
+python3 -m pytest tests/test_prop_firm.py tests/test_ui_controller.py -q  # 18 + 11
+python3 -m pytest -q                                                       # 159 passed, 2 skipped
+```
+
+Governance: ADR-023; KNOWN_LIMITATIONS updated (withdrawal≠daily-loss guard;
+overlapping-window caveat). Reviews 013/014 in HANDOFF.
