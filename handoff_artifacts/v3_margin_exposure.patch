@@ -1,0 +1,461 @@
+--- a/sim_core/live_account.py
++++ b/sim_core/live_account.py
+@@ -1,6 +1,6 @@
+ from __future__ import annotations
+ 
+-from dataclasses import asdict, dataclass, field
++from dataclasses import asdict, dataclass, field, replace
+ import hashlib
+ import json
+ import math
+@@ -200,6 +200,8 @@
+     per_contract_trade_risk: float | None
+     equity_basis: float
+     forced_reduction: bool = False
++    initial_margin_used: float = 0.0
++    margin_forced_reduction: bool = False
+ 
+     def to_dict(self) -> dict[str, Any]:
+         data = asdict(self)
+@@ -376,14 +378,39 @@
+     raise ValueError(f"unknown sizing policy_type: {policy_type!r}")
+ 
+ 
++def _apply_margin_policy(
++    decision: SizingDecision, contract_symbol: str | None, equity: float, margin_policy: Any
++) -> SizingDecision:
++    """V3: cap a sizing decision by declared per-contract initial margin."""
++
++    if margin_policy is None:
++        return decision
++    cap = margin_policy.max_contracts(contract_symbol, equity)
++    used = min(decision.contracts, cap)
++    margin_used = used * margin_policy.require(contract_symbol).initial_margin
++    reduced = used < decision.contracts
++    return replace(
++        decision,
++        contracts=used,
++        forced_reduction=decision.forced_reduction or reduced,
++        margin_forced_reduction=reduced,
++        initial_margin_used=margin_used,
++    )
++
++
+ def run_live_account_path(
+     trades: list[Trade] | ResampledPath,
+     *,
+     config: LiveAccountConfig,
+     allocations: dict[str, StrategyAllocation],
+     cash_flow_policy: CashFlowPolicy | None = None,
++    margin_policy: Any | None = None,
+ ) -> LiveAccountPathResult:
+-    """Consume V1 ordered trade events with live-account cash-flow and sizing rules."""
++    """Consume V1 ordered trade events with live-account cash-flow and sizing rules.
++
++    `margin_policy` (V3, optional) is a `sim_core.exposure.MarginPolicy` that caps
++    each sized position by declared per-contract initial margin.
++    """
+ 
+     trade_list = trades.trades if isinstance(trades, ResampledPath) else list(trades)
+     cash_flow_policy = cash_flow_policy or CashFlowPolicy()
+@@ -433,6 +460,9 @@
+                 allocation=allocation,
+                 previous_contracts=previous,
+             )
++            decision = _apply_margin_policy(decision, trade.contract_symbol, state.equity, margin_policy)
++            if decision.margin_forced_reduction:
++                state.margin_forced_reductions += 1
+             pending_contracts[trade.trade_id] = decision.contracts
+             previous_contracts[trade.strategy_id] = decision.contracts
+             state.current_contracts[trade.strategy_id] = decision.contracts
+@@ -461,6 +491,11 @@
+                     allocation=allocation,
+                     previous_contracts=previous_contracts.get(trade.strategy_id, 0),
+                 )
++                decision = _apply_margin_policy(
++                    decision, trade.contract_symbol, state.equity, margin_policy
++                )
++                if decision.margin_forced_reduction:
++                    state.margin_forced_reductions += 1
+                 contracts = decision.contracts
+                 sizing_decisions.append(decision)
+             gross = trade.pnl_dollars * contracts
+@@ -722,6 +757,7 @@
+         "trading_max_drawdown_pct": trading_drawdown["trading_max_drawdown_pct"],
+         "trading_drawdown_thresholds_reached": trading_drawdown["trading_drawdown_thresholds_reached"],
+         "forced_size_reductions": state.forced_size_reductions,
++        "margin_forced_reductions": state.margin_forced_reductions,
+         "time_spent_below_prior_peak_size_seconds": drawdown["drawdown_duration_seconds"],
+         "minimum_contract_size_reached": min_contract,
+         # Absorbing-barrier ruin (Review 007 finding B).
+@@ -1034,6 +1070,7 @@
+         self.peak_equity = config.starting_equity
+         self.current_contracts: dict[str, int] = {}
+         self.forced_size_reductions = 0
++        self.margin_forced_reductions = 0
+ 
+     def advance(self, timestamp: pd.Timestamp) -> None:
+         self.timestamp = timestamp
+--- /dev/null
++++ b/sim_core/exposure.py
+@@ -0,0 +1,248 @@
++"""V3 — margin model and exposure measurement.
++
++Two capabilities, both with EXPLICIT, declared assumptions (no silent defaults):
++
++1. Margin: a per-contract initial/maintenance margin declared per contract symbol.
++   A margin cap reduces the sized contract count so that
++   `contracts * initial_margin <= max(0, equity - reserve)`. Reductions are
++   reported (forced margin reductions), consistent with ADR-011's "declare, don't
++   infer" rule for instrument metadata.
++
++2. Exposure: measured from the trade entry/exit intervals and the simulated
++   contract counts. Realized-P&L V1/V2 books at exit, so exposure here is based on
++   the *scheduled* open interval [entry, exit] of each trade at its simulated size
++   (see KNOWN_LIMITATIONS: no intratrade mark-to-market).
++"""
++from __future__ import annotations
++
++from dataclasses import dataclass
++from typing import Any
++
++import pandas as pd
++
++from sim_core.live_account import LiveAccountPathResult, SizingDecision
++from sim_core.models import Trade
++
++
++@dataclass(frozen=True)
++class InstrumentMargin:
++    contract_symbol: str
++    initial_margin: float
++    maintenance_margin: float
++    currency: str = "USD"
++
++    def __post_init__(self) -> None:
++        if not self.contract_symbol:
++            raise ValueError("contract_symbol is required")
++        if self.initial_margin <= 0:
++            raise ValueError("initial_margin must be positive")
++        if self.maintenance_margin <= 0:
++            raise ValueError("maintenance_margin must be positive")
++        if self.maintenance_margin > self.initial_margin:
++            raise ValueError("maintenance_margin cannot exceed initial_margin")
++        if self.currency != "USD":
++            raise ValueError("V3 supports USD margin only")
++
++    def to_dict(self) -> dict[str, Any]:
++        return {
++            "contract_symbol": self.contract_symbol,
++            "initial_margin": self.initial_margin,
++            "maintenance_margin": self.maintenance_margin,
++            "currency": self.currency,
++        }
++
++
++@dataclass(frozen=True)
++class MarginPolicy:
++    """Explicit per-contract margin requirements plus an optional cash reserve."""
++
++    margins: dict[str, InstrumentMargin]
++    reserve: float = 0.0
++
++    def __post_init__(self) -> None:
++        if self.reserve < 0:
++            raise ValueError("reserve cannot be negative")
++
++    def require(self, contract_symbol: str | None) -> InstrumentMargin:
++        if contract_symbol is None or contract_symbol not in self.margins:
++            raise ValueError(
++                f"no declared margin for contract {contract_symbol!r}; margin must be "
++                "declared per contract symbol (no silent default)"
++            )
++        return self.margins[contract_symbol]
++
++    def max_contracts(self, contract_symbol: str | None, equity: float) -> int:
++        spec = self.require(contract_symbol)
++        available = max(0.0, equity - self.reserve)
++        return int(available // spec.initial_margin)
++
++    def to_dict(self) -> dict[str, Any]:
++        return {
++            "margins": {sym: spec.to_dict() for sym, spec in sorted(self.margins.items())},
++            "reserve": self.reserve,
++        }
++
++
++def apply_margin_cap(
++    contracts: int, contract_symbol: str | None, equity: float, policy: MarginPolicy
++) -> tuple[int, bool, float]:
++    """Return (capped_contracts, was_reduced, initial_margin_used)."""
++
++    cap = policy.max_contracts(contract_symbol, equity)
++    capped = min(contracts, cap)
++    spec = policy.require(contract_symbol)
++    return capped, capped < contracts, capped * spec.initial_margin
++
++
++# --------------------------------------------------------------------------- exposure
++
++
++@dataclass(frozen=True)
++class ExposureReport:
++    time_in_market_fraction: float
++    sessions_with_a_trade: int
++    total_sessions: int
++    peak_simultaneous_positions: int
++    peak_simultaneous_contracts: int
++    peak_initial_margin: float
++    peak_open_stop_risk: float
++    average_open_initial_margin: float
++    peak_margin_utilization: float
++    strategy_overlap_fraction: float
++    instrument_overlap_fraction: float
++    return_per_unit_peak_margin: float | None
++    return_per_unit_peak_stop_risk: float | None
++    per_instrument_time_in_market: dict[str, float]
++
++    def to_dict(self) -> dict[str, Any]:
++        return {
++            "time_in_market_fraction": self.time_in_market_fraction,
++            "sessions_with_a_trade": self.sessions_with_a_trade,
++            "total_sessions": self.total_sessions,
++            "peak_simultaneous_positions": self.peak_simultaneous_positions,
++            "peak_simultaneous_contracts": self.peak_simultaneous_contracts,
++            "peak_initial_margin": self.peak_initial_margin,
++            "peak_open_stop_risk": self.peak_open_stop_risk,
++            "average_open_initial_margin": self.average_open_initial_margin,
++            "peak_margin_utilization": self.peak_margin_utilization,
++            "strategy_overlap_fraction": self.strategy_overlap_fraction,
++            "instrument_overlap_fraction": self.instrument_overlap_fraction,
++            "return_per_unit_peak_margin": self.return_per_unit_peak_margin,
++            "return_per_unit_peak_stop_risk": self.return_per_unit_peak_stop_risk,
++            "per_instrument_time_in_market": self.per_instrument_time_in_market,
++        }
++
++
++def _contracts_by_trade(sizing_decisions: list[SizingDecision]) -> dict[str, int]:
++    # Last decision per trade wins (entry-time decision is authoritative).
++    result: dict[str, int] = {}
++    for decision in sizing_decisions:
++        result[decision.trade_id] = decision.contracts
++    return result
++
++
++def build_exposure_report(
++    result: LiveAccountPathResult, *, margin_policy: MarginPolicy | None = None
++) -> ExposureReport:
++    trades = result.trades
++    contracts_by_trade = _contracts_by_trade(result.sizing_decisions)
++    starting_equity = float(result.config.starting_equity)
++    trading_pnl = float(result.summary["trading_pnl"])
++
++    # Open intervals for trades that were actually sized (> 0 contracts).
++    intervals: list[dict[str, Any]] = []
++    for trade in trades:
++        contracts = contracts_by_trade.get(trade.trade_id, 0)
++        if contracts <= 0 or trade.exit_time <= trade.entry_time:
++            continue
++        margin = 0.0
++        if margin_policy is not None:
++            margin = contracts * margin_policy.require(trade.contract_symbol).initial_margin
++        stop_risk = 0.0
++        if trade.stop_points is not None and trade.dollars_per_point is not None:
++            stop_risk = contracts * abs(float(trade.stop_points) * float(trade.dollars_per_point))
++        intervals.append(
++            {
++                "entry": trade.entry_time,
++                "exit": trade.exit_time,
++                "contracts": contracts,
++                "margin": margin,
++                "stop_risk": stop_risk,
++                "strategy_id": trade.strategy_id,
++                "instrument": trade.instrument,
++            }
++        )
++
++    if not intervals:
++        return ExposureReport(
++            0.0, 0, 0, 0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, None, None, {}
++        )
++
++    span_start = min(item["entry"] for item in intervals)
++    span_end = max(item["exit"] for item in intervals)
++    total_span = (span_end - span_start).total_seconds()
++
++    # Sweep line over interval boundaries.
++    points = sorted({item["entry"] for item in intervals} | {item["exit"] for item in intervals})
++    in_market_seconds = 0.0
++    strategy_overlap_seconds = 0.0
++    instrument_overlap_seconds = 0.0
++    margin_time_integral = 0.0
++    peak_positions = 0
++    peak_contracts = 0
++    peak_margin = 0.0
++    peak_stop_risk = 0.0
++    per_instrument_seconds: dict[str, float] = {}
++
++    for left, right in zip(points, points[1:]):
++        duration = (right - left).total_seconds()
++        if duration <= 0:
++            continue
++        mid = left + (right - left) / 2
++        open_here = [item for item in intervals if item["entry"] <= mid < item["exit"]]
++        if not open_here:
++            continue
++        open_positions = len(open_here)
++        open_contracts = sum(item["contracts"] for item in open_here)
++        open_margin = sum(item["margin"] for item in open_here)
++        open_stop_risk = sum(item["stop_risk"] for item in open_here)
++        distinct_strategies = {item["strategy_id"] for item in open_here}
++        distinct_instruments = {item["instrument"] for item in open_here}
++
++        in_market_seconds += duration
++        margin_time_integral += open_margin * duration
++        if len(distinct_strategies) >= 2:
++            strategy_overlap_seconds += duration
++        if len(distinct_instruments) >= 2:
++            instrument_overlap_seconds += duration
++        for instrument in distinct_instruments:
++            per_instrument_seconds[instrument] = per_instrument_seconds.get(instrument, 0.0) + duration
++
++        peak_positions = max(peak_positions, open_positions)
++        peak_contracts = max(peak_contracts, open_contracts)
++        peak_margin = max(peak_margin, open_margin)
++        peak_stop_risk = max(peak_stop_risk, open_stop_risk)
++
++    sessions = {item["entry"].date() for item in intervals} | {item["exit"].date() for item in intervals}
++    all_days = pd.date_range(span_start.date(), span_end.date(), freq="D")
++    total_sessions = len(all_days)
++
++    def _frac(seconds: float) -> float:
++        return seconds / total_span if total_span > 0 else 0.0
++
++    return ExposureReport(
++        time_in_market_fraction=_frac(in_market_seconds),
++        sessions_with_a_trade=len({item["entry"].date() for item in intervals}),
++        total_sessions=total_sessions,
++        peak_simultaneous_positions=peak_positions,
++        peak_simultaneous_contracts=peak_contracts,
++        peak_initial_margin=peak_margin,
++        peak_open_stop_risk=peak_stop_risk,
++        average_open_initial_margin=(margin_time_integral / in_market_seconds) if in_market_seconds else 0.0,
++        peak_margin_utilization=(peak_margin / starting_equity) if starting_equity else 0.0,
++        strategy_overlap_fraction=_frac(strategy_overlap_seconds),
++        instrument_overlap_fraction=_frac(instrument_overlap_seconds),
++        return_per_unit_peak_margin=(trading_pnl / peak_margin) if peak_margin > 0 else None,
++        return_per_unit_peak_stop_risk=(trading_pnl / peak_stop_risk) if peak_stop_risk > 0 else None,
++        per_instrument_time_in_market={k: _frac(v) for k, v in sorted(per_instrument_seconds.items())},
++    )
+--- /dev/null
++++ b/tests/test_exposure.py
+@@ -0,0 +1,109 @@
++"""V3 — margin cap and exposure measurement tests."""
++from __future__ import annotations
++
++import pandas as pd
++import pytest
++
++from sim_core.exposure import (
++    InstrumentMargin,
++    MarginPolicy,
++    build_exposure_report,
++)
++from sim_core.live_account import (
++    FixedContractSizing,
++    LiveAccountConfig,
++    StrategyAllocation,
++    run_live_account_path,
++)
++from sim_core.models import Trade
++
++
++def _trade(rid, strategy, instrument, symbol, entry, exit_, pnl, dpp, stop=100.0):
++    return Trade(
++        trade_id=f"{strategy}-{rid}",
++        source_row_id=rid,
++        strategy_id=strategy,
++        instrument=instrument,
++        contract_symbol=symbol,
++        entry_time=pd.Timestamp(entry),
++        exit_time=pd.Timestamp(exit_),
++        pnl_dollars=pnl,
++        stop_points=stop,
++        dollars_per_point=dpp,
++    )
++
++
++# --- margin ---------------------------------------------------------------------
++def test_margin_cap_reduces_contracts_and_flags_reduction():
++    trades = [_trade("t", "s", "ES", "MES", "2025-01-02T09:30:00Z", "2025-01-02T10:00:00Z", 100, 5.0)]
++    policy = MarginPolicy({"MES": InstrumentMargin("MES", 4_000, 3_500)})
++    result = run_live_account_path(
++        trades,
++        config=LiveAccountConfig(starting_equity=10_000),
++        allocations={"s": StrategyAllocation("s", FixedContractSizing(3))},  # wants 3
++        margin_policy=policy,
++    )
++    decision = result.sizing_decisions[0]
++    assert decision.contracts == 2  # 10000 // 4000
++    assert decision.margin_forced_reduction is True
++    assert decision.initial_margin_used == 8_000.0
++    assert result.summary["margin_forced_reductions"] == 1
++
++
++def test_margin_requires_declared_spec_for_every_traded_contract():
++    trades = [_trade("t", "s", "ES", "MES", "2025-01-02T09:30:00Z", "2025-01-02T10:00:00Z", 100, 5.0)]
++    with pytest.raises(ValueError, match="no declared margin"):
++        run_live_account_path(
++            trades,
++            config=LiveAccountConfig(starting_equity=10_000),
++            allocations={"s": StrategyAllocation("s", FixedContractSizing(1))},
++            margin_policy=MarginPolicy({"MNQ": InstrumentMargin("MNQ", 2_000, 1_800)}),
++        )
++
++
++# --- exposure -------------------------------------------------------------------
++def _two_overlapping_strategies():
++    trades = [
++        _trade("a", "s1", "ES", "MES", "2025-01-02T09:30:00Z", "2025-01-02T11:00:00Z", 100, 5.0),
++        _trade("b", "s2", "NQ", "MNQ", "2025-01-02T10:00:00Z", "2025-01-02T10:30:00Z", 50, 2.0),
++    ]
++    return run_live_account_path(
++        trades,
++        config=LiveAccountConfig(starting_equity=100_000),
++        allocations={
++            "s1": StrategyAllocation("s1", FixedContractSizing(1)),
++            "s2": StrategyAllocation("s2", FixedContractSizing(1)),
++        },
++        margin_policy=MarginPolicy(
++            {"MES": InstrumentMargin("MES", 500, 400), "MNQ": InstrumentMargin("MNQ", 400, 300)}
++        ),
++    )
++
++
++def test_exposure_time_in_market_and_peak_overlap():
++    report = build_exposure_report(
++        _two_overlapping_strategies(),
++        margin_policy=MarginPolicy(
++            {"MES": InstrumentMargin("MES", 500, 400), "MNQ": InstrumentMargin("MNQ", 400, 300)}
++        ),
++    )
++    # A spans the whole window (09:30-11:00), so the account is always in market.
++    assert report.time_in_market_fraction == 1.0
++    assert report.peak_simultaneous_positions == 2
++    assert report.peak_simultaneous_contracts == 2
++    # Overlap is 10:00-10:30 = 1800s of the 5400s span.
++    assert abs(report.strategy_overlap_fraction - 1 / 3) < 1e-9
++    assert abs(report.instrument_overlap_fraction - 1 / 3) < 1e-9
++
++
++def test_exposure_peak_margin_and_stop_risk_use_open_positions():
++    report = build_exposure_report(
++        _two_overlapping_strategies(),
++        margin_policy=MarginPolicy(
++            {"MES": InstrumentMargin("MES", 500, 400), "MNQ": InstrumentMargin("MNQ", 400, 300)}
++        ),
++    )
++    # During overlap both are open: margin 500 + 400 = 900; stop risk 1*100*5 + 1*100*2 = 700.
++    assert report.peak_initial_margin == 900.0
++    assert report.peak_open_stop_risk == 700.0
++    assert report.per_instrument_time_in_market["ES"] == 1.0  # ES open the whole span

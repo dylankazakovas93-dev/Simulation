@@ -40,3 +40,32 @@ python3 -m sim_core.integration.real_ledger \
 
 The mapping YAML uses example strategy IDs — the command prints every discovered
 `strategy_id` and fails closed if any lacks a declared contract spec (ADR-011).
+
+---
+
+# V3 — margin & exposure (Review 009)
+
+Implemented by the review lead (Codex offline). Additive on the V2.1 tree.
+
+- `v3_files/` — full source of the changed/new engine files:
+  - `exposure.py` (NEW) — `InstrumentMargin`, `MarginPolicy`, `apply_margin_cap`,
+    `ExposureReport`, `build_exposure_report`.
+  - `live_account.py` — V2.1 + optional `margin_policy=` entry-time cap
+    (`margin_forced_reduction`, `initial_margin_used`, summary count).
+  - `__init__.py` — exposure exports.
+  - `test_exposure.py` (NEW, 4 tests), `test_live_account_v2_1.py` (6 tests).
+- `v3_margin_exposure.patch` — V2.1→V3 diff of `live_account.py` plus the two new
+  files as full additions.
+
+## Verify
+
+```bash
+python3 -m pytest tests/regression -q          # 22 passed
+python3 -m pytest -q                            # 122 passed, 1 skipped
+python3 -m pytest tests/test_exposure.py tests/test_live_account_v2_1.py -q  # 10 passed
+```
+
+Governance: ADR-017 (declared margin, entry-time cap, fail-closed), ADR-018
+(scheduled-interval exposure, realized-only). Disclosed limits in
+KNOWN_LIMITATIONS: no intraday maintenance-call/liquidation, no intratrade MtM/MAE,
+marginal-portfolio-contribution deferred.

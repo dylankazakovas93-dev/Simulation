@@ -151,3 +151,40 @@ source months are never treated as contiguous.
 counts, coverage span, and per-method eligibility. It feeds scenario-validation
 warnings and exported diagnostics. The coverage-absent warning is centralized
 across every bootstrap policy, not only seasonal.
+
+## ADR-017 — Declared per-contract margin; entry-time initial-margin cap; fail-closed
+**Status:** ACCEPTED (Review 009, implemented by review lead — Codex offline)
+**Decision:** Margin is declared per contract symbol via
+`InstrumentMargin(contract_symbol, initial_margin, maintenance_margin)` collected
+in a `MarginPolicy(margins, reserve)`. There is **no silent default**: a traded
+contract with no declared margin **fails closed** (`ValueError`), consistent with
+ADR-011's "declare, don't infer" rule. When a `margin_policy` is supplied,
+`run_live_account_path` caps each sized position at entry so that
+`contracts * initial_margin <= max(0, equity - reserve)`. Forced reductions are
+recorded on the `SizingDecision` (`margin_forced_reduction`, `initial_margin_used`)
+and counted in `summary["margin_forced_reductions"]`.
+**Why:** Sizing that ignores capital-at-risk overstates deliverable size and
+understates blow-up risk. Declaring margin per contract keeps the economics
+explicit and auditable, and forced reductions are a first-class, counted event
+rather than a silent clamp.
+**Scope / limitation:** This is an **entry-time initial-margin cap only**. No
+intraday maintenance-margin call or forced liquidation is modeled yet (V3.1
+candidate). See KNOWN_LIMITATIONS.
+
+## ADR-018 — Exposure measured over scheduled trade intervals (realized-only)
+**Status:** ACCEPTED (Review 009, implemented by review lead — Codex offline)
+**Decision:** `build_exposure_report(result, margin_policy=…)` measures exposure
+by an interval sweep over each trade's **scheduled `[entry, exit]`** window at its
+simulated contract count: time-in-market fraction, sessions with a trade, peak
+simultaneous positions / contracts / initial-margin / open-stop-risk, average open
+margin, peak margin utilization, strategy & instrument overlap fractions, return
+per unit of peak margin / peak stop-risk, and per-instrument time-in-market. Open
+stop-risk uses declared `stop_points × dollars_per_point`.
+**Why:** Terminal equity alone hides how much capital and simultaneous risk a
+plan actually consumes to earn its return. Peak simultaneous margin/stop-risk and
+overlap fractions make "return per unit of risk actually held" measurable.
+**Scope / limitation:** Consistent with V1/V2 realized-P&L booking, exposure uses
+the scheduled open interval — there is **no intratrade mark-to-market / MAE path**.
+The **marginal portfolio contribution** of adding a strategy (charter item) is not
+yet computed; it requires an A/B scenario diff, deferred to a portfolio-comparison
+pass. See KNOWN_LIMITATIONS.

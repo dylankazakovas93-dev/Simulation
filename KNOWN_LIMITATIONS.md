@@ -52,6 +52,23 @@ out of V1 scope, documented.
 - **[SCOPE]** Margin checked only at trade settlement boundaries until the
   exposure/margin engine exists. Do not present V1 as margin-aware.
 
+## Margin / exposure traps (V3)
+
+- **[GUARD]** Margin is declared per contract symbol; a traded contract with no
+  declared margin fails closed. No silent margin default. (ADR-017)
+- **[SCOPE]** V3 margin is an **entry-time initial-margin cap only**. No intraday
+  maintenance-margin call or forced liquidation is modeled — a position that would
+  breach maintenance mid-trade is NOT liquidated in-sim (V3.1 candidate). Do not
+  present V3 as intraday-margin-aware. (ADR-017)
+- **[SCOPE]** Exposure is measured over each trade's **scheduled `[entry, exit]`**
+  interval at simulated size — realized-only, consistent with V1/V2 booking. There
+  is **no intratrade mark-to-market / MAE path**; peak open stop-risk uses declared
+  `stop_points × dollars_per_point`, not realized excursion. Peak simultaneous
+  margin/stop-risk therefore reflect scheduled overlap, not worst-case intratrade
+  excursion. (ADR-018)
+- **[SCOPE]** The **marginal portfolio contribution** of adding a strategy is not
+  yet computed; it needs an A/B scenario diff (portfolio-comparison pass). (ADR-018)
+
 ## Sizing traps
 
 - **[GUARD]** Contract counts are derived per-strategy from per-contract P&L and

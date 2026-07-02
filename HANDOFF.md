@@ -5,6 +5,61 @@ top. Findings are classified `BLOCKER` / `HIGH` / `MEDIUM` / `LOW` / `OPTIONAL`.
 
 ---
 
+## Review 009 — 2026-06-30 — V3 margin & exposure (implemented by review lead; Codex offline)
+
+### Role disclosure
+Codex remains unavailable, so the review lead implemented the V3 milestone
+directly (same conflict as Review 008: implementer == reviewer). Acceptance rests
+on objective tests + the project charter's exposure/margin requirements. Delivered
+as files + a patch on top of the V2.1 tree.
+
+### Scope (in scope only): margin + exposure. NOT prop/optimizer/UI.
+Independent runs: **`tests/regression -q` = 22 passed; `pytest -q` = 122 passed,
+1 skipped** (4 new V3 tests). V1 engine + V2/V2.1 accounting untouched; V3 is
+additive (`sim_core/exposure.py` new; `live_account.py` gains an optional
+`margin_policy` hook).
+
+### Margin (ADR-017)
+- `InstrumentMargin(contract_symbol, initial_margin, maintenance_margin)` and
+  `MarginPolicy(margins, reserve)` — **declared per contract symbol, no silent
+  default** (consistent with ADR-011). An undeclared traded contract fails closed.
+- `run_live_account_path(..., margin_policy=…)` caps each sized position so
+  `contracts * initial_margin <= max(0, equity - reserve)`; reductions are recorded
+  on the `SizingDecision` (`margin_forced_reduction`, `initial_margin_used`) and
+  counted in `summary["margin_forced_reductions"]`.
+- Verified: `FixedContractSizing(3)` at $4,000 initial margin on $10,000 equity →
+  capped to 2, flagged, `initial_margin_used = 8000`.
+
+### Exposure (ADR-018)
+`build_exposure_report(result, margin_policy=…)` measures, from each trade's
+scheduled `[entry, exit]` interval at its simulated contract count:
+time-in-market fraction, sessions with a trade, **peak simultaneous
+positions/contracts/initial-margin/open-stop-risk**, average open margin, peak
+margin utilization, **strategy & instrument overlap fractions**, return per unit
+of peak margin / peak stop-risk, and per-instrument time-in-market. An interval
+sweep computes overlap and peaks from the set of positions open at each moment.
+- Verified on two overlapping strategies (ES 09:30–11:00, NQ 10:00–10:30):
+  time-in-market 1.0, peak simultaneous positions 2, overlap fraction 1/3, peak
+  margin 900 (500+400), peak open stop-risk 700 (500+200).
+
+### Assumptions / limitations (disclosed; KNOWN_LIMITATIONS updated)
+- **[SCOPE]** Exposure uses the *scheduled* entry→exit interval at the simulated
+  size — realized-only, **no intratrade mark-to-market / MAE path**. Open stop
+  risk uses declared `stop_points × dollars_per_point`.
+- **[SCOPE]** Margin is an **entry-time initial-margin cap** only; no intraday
+  maintenance-margin call / forced liquidation is modeled yet (V3.1 candidate).
+- **[SCOPE]** The **marginal portfolio contribution** of adding a strategy
+  (charter item) is not yet computed — it needs an A/B scenario diff; deferred to
+  a portfolio-comparison pass.
+
+### Milestone status
+V3 margin/exposure: implemented, tested, delivered. Remaining: **V4 prop-firm**
+(event-driven account state machine + real cash economics), **V5 optimization**
+(multi-objective + constraints + Pareto), **V6 Streamlit UI**. Proceeding to V4
+next unless redirected.
+
+---
+
 ## Review 008 — 2026-06-30 — V2.1 corrections implemented by the review lead (Codex unavailable)
 
 ### Context / role disclosure
