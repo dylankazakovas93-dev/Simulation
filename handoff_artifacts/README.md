@@ -69,3 +69,28 @@ Governance: ADR-017 (declared margin, entry-time cap, fail-closed), ADR-018
 (scheduled-interval exposure, realized-only). Disclosed limits in
 KNOWN_LIMITATIONS: no intraday maintenance-call/liquidation, no intratrade MtM/MAE,
 marginal-portfolio-contribution deferred.
+
+---
+
+# V4 — prop-firm engine (Review 010)
+
+Implemented by the review lead (Codex offline). Additive; new module.
+
+- `v4_files/` — `prop_firm.py` (NEW: `PropFirmRules`, `run_prop_account_path`,
+  `run_prop_account_portfolio`, `summarize_prop_accounts`), `__init__.py` exports,
+  `test_prop_firm.py` (11 tests).
+- `v4_prop_firm.patch` — the two new files as full additions.
+
+## Verify
+
+```bash
+python3 -m pytest tests/test_prop_firm.py -q     # 11 passed
+python3 -m pytest tests/regression -q            # 22 passed
+python3 -m pytest -q                              # 133 passed, 1 skipped
+```
+
+Governance: ADR-019 (declared prop state machine, no firm hardcoded), ADR-020
+(realized `net_trader_cash` headline; notional balance ≠ wealth; realized-only
+breach ⇒ breach prob is a lower bound). Disclosed limits in KNOWN_LIMITATIONS:
+realized-only breach checks, greedy payout, funded-breach-terminal, fixed per-trade
+sizing, copied accounts fully correlated.

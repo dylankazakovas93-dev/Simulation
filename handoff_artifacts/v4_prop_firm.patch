@@ -1,0 +1,764 @@
+--- /dev/null
++++ b/sim_core/prop_firm.py
+@@ -0,0 +1,529 @@
++"""V4 — prop-firm / funded-account engine.
++
++An explicit, event-driven account state machine that consumes a chronological
++trade stream and simulates deploying a strategy through a prop-firm evaluation and
++funded account. Every rule and cost is **declared** (no firm is hardcoded), and the
++headline output is **realized net cash to the trader**, never the notional account
++balance.
++
++GOVERNING PRINCIPLE (ADR-019/020, KNOWN_LIMITATIONS):
++  * A notional prop-account balance is NOT personal wealth. Only realized net cash
++    — trader's split of withdrawn payouts, minus evaluation / activation / reset
++    fees — counts.
++  * Consistent with the V1/V2 realized-P&L booking, drawdown and daily-loss rules
++    are evaluated on **end-of-trade realized balances**, NOT intratrade excursions.
++    This UNDERSTATES breach probability (a trade may breach intratrade and recover
++    before its close). Stated on every breach/survival number.
++
++Phases: ``evaluation`` -> (pass) ``funded`` -> (max payouts) ``retired``.
++Terminal states: ``retired`` (success), ``funded`` (still active at stream end),
++``failed_dead`` (breached with no reset left), ``evaluation`` (target never met).
++"""
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from typing import Any
++
++import pandas as pd
++
++from sim_core.batch import hash_trades
++from sim_core.models import Trade
++
++# Phase constants -------------------------------------------------------------------
++PHASE_EVALUATION = "evaluation"
++PHASE_FUNDED = "funded"
++PHASE_RETIRED = "retired"
++PHASE_FAILED = "failed_dead"
++
++_TRAILING_BASES = {"end_of_trade", "end_of_day"}
++
++
++@dataclass(frozen=True)
++class PropFirmRules:
++    """Declared prop-firm account rules and economics. No firm defaults are baked in.
++
++    Money amounts are in account currency (USD). ``trailing_drawdown`` is the size
++    of the trailing max-drawdown band below the peak balance. ``trailing_lock_at``
++    is the balance level at which the drawdown floor stops rising (e.g. the account
++    start, the common "trailing locks at breakeven" rule); ``None`` = pure trailing
++    that never locks.
++    """
++
++    account_size: float
++    profit_target: float
++    trailing_drawdown: float
++    trailing_basis: str = "end_of_trade"
++    trailing_lock_at: float | None = None
++    daily_loss_limit: float | None = None
++    min_trading_days: int = 0
++    consistency_pct: float | None = None
++    # economics
++    evaluation_fee: float = 0.0
++    activation_fee: float = 0.0
++    reset_fee: float | None = None  # None => a failed evaluation cannot be reset
++    # payout
++    profit_split: float = 0.9
++    payout_buffer: float = 0.0  # profit above start that must be retained after a payout
++    first_payout_threshold: float | None = None  # min funded profit before first payout
++    payout_cap: float | None = None
++    min_days_between_payouts: int = 0
++    max_payouts: int | None = None
++    # sizing on the copied stream (fixed contract count for V4)
++    contracts_per_trade: int = 1
++    label: str = ""
++
++    def __post_init__(self) -> None:
++        if self.account_size <= 0:
++            raise ValueError("account_size must be positive")
++        if self.profit_target <= 0:
++            raise ValueError("profit_target must be positive")
++        if self.trailing_drawdown <= 0:
++            raise ValueError("trailing_drawdown must be positive")
++        if self.trailing_basis not in _TRAILING_BASES:
++            raise ValueError(f"trailing_basis must be one of {sorted(_TRAILING_BASES)}")
++        if self.daily_loss_limit is not None and self.daily_loss_limit <= 0:
++            raise ValueError("daily_loss_limit must be positive when set")
++        if self.min_trading_days < 0:
++            raise ValueError("min_trading_days cannot be negative")
++        if self.consistency_pct is not None and not (0 < self.consistency_pct <= 1):
++            raise ValueError("consistency_pct must be in (0, 1]")
++        for name in ("evaluation_fee", "activation_fee", "payout_buffer"):
++            if getattr(self, name) < 0:
++                raise ValueError(f"{name} cannot be negative")
++        if self.reset_fee is not None and self.reset_fee < 0:
++            raise ValueError("reset_fee cannot be negative")
++        if not (0 < self.profit_split <= 1):
++            raise ValueError("profit_split must be in (0, 1]")
++        if self.first_payout_threshold is not None and self.first_payout_threshold < 0:
++            raise ValueError("first_payout_threshold cannot be negative")
++        if self.payout_cap is not None and self.payout_cap <= 0:
++            raise ValueError("payout_cap must be positive when set")
++        if self.min_days_between_payouts < 0:
++            raise ValueError("min_days_between_payouts cannot be negative")
++        if self.max_payouts is not None and self.max_payouts <= 0:
++            raise ValueError("max_payouts must be positive when set")
++        if self.contracts_per_trade <= 0:
++            raise ValueError("contracts_per_trade must be positive")
++
++    def drawdown_floor(self, peak: float) -> float:
++        """Floor below which the account breaches, given the running peak balance."""
++
++        floor = peak - self.trailing_drawdown
++        if self.trailing_lock_at is not None:
++            # Floor stops rising once it reaches the lock level (e.g. the account
++            # start — the common "trailing locks at breakeven" rule).
++            floor = min(floor, self.trailing_lock_at)
++        return floor
++
++    def to_dict(self) -> dict[str, Any]:
++        return {
++            "account_size": self.account_size,
++            "profit_target": self.profit_target,
++            "trailing_drawdown": self.trailing_drawdown,
++            "trailing_basis": self.trailing_basis,
++            "trailing_lock_at": self.trailing_lock_at,
++            "daily_loss_limit": self.daily_loss_limit,
++            "min_trading_days": self.min_trading_days,
++            "consistency_pct": self.consistency_pct,
++            "evaluation_fee": self.evaluation_fee,
++            "activation_fee": self.activation_fee,
++            "reset_fee": self.reset_fee,
++            "profit_split": self.profit_split,
++            "payout_buffer": self.payout_buffer,
++            "first_payout_threshold": self.first_payout_threshold,
++            "payout_cap": self.payout_cap,
++            "min_days_between_payouts": self.min_days_between_payouts,
++            "max_payouts": self.max_payouts,
++            "contracts_per_trade": self.contracts_per_trade,
++            "label": self.label,
++        }
++
++    @classmethod
++    def from_dict(cls, data: dict[str, Any]) -> "PropFirmRules":
++        return cls(**data)
++
++
++@dataclass(frozen=True)
++class PropPhaseEvent:
++    """A recorded state-machine transition or breach."""
++
++    timestamp: pd.Timestamp
++    event_type: str  # eval_start | reset | passed | activated | breach | payout | retired
++    phase: str
++    balance: float
++    detail: str = ""
++
++    def to_dict(self) -> dict[str, Any]:
++        return {
++            "timestamp": self.timestamp.isoformat(),
++            "event_type": self.event_type,
++            "phase": self.phase,
++            "balance": self.balance,
++            "detail": self.detail,
++        }
++
++
++@dataclass(frozen=True)
++class PayoutRecord:
++    timestamp: pd.Timestamp
++    gross_amount: float  # notional profit withdrawn from the account
++    trader_amount: float  # trader's split — the real cash received
++    balance_after: float
++    payout_index: int
++
++    def to_dict(self) -> dict[str, Any]:
++        return {
++            "timestamp": self.timestamp.isoformat(),
++            "gross_amount": self.gross_amount,
++            "trader_amount": self.trader_amount,
++            "balance_after": self.balance_after,
++            "payout_index": self.payout_index,
++        }
++
++
++@dataclass(frozen=True)
++class PropAccountResult:
++    rules: PropFirmRules
++    terminal_phase: str
++    terminal_balance: float
++    events: list[PropPhaseEvent]
++    payouts: list[PayoutRecord]
++    summary: dict[str, Any]
++    input_data_hash: str = ""
++
++    @property
++    def net_trader_cash(self) -> float:
++        return float(self.summary["net_trader_cash"])
++
++    def to_dict(self) -> dict[str, Any]:
++        return {
++            "rules": self.rules.to_dict(),
++            "terminal_phase": self.terminal_phase,
++            "terminal_balance": self.terminal_balance,
++            "events": [e.to_dict() for e in self.events],
++            "payouts": [p.to_dict() for p in self.payouts],
++            "summary": self.summary,
++            "input_data_hash": self.input_data_hash,
++        }
++
++
++# --------------------------------------------------------------------------- engine
++
++
++def _ordered_trades(trades: list[Trade]) -> list[Trade]:
++    # Realized P&L books at exit; break ties deterministically.
++    return sorted(trades, key=lambda t: (t.exit_time, t.entry_time, t.trade_id))
++
++
++class _AccountMachine:
++    """Mutable running state for a single prop account over one trade stream."""
++
++    def __init__(self, rules: PropFirmRules) -> None:
++        self.rules = rules
++        self.phase = PHASE_EVALUATION
++        self.balance = rules.account_size
++        self.peak = rules.account_size
++        self.resets_used = 0
++        self.reached_funded = False
++        # per-day realized P&L tracking (keyed by exit date)
++        self._day_start_balance: float | None = None
++        self._current_day = None
++        self.trading_days: set = set()
++        self.funded_trading_days: set = set()
++        self.funded_day_profit: dict = {}  # exit-date -> realized funded P&L that day
++        # economics
++        self.fees_paid = rules.evaluation_fee  # buying the evaluation
++        self.gross_payouts = 0.0
++        self.trader_payouts = 0.0
++        self.payouts_count = 0
++        self._last_payout_day = None
++        self._activation_day = None
++        self.first_payout_timestamp: pd.Timestamp | None = None
++        self.events: list[PropPhaseEvent] = []
++        self.payouts: list[PayoutRecord] = []
++
++    def _record(self, ts: pd.Timestamp, event_type: str, detail: str = "") -> None:
++        self.events.append(PropPhaseEvent(ts, event_type, self.phase, self.balance, detail))
++
++    def _reset_daily(self, day, opening_balance: float) -> None:
++        self._current_day = day
++        self._day_start_balance = opening_balance
++
++    def _floor(self) -> float:
++        return self.rules.drawdown_floor(self.peak)
++
++    def start(self, ts: pd.Timestamp) -> None:
++        self._record(ts, "eval_start", "evaluation purchased")
++
++    # -- breach / reset ----------------------------------------------------------
++    def _breach(self, ts: pd.Timestamp, reason: str) -> bool:
++        """Handle a breach. Return True if the account is now terminal (dead)."""
++
++        self._record(ts, "breach", reason)
++        if self.phase == PHASE_EVALUATION and self.rules.reset_fee is not None:
++            self.fees_paid += self.rules.reset_fee
++            self.resets_used += 1
++            self.balance = self.rules.account_size
++            self.peak = self.rules.account_size
++            self.trading_days = set()
++            self._current_day = None
++            self._day_start_balance = None
++            self._record(ts, "reset", f"reset #{self.resets_used}")
++            return False
++        # funded breach, or evaluation with no reset allowed => dead
++        self.phase = PHASE_FAILED
++        return True
++
++    # -- apply one trade ---------------------------------------------------------
++    def apply_trade(self, trade: Trade) -> bool:
++        """Apply a single trade at its exit. Return True if the account is terminal."""
++
++        if self.phase in (PHASE_FAILED, PHASE_RETIRED):
++            return True
++
++        day = trade.exit_time.date()
++        if day != self._current_day:
++            self._reset_daily(day, self.balance)
++
++        pnl = self.rules.contracts_per_trade * float(trade.pnl_dollars)
++        self.balance += pnl
++        if self.balance > self.peak:
++            self.peak = self.balance
++
++        if self.phase == PHASE_EVALUATION:
++            self.trading_days.add(day)
++        else:
++            self.funded_trading_days.add(day)
++            self.funded_day_profit[day] = self.funded_day_profit.get(day, 0.0) + pnl
++
++        # --- breach checks (realized-only) ---
++        if self.balance <= self._floor():
++            return self._breach(trade.exit_time, "trailing drawdown breach")
++        if self.rules.daily_loss_limit is not None and self._day_start_balance is not None:
++            if (self._day_start_balance - self.balance) >= self.rules.daily_loss_limit:
++                return self._breach(trade.exit_time, "daily loss limit breach")
++
++        # --- phase progression ---
++        if self.phase == PHASE_EVALUATION:
++            self._maybe_pass(trade.exit_time)
++        if self.phase == PHASE_FUNDED:
++            self._maybe_payout(trade.exit_time)
++
++        return self.phase in (PHASE_FAILED, PHASE_RETIRED)
++
++    def _maybe_pass(self, ts: pd.Timestamp) -> None:
++        profit = self.balance - self.rules.account_size
++        if profit >= self.rules.profit_target and len(self.trading_days) >= self.rules.min_trading_days:
++            self._record(ts, "passed", f"profit {profit:.2f} >= target")
++            self.fees_paid += self.rules.activation_fee
++            self.phase = PHASE_FUNDED
++            self.reached_funded = True
++            # funded account starts fresh at its own starting balance
++            self.balance = self.rules.account_size
++            self.peak = self.rules.account_size
++            self._activation_day = ts.date()
++            self._current_day = None
++            self._day_start_balance = None
++            self.funded_trading_days = set()
++            self.funded_day_profit = {}
++            self._record(ts, "activated", "funded account activated")
++
++    def _payout_eligible(self, ts: pd.Timestamp) -> bool:
++        r = self.rules
++        profit = self.balance - r.account_size
++        withdrawable = profit - r.payout_buffer
++        if withdrawable <= 0:
++            return False
++        threshold = r.first_payout_threshold if self.payouts_count == 0 else 0.0
++        if threshold is not None and profit < threshold:
++            return False
++        if len(self.funded_trading_days) < r.min_trading_days:
++            return False
++        reference_day = self._last_payout_day or self._activation_day
++        if reference_day is not None and r.min_days_between_payouts > 0:
++            if (ts.date() - reference_day).days < r.min_days_between_payouts:
++                return False
++        if r.consistency_pct is not None and self.funded_day_profit:
++            total = sum(v for v in self.funded_day_profit.values() if v > 0)
++            best = max(self.funded_day_profit.values())
++            if total > 0 and best > r.consistency_pct * total:
++                return False
++        return True
++
++    def _maybe_payout(self, ts: pd.Timestamp) -> None:
++        r = self.rules
++        if not self._payout_eligible(ts):
++            return
++        profit = self.balance - r.account_size
++        withdrawable = profit - r.payout_buffer
++        gross = withdrawable if r.payout_cap is None else min(withdrawable, r.payout_cap)
++        if gross <= 0:
++            return
++        trader_cash = gross * r.profit_split
++        self.balance -= gross
++        # withdrawals move the trailing floor down with the balance (no self-breach)
++        self.peak -= gross
++        self.gross_payouts += gross
++        self.trader_payouts += trader_cash
++        self.payouts_count += 1
++        self._last_payout_day = ts.date()
++        if self.first_payout_timestamp is None:
++            self.first_payout_timestamp = ts
++        self.payouts.append(
++            PayoutRecord(ts, gross, trader_cash, self.balance, self.payouts_count)
++        )
++        self._record(ts, "payout", f"gross {gross:.2f}, trader {trader_cash:.2f}")
++        if r.max_payouts is not None and self.payouts_count >= r.max_payouts:
++            self.phase = PHASE_RETIRED
++            self._record(ts, "retired", f"max payouts {r.max_payouts} reached")
++
++
++def run_prop_account_path(
++    trades: list[Trade],
++    rules: PropFirmRules,
++    *,
++    verify_hash: bool = True,
++) -> PropAccountResult:
++    """Run a single prop account over one chronological trade stream."""
++
++    ordered = _ordered_trades(list(trades))
++    machine = _AccountMachine(rules)
++    stream_start = ordered[0].entry_time if ordered else None
++    if stream_start is not None:
++        machine.start(stream_start)
++
++    for trade in ordered:
++        terminal = machine.apply_trade(trade)
++        if terminal:
++            break
++
++    time_to_first_payout_days: float | None = None
++    if machine.first_payout_timestamp is not None and stream_start is not None:
++        time_to_first_payout_days = (
++            machine.first_payout_timestamp - stream_start
++        ).total_seconds() / 86400.0
++
++    net_cash = machine.trader_payouts - machine.fees_paid
++    summary: dict[str, Any] = {
++        "terminal_phase": machine.phase,
++        "terminal_balance": machine.balance,
++        "reached_funded": machine.reached_funded,
++        "survived": machine.phase in (PHASE_FUNDED, PHASE_RETIRED),
++        "resets_used": machine.resets_used,
++        "fees_paid": machine.fees_paid,
++        "gross_payouts": machine.gross_payouts,
++        "trader_payouts": machine.trader_payouts,
++        "net_trader_cash": net_cash,
++        "payouts_count": machine.payouts_count,
++        "first_payout_achieved": machine.payouts_count >= 1,
++        "time_to_first_payout_days": time_to_first_payout_days,
++        "eval_trading_days": len(machine.trading_days),
++        "funded_trading_days": len(machine.funded_trading_days),
++        "realized_only_note": (
++            "Drawdown/daily-loss evaluated on end-of-trade realized balances; "
++            "intratrade excursions are not modeled and breach probability is a "
++            "lower bound."
++        ),
++        "notional_balance_note": (
++            "terminal_balance is a notional account figure, NOT personal wealth; "
++            "only net_trader_cash is realized."
++        ),
++    }
++    input_hash = hash_trades(ordered) if verify_hash else ""
++    summary["input_data_hash"] = input_hash
++    summary["config_hash"] = _rules_hash(rules)
++
++    return PropAccountResult(
++        rules=rules,
++        terminal_phase=machine.phase,
++        terminal_balance=machine.balance,
++        events=machine.events,
++        payouts=machine.payouts,
++        summary=summary,
++        input_data_hash=input_hash,
++    )
++
++
++def run_prop_account_portfolio(
++    trades: list[Trade],
++    rules_list: list[PropFirmRules],
++) -> dict[str, Any]:
++    """Run several copied prop accounts over the SAME trade stream and aggregate.
++
++    Models copy-trading N funded accounts off one strategy. The combined figure is
++    the sum of realized net cash across accounts (correlated by construction: they
++    share the identical trade path)."""
++
++    if not rules_list:
++        raise ValueError("rules_list must be non-empty")
++    results = [run_prop_account_path(trades, rules) for rules in rules_list]
++    combined_net = sum(r.net_trader_cash for r in results)
++    combined_fees = sum(float(r.summary["fees_paid"]) for r in results)
++    combined_trader = sum(float(r.summary["trader_payouts"]) for r in results)
++    return {
++        "accounts": results,
++        "num_accounts": len(results),
++        "combined_net_trader_cash": combined_net,
++        "combined_fees_paid": combined_fees,
++        "combined_trader_payouts": combined_trader,
++        "num_survived": sum(1 for r in results if r.summary["survived"]),
++        "num_with_payout": sum(1 for r in results if r.summary["first_payout_achieved"]),
++        "correlation_note": (
++            "Accounts share one identical trade path (fully correlated); this is a "
++            "copy-trading model, not independent diversification."
++        ),
++    }
++
++
++def summarize_prop_accounts(results: list[PropAccountResult]) -> dict[str, Any]:
++    """Aggregate cash economics across many account runs (paths x accounts)."""
++
++    n = len(results)
++    if n == 0:
++        return {"num_accounts": 0}
++
++    def _mean(key: str) -> float:
++        return sum(float(r.summary[key]) for r in results) / n
++
++    net = sorted(r.net_trader_cash for r in results)
++    ttp = [
++        float(r.summary["time_to_first_payout_days"])
++        for r in results
++        if r.summary["time_to_first_payout_days"] is not None
++    ]
++
++    def _pct(sorted_vals: list[float], q: float) -> float:
++        if not sorted_vals:
++            return 0.0
++        idx = min(len(sorted_vals) - 1, max(0, int(round(q * (len(sorted_vals) - 1)))))
++        return sorted_vals[idx]
++
++    return {
++        "num_accounts": n,
++        "prob_reached_funded": sum(1 for r in results if r.summary["reached_funded"]) / n,
++        "prob_first_payout": sum(1 for r in results if r.summary["first_payout_achieved"]) / n,
++        "prob_survived": sum(1 for r in results if r.summary["survived"]) / n,
++        "prob_failed": sum(1 for r in results if r.terminal_phase == PHASE_FAILED) / n,
++        "expected_net_trader_cash": _mean("net_trader_cash"),
++        "median_net_trader_cash": _pct(net, 0.5),
++        "p5_net_trader_cash": _pct(net, 0.05),
++        "p95_net_trader_cash": _pct(net, 0.95),
++        "prob_net_cash_positive": sum(1 for r in results if r.net_trader_cash > 0) / n,
++        "expected_fees_paid": _mean("fees_paid"),
++        "expected_gross_payouts": _mean("gross_payouts"),
++        "expected_trader_payouts": _mean("trader_payouts"),
++        "mean_time_to_first_payout_days": (sum(ttp) / len(ttp)) if ttp else None,
++        "expected_resets_used": _mean("resets_used"),
++        "notional_balance_note": (
++            "Aggregates realized net cash only. Notional account balances are "
++            "excluded — they are not personal wealth."
++        ),
++    }
++
++
++def _rules_hash(rules: PropFirmRules) -> str:
++    import hashlib
++    import json
++
++    payload = json.dumps(rules.to_dict(), sort_keys=True, default=str)
++    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+--- /dev/null
++++ b/tests/test_prop_firm.py
+@@ -0,0 +1,229 @@
++"""V4 — prop-firm engine tests: state machine, breach rules, payout cash economics."""
++from __future__ import annotations
++
++import pandas as pd
++import pytest
++
++from sim_core.prop_firm import (
++    PHASE_FAILED,
++    PHASE_FUNDED,
++    PHASE_RETIRED,
++    PropFirmRules,
++    run_prop_account_path,
++    run_prop_account_portfolio,
++    summarize_prop_accounts,
++)
++from sim_core.models import Trade
++
++
++def _trade(rid, pnl, entry, exit_, strategy="s", symbol="MES", dpp=5.0):
++    return Trade(
++        trade_id=f"{strategy}-{rid}",
++        source_row_id=str(rid),
++        strategy_id=strategy,
++        instrument="ES",
++        contract_symbol=symbol,
++        entry_time=pd.Timestamp(entry),
++        exit_time=pd.Timestamp(exit_),
++        pnl_dollars=pnl,
++        dollars_per_point=dpp,
++    )
++
++
++def _day(n, pnl):
++    """One trade on 2025-01-0n, entering 09:30 exiting 10:00 UTC."""
++    d = f"2025-01-{n:02d}"
++    return _trade(f"d{n}", pnl, f"{d}T09:30:00Z", f"{d}T10:00:00Z")
++
++
++# --- evaluation ------------------------------------------------------------------
++def test_evaluation_passes_and_activates_on_target_and_min_days():
++    rules = PropFirmRules(
++        account_size=50_000,
++        profit_target=2_000,
++        trailing_drawdown=2_500,
++        min_trading_days=2,
++        evaluation_fee=150,
++        activation_fee=0,
++    )
++    # +1000 each on two distinct days -> hits 2000 target on day 2.
++    result = run_prop_account_path([_day(1, 1_000), _day(2, 1_000)], rules)
++    assert result.summary["reached_funded"] is True
++    assert result.terminal_phase == PHASE_FUNDED
++    # funded account starts fresh at account_size after activation
++    assert result.terminal_balance == 50_000
++    assert result.summary["eval_trading_days"] == 2
++
++
++def test_evaluation_not_passed_before_min_trading_days_met():
++    rules = PropFirmRules(
++        account_size=50_000, profit_target=2_000, trailing_drawdown=2_500, min_trading_days=3
++    )
++    # Target reached in one day, but 3 distinct days required.
++    result = run_prop_account_path([_day(1, 2_500)], rules)
++    assert result.summary["reached_funded"] is False
++    assert result.terminal_phase == "evaluation"
++
++
++# --- breach: trailing drawdown ---------------------------------------------------
++def test_trailing_drawdown_breach_without_reset_is_dead():
++    rules = PropFirmRules(
++        account_size=50_000, profit_target=5_000, trailing_drawdown=2_000, reset_fee=None
++    )
++    # Peak at +1000 (51000) -> floor 49000; then -1500 to 49500... not yet.
++    # Drop to 48900 (< 49000) breaches.
++    result = run_prop_account_path(
++        [_day(1, 1_000), _day(2, -2_100)], rules
++    )
++    assert result.terminal_phase == PHASE_FAILED
++    assert result.summary["survived"] is False
++    assert result.summary["net_trader_cash"] == 0.0  # only the eval fee is a cost
++    assert result.summary["resets_used"] == 0
++
++
++def test_trailing_lock_at_start_floor_stops_rising():
++    # Lock at account_size: once profit >= drawdown, floor stays at start.
++    rules = PropFirmRules(
++        account_size=50_000,
++        profit_target=100_000,  # never passes; we only test the floor
++        trailing_drawdown=2_000,
++        trailing_lock_at=50_000,
++        reset_fee=None,
++    )
++    # Climb to +5000 (peak 55000). Unlocked floor would be 53000; locked floor=50000.
++    # Drop back to 50100 (> 50000) must NOT breach.
++    result = run_prop_account_path(
++        [_day(1, 5_000), _day(2, -4_900)], rules
++    )
++    assert result.terminal_phase == "evaluation"  # survived, still trading eval
++    assert result.summary["survived"] is False  # not funded, but not dead
++    assert result.terminal_phase != PHASE_FAILED
++
++
++def test_evaluation_reset_costs_a_fee_and_restarts():
++    rules = PropFirmRules(
++        account_size=50_000,
++        profit_target=5_000,
++        trailing_drawdown=2_000,
++        reset_fee=100,
++    )
++    result = run_prop_account_path([_day(1, -2_100)], rules)
++    # Immediate breach, but reset allowed -> back to evaluation, fee charged.
++    assert result.summary["resets_used"] == 1
++    assert result.terminal_phase == "evaluation"
++    # fees: eval (0 default) + reset 100
++    assert result.summary["fees_paid"] == 100.0
++
++
++# --- breach: daily loss ----------------------------------------------------------
++def test_daily_loss_limit_breach():
++    rules = PropFirmRules(
++        account_size=50_000,
++        profit_target=5_000,
++        trailing_drawdown=10_000,  # loose, so daily-loss is the binding rule
++        daily_loss_limit=1_000,
++        reset_fee=None,
++    )
++    # Two trades same day summing to -1200 -> daily loss breach.
++    trades = [
++        _trade("a", -400, "2025-01-02T09:30:00Z", "2025-01-02T10:00:00Z"),
++        _trade("b", -800, "2025-01-02T10:30:00Z", "2025-01-02T11:00:00Z"),
++    ]
++    result = run_prop_account_path(trades, rules)
++    assert result.terminal_phase == PHASE_FAILED
++    assert any("daily loss" in e.detail for e in result.events)
++
++
++# --- payout cash economics -------------------------------------------------------
++def test_funded_payout_split_and_net_cash():
++    rules = PropFirmRules(
++        account_size=50_000,
++        profit_target=1_000,
++        trailing_drawdown=2_000,
++        min_trading_days=1,
++        evaluation_fee=150,
++        activation_fee=100,
++        profit_split=0.9,
++        first_payout_threshold=1_000,
++        max_payouts=1,
++    )
++    # Day 1: pass eval (+1000). Day 2: funded +1500 -> eligible, withdraw down to start.
++    result = run_prop_account_path([_day(1, 1_000), _day(2, 1_500)], rules)
++    assert result.summary["reached_funded"] is True
++    assert result.summary["payouts_count"] == 1
++    # gross withdrawn = 1500 (down to account_size); trader keeps 90% = 1350.
++    assert result.summary["gross_payouts"] == 1_500.0
++    assert result.summary["trader_payouts"] == pytest.approx(1_350.0)
++    # net cash = 1350 - (150 eval + 100 activation) = 1100
++    assert result.summary["net_trader_cash"] == pytest.approx(1_100.0)
++    assert result.terminal_phase == PHASE_RETIRED  # max_payouts=1 reached
++    assert result.summary["time_to_first_payout_days"] is not None
++
++
++def test_payout_cap_limits_withdrawal():
++    rules = PropFirmRules(
++        account_size=50_000,
++        profit_target=1_000,
++        trailing_drawdown=5_000,
++        min_trading_days=1,
++        profit_split=1.0,
++        first_payout_threshold=0,
++        payout_cap=800,
++    )
++    result = run_prop_account_path([_day(1, 1_000), _day(2, 2_000)], rules)
++    # Funded profit 2000, but cap 800 per payout.
++    assert result.payouts[0].gross_amount == 800.0
++    assert result.summary["trader_payouts"] == pytest.approx(800.0)
++
++
++# --- multi-account + aggregation -------------------------------------------------
++def test_portfolio_sums_net_cash_across_copied_accounts():
++    rules = PropFirmRules(
++        account_size=50_000,
++        profit_target=1_000,
++        trailing_drawdown=2_000,
++        min_trading_days=1,
++        activation_fee=100,
++        profit_split=0.9,
++        first_payout_threshold=1_000,
++        max_payouts=1,
++    )
++    trades = [_day(1, 1_000), _day(2, 1_500)]
++    portfolio = run_prop_account_portfolio(trades, [rules, rules])
++    assert portfolio["num_accounts"] == 2
++    assert portfolio["num_with_payout"] == 2
++    # each nets 1350 - 100 = 1250; combined 2500
++    assert portfolio["combined_net_trader_cash"] == pytest.approx(2_500.0)
++
++
++def test_summarize_prop_accounts_probabilities():
++    passing = PropFirmRules(
++        account_size=50_000,
++        profit_target=1_000,
++        trailing_drawdown=2_000,
++        min_trading_days=1,
++        first_payout_threshold=1_000,
++        profit_split=1.0,
++        max_payouts=1,
++    )
++    failing = PropFirmRules(
++        account_size=50_000, profit_target=1_000, trailing_drawdown=500, reset_fee=None
++    )
++    r_pass = run_prop_account_path([_day(1, 1_000), _day(2, 1_500)], passing)
++    r_fail = run_prop_account_path([_day(1, -600)], failing)
++    agg = summarize_prop_accounts([r_pass, r_fail])
++    assert agg["num_accounts"] == 2
++    assert agg["prob_first_payout"] == 0.5
++    assert agg["prob_failed"] == 0.5
++    assert agg["prob_reached_funded"] == 0.5
++    # expected net cash = (1500 + (-0)) / 2 for the passing; failing net = 0 (no fee set)
++    assert agg["expected_net_trader_cash"] == pytest.approx((1_500.0 + 0.0) / 2)
++
++
++def test_provenance_and_notional_disclosure_present():
++    rules = PropFirmRules(account_size=50_000, profit_target=1_000, trailing_drawdown=2_000)
++    result = run_prop_account_path([_day(1, 500)], rules)
++    assert len(result.input_data_hash) == 64  # sha256 hex
++    assert "config_hash" in result.summary
++    assert "personal wealth" in result.summary["notional_balance_note"]
++    assert "lower bound" in result.summary["realized_only_note"]

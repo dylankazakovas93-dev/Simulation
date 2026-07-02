@@ -5,6 +5,69 @@ top. Findings are classified `BLOCKER` / `HIGH` / `MEDIUM` / `LOW` / `OPTIONAL`.
 
 ---
 
+## Review 010 — 2026-07-02 — V4 prop-firm engine (implemented by review lead; Codex offline)
+
+### Role disclosure
+Codex remains offline; the review lead implemented V4 directly (implementer ==
+reviewer, as in Reviews 008/009). Acceptance rests on objective tests + the
+charter's prop-firm requirements, not self-assessment. An independent review is
+still advisable before this is trusted for real capital decisions.
+
+### Scope (in scope only): prop-firm / funded-account engine. NOT optimizer/UI.
+New `sim_core/prop_firm.py` (additive; touches nothing in V1/V2/V3 except an
+`__init__` export). Independent runs: **`tests/regression -q` = 22 passed;
+`pytest -q` = 133 passed, 1 skipped** (11 new V4 tests in `tests/test_prop_firm.py`).
+
+### What it does (ADR-019)
+An explicit event-driven state machine consuming one chronological trade stream:
+`evaluation → (pass) funded → (max payouts) retired`, with terminal states
+`failed_dead` and stream-end `evaluation`/`funded`. All rules and costs are
+**declared** in `PropFirmRules` — no firm is hardcoded:
+- Trailing max-drawdown (`trailing_drawdown`, optional `trailing_lock_at` for the
+  "locks at breakeven" rule), `end_of_trade`/`end_of_day` basis.
+- Daily loss limit, profit target, minimum trading days, consistency-% payout gate.
+- Economics: evaluation fee, activation fee, reset fee (None ⇒ a failed eval is
+  dead), profit split, payout buffer/threshold/cap, min days between payouts,
+  max payouts.
+- Evaluation reset restarts the account at cost and keeps consuming the stream;
+  a **funded** breach is terminal (no funded reset), disclosed.
+
+### Real cash economics — the headline (ADR-020)
+`run_prop_account_path` reports **`net_trader_cash` = Σ(payout × split) − fees**
+(evaluation + activation + resets). Never treats the notional balance as wealth —
+every result carries a `notional_balance_note` saying so. Also: P(reached funded),
+P(first payout), time-to-first-payout, survival, resets used, gross vs trader
+payouts. `run_prop_account_portfolio` sums realized net cash across copied accounts
+on the same path (fully correlated — disclosed, not diversification).
+`summarize_prop_accounts` aggregates across paths/accounts: prob_reached_funded,
+prob_first_payout, prob_survived, prob_failed, expected/median/P5/P95 net cash,
+prob_net_cash_positive, expected fees/payouts, mean time-to-first-payout.
+
+Verified numerically: eval pass+activate (fresh funded balance); trailing-DD breach
+dead vs reset-with-fee; `trailing_lock_at` floor stops rising; daily-loss breach;
+funded payout 0.9 split with net = trader − (eval+activation) fees; payout cap;
+2-account portfolio net = 2×single; aggregate probabilities; provenance hash +
+disclosures present.
+
+### Assumptions / limitations (disclosed; KNOWN_LIMITATIONS updated)
+- **[SCOPE]** Realized-only: drawdown & daily-loss are checked on **end-of-trade
+  balances**, not intratrade excursions. Breach probability is therefore a **lower
+  bound** and survival an **upper bound**. Stated on every prop result.
+- **[SCOPE]** Payout policy is **greedy** (withdraw as soon as eligible, down to
+  start + buffer); alternative withdrawal timing is a later parameter.
+- **[SCOPE]** A funded breach is terminal; buying a fresh evaluation after a funded
+  loss is not modeled. Evaluation resets consume the same forward stream.
+- **[SCOPE]** Contract sizing on the copied stream is a fixed `contracts_per_trade`;
+  per-account dynamic sizing is deferred.
+
+### Milestone status
+V4 prop-firm: implemented, tested, delivered. Remaining: **V5 optimization**
+(multi-objective + constraints + Pareto; must not exploit realized-only drawdown,
+capped notional, or greedy payout), **V6 Streamlit UI**. Proceeding to V5 next
+unless redirected.
+
+---
+
 ## Review 009 — 2026-06-30 — V3 margin & exposure (implemented by review lead; Codex offline)
 
 ### Role disclosure

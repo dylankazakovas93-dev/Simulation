@@ -86,11 +86,29 @@ out of V1 scope, documented.
 - **[WARN]** Risk-of-ruin and drawdown definitions must be defined once and held
   constant across every report. Any report-specific variant is a defect.
 
-## Prop / optimization traps (forward-looking, V1 out of scope)
+## Prop-firm traps (V4)
 
-- **[SCOPE]** A notional prop account balance is not personal wealth; only
-  realized net cash (payouts − fees − resets − activations) counts. To be
-  enforced when the prop engine lands.
+- **[GUARD]** A notional prop-account balance is not personal wealth; the headline
+  is `net_trader_cash = Σ(payout × split) − (eval + activation + reset fees)`. Every
+  prop result carries a `notional_balance_note` and aggregates exclude notional
+  balances. (ADR-020)
+- **[GUARD]** No firm is hardcoded: all rules/costs are declared in `PropFirmRules`.
+  (ADR-019)
+- **[WARN/SCOPE]** Breach checks (trailing drawdown, daily loss) are **realized-only
+  (end-of-trade)** — no intratrade excursion. Reported breach probability is a
+  **lower bound** and survival an **upper bound**; surfaced as `realized_only_note`
+  on every result. (ADR-020)
+- **[SCOPE]** Payout timing is **greedy** (withdraw as soon as eligible, to start +
+  buffer). Alternative withdrawal schedules are a later parameter.
+- **[SCOPE]** A funded breach is terminal (no funded reset / re-buy modeled).
+  Evaluation resets consume the same forward trade stream.
+- **[SCOPE]** Copied accounts in a portfolio share one identical trade path (fully
+  correlated) — a copy-trading model, not independent diversification; disclosed via
+  `correlation_note`.
+
+## Optimization traps (forward-looking, V5 out of scope until it lands)
+
 - **[SCOPE]** The optimizer must not optimize median terminal equity alone, and
   must not be allowed to exploit any of the above traps (e.g. capped equity,
-  realized-only drawdown). Constraints + Pareto required before optimizer ships.
+  realized-only drawdown, greedy prop payouts). Constraints + Pareto required
+  before optimizer ships.

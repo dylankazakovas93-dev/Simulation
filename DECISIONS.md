@@ -188,3 +188,37 @@ the scheduled open interval — there is **no intratrade mark-to-market / MAE pa
 The **marginal portfolio contribution** of adding a strategy (charter item) is not
 yet computed; it requires an A/B scenario diff, deferred to a portfolio-comparison
 pass. See KNOWN_LIMITATIONS.
+
+## ADR-019 — Prop-firm engine is an explicit declared state machine (no firm baked in)
+**Status:** ACCEPTED (Review 010, implemented by review lead — Codex offline)
+**Decision:** V4 models a prop / funded account as an event-driven state machine
+(`evaluation → funded → retired`, terminal `failed_dead`) consuming one
+chronological trade stream. Every rule and cost is declared in `PropFirmRules`:
+trailing max-drawdown (with optional `trailing_lock_at`), `end_of_trade`/
+`end_of_day` basis, daily loss limit, profit target, minimum trading days,
+consistency-% payout gate, evaluation/activation/reset fees, profit split, payout
+buffer/threshold/cap, min days between payouts, max payouts, and a fixed
+`contracts_per_trade` sizing on the copied stream. No specific firm's numbers are
+hardcoded. An evaluation reset restarts the account at its declared reset cost and
+keeps consuming the forward stream; a funded breach is terminal.
+**Why:** Prop rules vary by firm and are the dominant driver of whether a strategy
+ever pays out. Making them explicit and declared (consistent with ADR-011's
+"declare, don't infer") keeps the mechanics auditable and prevents a hidden,
+firm-specific assumption from flattering the result.
+
+## ADR-020 — Prop output is realized net cash; notional balance is not wealth; breach is realized-only
+**Status:** ACCEPTED (Review 010, implemented by review lead — Codex offline)
+**Decision:** The headline prop-firm output is `net_trader_cash = Σ(payout ×
+profit_split) − (evaluation + activation + reset fees)`. The notional account
+balance is never reported as personal wealth; every result carries an explicit
+`notional_balance_note`. Aggregates (`summarize_prop_accounts`) report P(reached
+funded), P(first payout), P(survived), P(failed), expected/median/P5/P95 net cash,
+and expected fees/payouts. Consistent with V1/V2 realized-P&L booking, drawdown and
+daily-loss rules are evaluated on **end-of-trade balances only** — no intratrade
+excursion — so reported breach probability is a **lower bound** and survival an
+**upper bound**; this is stated on every prop result (`realized_only_note`).
+**Why:** The charter's governing principle: only realized cash counts, and the
+model must not flatter itself. Disclosing the realized-only breach bound prevents
+presenting an optimistic survival number as if it were worst-case.
+**Scope / limitation:** Greedy payout timing, funded-breach-is-terminal, and fixed
+per-trade sizing are documented in KNOWN_LIMITATIONS as V4 scope choices.
