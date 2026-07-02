@@ -222,3 +222,23 @@ model must not flatter itself. Disclosing the realized-only breach bound prevent
 presenting an optimistic survival number as if it were worst-case.
 **Scope / limitation:** Greedy payout timing, funded-breach-is-terminal, and fixed
 per-trade sizing are documented in KNOWN_LIMITATIONS as V4 scope choices.
+
+## ADR-021 — Optimizer is a multi-objective Pareto selection layer; never single-objective by default
+**Status:** ACCEPTED (Review 011, implemented by review lead — Codex offline)
+**Decision:** V5 optimization is an explicit, engine-agnostic selection layer over
+a caller-supplied `evaluate` function. Declared `Objective`s (max/min) and
+`Constraint`s drive a Pareto non-dominated frontier as the decision output; a
+min-max-normalized weighted-sum "scalarized ranking" is provided only as a
+labeled secondary display aid (`decision_note`), never as the answer. The optimizer
+refuses to collapse to a single objective by default: `optimize` raises unless ≥2
+objectives are given; a single-objective run must set `allow_single_objective=True`
+and is recorded as a warning. Rejected candidates report the exact binding
+constraints; missing objective/constraint metrics raise (no silent zero-fill);
+`expected_log_growth` returns `-inf` on any total-loss period rather than clipping.
+**Why:** The charter forbids optimizing median terminal equity (or any lone metric)
+alone, because a single objective will exploit model traps (capped equity,
+realized-only drawdown, greedy prop payouts). A declared, constrained Pareto
+frontier keeps trade-offs visible and auditable.
+**Scope / limitation:** V5 evaluates a provided candidate set (grid/list); it is a
+selection layer, not a continuous search. It inherits all upstream realized-only /
+notional caveats of whatever metrics are fed in. Documented in KNOWN_LIMITATIONS.

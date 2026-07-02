@@ -106,9 +106,17 @@ out of V1 scope, documented.
   correlated) — a copy-trading model, not independent diversification; disclosed via
   `correlation_note`.
 
-## Optimization traps (forward-looking, V5 out of scope until it lands)
+## Optimization traps (V5)
 
-- **[SCOPE]** The optimizer must not optimize median terminal equity alone, and
-  must not be allowed to exploit any of the above traps (e.g. capped equity,
-  realized-only drawdown, greedy prop payouts). Constraints + Pareto required
-  before optimizer ships.
+- **[GUARD]** The optimizer refuses single-objective runs by default (raises unless
+  ≥2 objectives; single-objective requires an explicit flag and is warned). It must
+  not optimize median terminal equity — or any lone metric — alone. (ADR-021)
+- **[GUARD]** The decision output is the declared-constraint Pareto frontier, not a
+  scalar winner. The scalarized ranking is a labeled secondary display aid only.
+  (ADR-021)
+- **[GUARD]** Rejected candidates report their exact binding constraints; missing
+  objective/constraint metrics raise (no silent zero-fill); `expected_log_growth`
+  returns `-inf` on a total-loss period rather than clipping. (ADR-021)
+- **[SCOPE]** V5 is a selection layer over a provided candidate set (grid/list), not
+  a continuous search (CMA-ES/Bayesian is a later add-on). It inherits every
+  upstream realized-only / notional caveat of the metrics fed into it. (ADR-021)

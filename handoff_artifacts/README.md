@@ -94,3 +94,25 @@ Governance: ADR-019 (declared prop state machine, no firm hardcoded), ADR-020
 breach ⇒ breach prob is a lower bound). Disclosed limits in KNOWN_LIMITATIONS:
 realized-only breach checks, greedy payout, funded-breach-terminal, fixed per-trade
 sizing, copied accounts fully correlated.
+
+---
+
+# V5 — multi-objective optimizer (Review 011)
+
+Implemented by the review lead (Codex offline). Additive; engine-agnostic module.
+
+- `v5_files/` — `optimize.py` (NEW: `Objective`, `Constraint`, `Candidate`,
+  `evaluate_candidates`, `apply_constraints`, `pareto_frontier`, `optimize`,
+  `expected_log_growth`), `__init__.py` exports, `test_optimize.py` (9 tests).
+- `v5_optimize.patch` — the two new files as full additions.
+
+## Verify
+
+```bash
+python3 -m pytest tests/test_optimize.py -q      # 9 passed
+python3 -m pytest -q                              # 142 passed, 1 skipped
+```
+
+Governance: ADR-021 (multi-objective Pareto selection; refuses single-objective by
+default; frontier is the decision, scalarized rank is a labeled display aid only;
+missing metrics raise; log-growth returns -inf on total-loss periods).

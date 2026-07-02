@@ -5,6 +5,63 @@ top. Findings are classified `BLOCKER` / `HIGH` / `MEDIUM` / `LOW` / `OPTIONAL`.
 
 ---
 
+## Review 011 — 2026-07-02 — V5 multi-objective optimizer (implemented by review lead; Codex offline)
+
+### Role disclosure
+Codex remains offline; the review lead implemented V5 directly (implementer ==
+reviewer, as in Reviews 008-010). Acceptance rests on objective tests + the
+charter's optimizer requirements. Independent review still advisable.
+
+### Scope (in scope only): optimizer. NOT UI.
+New `sim_core/optimize.py` (additive, engine-agnostic — depends on nothing in the
+engines; only an `__init__` export changes). Independent runs: **`tests/regression
+-q` = 22 passed; `pytest -q` = 142 passed, 1 skipped** (9 new V5 tests).
+
+### What it does (ADR-021)
+An explicit multi-objective selection layer over a caller-supplied `evaluate`
+function (so it never invents metrics or secretly re-runs anything):
+- `Objective(name, direction max|min, weight)`, `Constraint(name, op, threshold)`,
+  `Candidate(id, params, metrics)`.
+- `evaluate_candidates` maps parameter sets → candidates via the caller's evaluator.
+- `apply_constraints` splits feasible vs rejected, **listing the exact binding
+  constraints** for every rejected candidate (nothing silently dropped).
+- `pareto_frontier` returns the non-dominated feasible set (dominance respects each
+  objective's direction; strict-better-on-one + at-least-as-good-on-all).
+- `optimize` ties it together and returns the frontier + a clearly-labeled
+  **secondary** scalarized ranking (min-max normalized weighted sum) that is
+  explicitly *not* the decision.
+- `expected_log_growth` returns `-inf` on any total-loss period (correct ruin
+  signal, never silently clipped).
+
+### Trap guards (the charter's explicit concern)
+- **Refuses single-objective by default**: `optimize` raises unless ≥2 objectives,
+  and a single-objective run must pass `allow_single_objective=True` and is recorded
+  as a warning ("optimizing one metric alone can exploit model traps").
+- **Frontier, not a winner**: the decision output is the Pareto set; the scalarized
+  score is a display aid with a `decision_note` saying so.
+- Duplicate objective names rejected; missing objective/constraint metrics raise
+  (no silent zero-fill).
+
+Verified: dominated candidate excluded; ties both retained; constraints reject with
+reasons; end-to-end frontier + ranking; missing-metric raises; single-objective
+guard + warning; `expected_log_growth` → `-inf` on -100% period; empty-feasible
+warning.
+
+### Assumptions / limitations (disclosed; KNOWN_LIMITATIONS updated)
+- **[SCOPE]** The optimizer is a **selection layer**, not a search: it evaluates a
+  provided candidate set (grid / list). Continuous search (CMA-ES, Bayesian) is a
+  later add-on; the Pareto/constraint semantics stay the same.
+- **[SCOPE]** Objective values are only as sound as the metrics fed in — it inherits
+  every upstream realized-only / notional caveat. The guard against single-objective
+  optimization mitigates but does not remove trap-exploitation risk.
+
+### Milestone status
+V5 optimizer: implemented, tested, delivered. Remaining: **V6 Streamlit UI** (last;
+built on the headless core API — no engine logic in the UI). Proceeding to V6 next
+unless redirected.
+
+---
+
 ## Review 010 — 2026-07-02 — V4 prop-firm engine (implemented by review lead; Codex offline)
 
 ### Role disclosure
