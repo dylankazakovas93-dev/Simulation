@@ -5,6 +5,43 @@ top. Findings are classified `BLOCKER` / `HIGH` / `MEDIUM` / `LOW` / `OPTIONAL`.
 
 ---
 
+## Review 016 — 2026-07-03 — RECOVERY & REBUILD (user mandate)
+
+### Defect audit of the v1 browser Lab (user-reported, all confirmed)
+1. **No monthly figures** — only horizon-cumulative "net"; "3-mo net" read as monthly. CONFIRMED.
+2. **Opaque accounting** — "net" hid the split, fees, and profit retained in-account. CONFIRMED.
+3. **TPT 150K ≈ $0 anomaly** — ROOT CAUSE: TPT buffer = drawdown scales with size; 150K needs
+   $4,500 profit before any withdrawal vs typical ~$4.9k/6mo gross at 2 micros. Money was
+   RETAINED IN ACCOUNT, invisible in the UI. Not a preset mix-up (R6 test proves distinct presets).
+4. **Cushion double-count** — user cushion stacked on firm buffer (Apex needed $4.2k before $1 out).
+   FIXED earlier session; regression R1.
+5. **Engine bug found by new tests (B1)** — post-payout floor logic force-locked the floor even when
+   never reached; floor is now MONOTONE (ratchets up only, never down, incl. after withdrawals).
+6. **Lag** — recompute on every input change. FIXED: compute only on Run; filters/pages render cache.
+7. **Eval/funded blended** in one table. FIXED: separate tabs.
+
+### Reusable vs replaced
+- RETAINED: preset registry (26 accounts, sources+status), σ shuffler (audited: ONE concept —
+  Gaussian order displacement only), parse/quantile utils, sim_core Python engine (163 tests).
+- REPLACED: entire v1 UI and its runAccount → v2 engine with per-month ledger, waterfall fields,
+  live-state init (balance/peak/qualifying-days/payouts-done), payout request, trace events,
+  monotone floor; multipage UI (Setup/Compare/Monthly/Live/Inspector).
+
+### Verification
+22/22 acceptance tests (Scenarios A–E + regressions incl. negative-month preservation,
+terminated≠zero, identity finalBal=start+trading−gross, C exact payout math, D live-state,
+determinism, unique preset keys). Benchmark: 26 accounts × 300 paths × 6mo = 4.0s;
+monthly page 0.15s. Artifacts: handoff_artifacts/prop_lab_v2/.
+
+### Honest remaining gaps (also KNOWN_LIMITATIONS)
+- Python sim_core does not yet expose the per-month ledger/waterfall (browser engine does;
+  parity port is next). Streamlit multipage not built (browser app is the delivery vehicle, ADR-025).
+- TPT eval targets assumed (~6%); PRO+ not encoded. Stress controls (win-rate/size/slippage etc.)
+  not yet in v2 UI. Copied-accounts multiplier not yet in v2 UI. Rebill-as-reset eval continuation
+  simplified to fail-ends-path.
+
+---
+
 ## Review 015 — 2026-07-03 — Firm presets, browser Lab, EOD trailing, and Apex help-center verification
 
 ### Context

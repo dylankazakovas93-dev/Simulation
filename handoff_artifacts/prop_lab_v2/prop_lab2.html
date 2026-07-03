@@ -1,0 +1,680 @@
+<title>Prop Sim Lab v2</title>
+<style>
+  :root{
+    --bg:#070b16;--panel:#0e1524;--panel2:#0b1120;--ink:#e9eef8;--mut:#7e8aa6;
+    --hair:#1b2540;--hair2:#141c33;--field:#0b1120;
+    --blue:#4c8dff;--blue2:#2f6fe0;--cyan:#38cfd6;--green:#3fd6a0;
+    --red:#ff6f57;--redbg:#2a1410;--amber:#e2b45a;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  }
+  :root[data-theme="light"]{--bg:#eef1f7;--panel:#fff;--panel2:#f5f7fb;--ink:#101830;--mut:#5a678a;
+    --hair:#d9e0ee;--hair2:#e8edf6;--field:#f5f7fb;--blue:#2f6fe0;--blue2:#2f6fe0;--cyan:#128d95;
+    --green:#0f9b73;--red:#c9412a;--redbg:#f7e2dd;--amber:#a97d1a;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:14px;
+    line-height:1.5;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1200px;margin:0 auto;padding:clamp(12px,2.5vw,32px)}
+  h1{font-size:clamp(20px,3vw,28px);font-weight:660;margin:0;letter-spacing:-.01em}
+  h2{font-size:17px;font-weight:640;margin:0 0 4px}
+  .mut{color:var(--mut)} .mono{font-family:var(--mono)}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--blue);font-weight:600}
+  header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+
+  nav{display:flex;gap:4px;border-bottom:1px solid var(--hair);margin-bottom:18px;flex-wrap:wrap}
+  nav button{background:none;border:none;border-bottom:2px solid transparent;color:var(--mut);
+    padding:10px 14px;font:600 13.5px var(--sans);cursor:pointer}
+  nav button.on{color:var(--ink);border-bottom-color:var(--blue)}
+  nav button:hover{color:var(--ink)}
+
+  .panel{background:var(--panel);border:1px solid var(--hair);border-radius:12px;padding:16px;margin-bottom:14px}
+  .panel h3{font-size:12px;font-family:var(--mono);letter-spacing:.07em;text-transform:uppercase;color:var(--blue);margin:0 0 10px}
+  .grid{display:grid;gap:14px} .g2{grid-template-columns:1fr 1fr} .g3{grid-template-columns:repeat(3,1fr)}
+  @media(max-width:840px){.g2,.g3{grid-template-columns:1fr}}
+  label.f{display:block;font-size:11.5px;color:var(--mut);margin:9px 0 3px;font-weight:600}
+  input,select,textarea{width:100%;background:var(--field);border:1px solid var(--hair);color:var(--ink);
+    border-radius:7px;padding:7px 9px;font:12.5px var(--mono)}
+  textarea{height:72px;resize:vertical;white-space:pre}
+  .row{display:flex;gap:10px}.row>div{flex:1}
+  .btn{background:linear-gradient(180deg,var(--blue),var(--blue2));color:#04122c;border:none;border-radius:8px;
+    padding:10px 16px;font:700 13.5px var(--sans);cursor:pointer}
+  .btn.ghost{background:transparent;color:var(--blue);border:1px solid var(--hair)}
+  .btn:disabled{opacity:.5;cursor:wait}
+  .runbar{position:sticky;top:0;z-index:5;background:var(--bg);padding:8px 0 10px;display:flex;gap:10px;align-items:center;border-bottom:1px solid var(--hair);margin-bottom:14px}
+  .stamp{font:11px var(--mono);color:var(--mut)}
+
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:10px;margin-bottom:12px}
+  .tile{background:var(--panel);border:1px solid var(--hair);border-radius:10px;padding:11px 13px}
+  .tile .k{font:600 9.5px var(--mono);letter-spacing:.07em;text-transform:uppercase;color:var(--mut)}
+  .tile .v{font-size:19px;font-weight:690;margin-top:2px}
+  .pos{color:var(--green)}.neg{color:var(--red)}.mid{color:var(--amber)}
+
+  .tw{overflow-x:auto;border:1px solid var(--hair);border-radius:11px;background:var(--panel);margin-bottom:14px}
+  table{border-collapse:collapse;width:100%;font-size:12.5px;min-width:640px}
+  thead th{background:var(--panel2);text-align:right;padding:8px 10px;font:600 9.5px var(--mono);
+    letter-spacing:.05em;text-transform:uppercase;color:var(--mut);border-bottom:1px solid var(--hair);white-space:nowrap;cursor:pointer}
+  thead th:first-child{text-align:left}
+  td{padding:7px 10px;border-bottom:1px solid var(--hair2);text-align:right;font-family:var(--mono);white-space:nowrap}
+  td:first-child{text-align:left;font-family:var(--sans);font-weight:600}
+  tr:last-child td{border-bottom:none}
+  td small{display:block;font:10px var(--mono);color:var(--mut);font-weight:400}
+  .dead{color:var(--mut);font-style:italic}
+  .pill{display:inline-block;font:600 10.5px var(--mono);padding:4px 10px;border-radius:999px;border:1px solid var(--hair);
+    background:var(--field);color:var(--mut);cursor:pointer;margin:0 5px 5px 0}
+  .pill.on{background:var(--blue);color:#04122c;border-color:var(--blue)}
+  .seg{display:inline-flex;border:1px solid var(--hair);border-radius:8px;overflow:hidden;margin-bottom:8px}
+  .seg button{background:var(--field);border:none;color:var(--mut);padding:7px 13px;font:600 12px var(--sans);cursor:pointer}
+  .seg button.on{background:var(--blue);color:#04122c}
+  .note{background:var(--panel);border:1px solid var(--hair);border-left:3px solid var(--amber);border-radius:9px;
+    padding:10px 13px;font-size:12.5px;color:var(--mut);margin-bottom:12px;line-height:1.55}
+  .err{background:var(--redbg);border:1px solid var(--red);color:var(--red);border-radius:8px;padding:8px 10px;font-size:12px;margin-top:8px;display:none}
+  .hint{font-size:11px;color:var(--mut);margin-top:5px;line-height:1.45}
+  .wfall{font-family:var(--mono);font-size:12.5px;line-height:2}
+  .wfall b{float:right}
+  .wfall .line{border-bottom:1px dashed var(--hair);display:block}
+  .ok{color:var(--green)} .warn{color:var(--amber)}
+  .toggle{background:none;border:1px solid var(--hair);color:var(--mut);border-radius:7px;padding:4px 9px;font:11px var(--mono);cursor:pointer}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">Prop Sim Lab v2 · every number defined &amp; reconciled</div>
+      <h1>Strategy → account → cash. Where every dollar goes.</h1>
+    </div>
+    <button class="toggle" onclick="toggleTheme()">◐</button>
+  </header>
+
+  <nav id="nav">
+    <button data-p="setup" class="on">1 · Setup</button>
+    <button data-p="compare">2 · Compare accounts</button>
+    <button data-p="monthly">3 · Monthly results</button>
+    <button data-p="live">4 · My live account</button>
+    <button data-p="inspect">5 · Path inspector</button>
+  </nav>
+
+  <div class="runbar">
+    <button class="btn" id="runBtn" onclick="runAll()">Run simulation ▸</button>
+    <span class="stamp" id="stamp">not run yet — set inputs on Setup, then Run</span>
+  </div>
+
+  <!-- ============ PAGE: SETUP ============ -->
+  <div id="pg-setup">
+    <div class="grid g2">
+      <div class="panel">
+        <h3>Ledger</h3>
+        <textarea id="data" spellcheck="false"></textarea>
+        <div class="row" style="margin-top:8px">
+          <div><button class="btn ghost" style="width:100%" onclick="document.getElementById('file').click()">Upload</button>
+            <input type="file" id="file" accept=".csv,.json,.txt" style="display:none"></div>
+          <div><button class="btn ghost" style="width:100%" onclick="loadSample()">Reload sample</button></div>
+        </div>
+        <div class="err" id="err"></div>
+        <div class="hint">JSON <span class="mono">[["2026-07-01",2.6],…]</span> or CSV (date,pnl). P&amp;L unit set below.
+          Ledger stats appear after Run. Realized P&amp;L only — intraday drawdown is approximated (see notes).</div>
+        <label class="f">P&amp;L unit</label>
+        <div class="seg" id="fmt"><button data-v="points" class="on">points</button><button data-v="dollars">dollars</button></div>
+        <div class="row">
+          <div><label class="f">$ / point (MNQ=$2, NQ=$20)</label><input id="dpp" type="number" value="2" step="0.5" min="0.1"></div>
+          <div><label class="f">Contracts</label><input id="ct" type="number" value="2" min="1" max="20"></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Simulation</h3>
+        <div class="row">
+          <div><label class="f">Horizon (months)</label><input id="hz" type="number" value="6" min="1" max="12"></div>
+          <div><label class="f">Paths (samples)</label><input id="ms" type="number" value="300" min="50" max="2000" step="50"></div>
+        </div>
+        <div class="row">
+          <div><label class="f">Seed</label><input id="seed" type="number" value="12345"></div>
+          <div><label class="f">Order shuffle σ</label><input id="sg" type="number" value="1" min="0" max="3" step="0.25"></div>
+        </div>
+        <div class="hint"><b>σ is ONE thing:</b> how far trades are displaced from their historical order
+          (Gaussian reorder of the sequence). It does not touch win rate, sizes, or frequency. σ=0 replays the
+          exact historical order; σ≥2 ≈ fully shuffled. Same seed ⇒ identical results.</div>
+        <div class="row">
+          <div><label class="f">Withdrawal cushion $ (total above floor)</label><input id="res" type="number" value="2000" min="0" step="100"></div>
+          <div><label class="f">Payout request $ (0 = max allowed)</label><input id="pr" type="number" value="0" min="0" step="100"></div>
+        </div>
+        <div class="hint">Cushion = TOTAL distance kept above the failure threshold after a payout. A firm's own
+          required buffer (Apex safety-net, TPT buffer zone) counts toward it — never double-charged.</div>
+        <div class="row">
+          <div><label class="f">Eval fee discount %</label><input id="dcE" type="number" value="0" min="0" max="95"></div>
+          <div><label class="f">Activation discount %</label><input id="dcA" type="number" value="0" min="0" max="95"></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel" id="ledgerStats" style="display:none"><h3>Ledger profile (after Run)</h3><div id="lsBody"></div></div>
+  </div>
+
+  <!-- ============ PAGE: COMPARE ============ -->
+  <div id="pg-compare" style="display:none">
+    <div class="seg" id="stageSeg"><button data-v="funded" class="on">Funded accounts</button><button data-v="eval">Evaluations</button></div>
+    <span class="mut" style="font-size:12px;margin-left:10px" id="cmpMeta"></span>
+    <div id="firmPills" style="margin:8px 0 2px"></div>
+    <div id="sizePills" style="margin:0 0 8px"></div>
+    <div class="tw"><table id="cmpT"><thead id="cmpH"></thead><tbody id="cmpB"></tbody></table></div>
+    <div class="panel"><h3>Accounting waterfall — click a row above</h3>
+      <div class="grid g2"><div class="wfall" id="wfall">Click any account row.</div>
+      <div id="wfallWhy" class="mut" style="font-size:12.5px;line-height:1.6"></div></div>
+    </div>
+    <div class="note" id="cmpNote"></div>
+  </div>
+
+  <!-- ============ PAGE: MONTHLY ============ -->
+  <div id="pg-monthly" style="display:none">
+    <div class="row" style="max-width:560px"><div>
+      <label class="f">Account</label><select id="moAcc" onchange="renderMonthly()"></select></div>
+    </div>
+    <p class="mut" style="font-size:12.5px">Every figure below is <b>per calendar month of the simulation</b> (month 1 = first month
+      after start), across all paths. Cumulative columns are labeled cumulative. Negative months stay negative.
+      A path that failed earlier is <i>terminated</i> — excluded from that month's trading distribution, counted in failure %.</p>
+    <div class="tw"><table id="moT"><thead id="moH"></thead><tbody id="moB"></tbody></table></div>
+    <div class="tw"><table id="moT2"><thead id="moH2"></thead><tbody id="moB2"></tbody></table></div>
+  </div>
+
+  <!-- ============ PAGE: LIVE ============ -->
+  <div id="pg-live" style="display:none">
+    <div class="grid g2">
+      <div class="panel"><h3>My current funded account — exact state</h3>
+        <label class="f">Account</label><select id="lvAcc"></select>
+        <div class="row">
+          <div><label class="f">Current balance $</label><input id="lvBal" type="number" value="50500" step="50"></div>
+          <div><label class="f">Current peak (EOD high) $</label><input id="lvPeak" type="number" value="50500" step="50"></div>
+        </div>
+        <div class="row">
+          <div><label class="f">Qualifying days done</label><input id="lvQual" type="number" value="0" min="0"></div>
+          <div><label class="f">Payouts completed</label><input id="lvPaid" type="number" value="0" min="0"></div>
+        </div>
+        <div class="row">
+          <div><label class="f">Contracts</label><input id="lvCt" type="number" value="2" min="1"></div>
+          <div><label class="f">&nbsp;</label><button class="btn" style="width:100%" onclick="renderLive()">Update ▸</button></div>
+        </div>
+        <div class="hint">Uses the same engine and the same simulated paths as every other page (needs a Run first).
+          Consistency history before today isn't known to the sim — it tracks consistency from now on.</div>
+      </div>
+      <div class="panel"><h3>Where I stand right now (deterministic)</h3><div id="lvNow" class="wfall"></div></div>
+    </div>
+    <div class="tiles" id="lvTiles"></div>
+    <div class="tw"><table id="lvT"><thead id="lvH"></thead><tbody id="lvB"></tbody></table></div>
+  </div>
+
+  <!-- ============ PAGE: INSPECTOR ============ -->
+  <div id="pg-inspect" style="display:none">
+    <div class="row" style="max-width:720px">
+      <div><label class="f">Account</label><select id="inAcc"></select></div>
+      <div><label class="f">Path #</label><input id="inPath" type="number" value="0" min="0"></div>
+      <div><label class="f">&nbsp;</label><button class="btn" style="width:100%" onclick="renderInspect()">Inspect ▸</button></div>
+    </div>
+    <p class="mut" style="font-size:12.5px">Event-by-event audit of one simulated path: every trade, balance before/after,
+      the failure floor, payout eligibility, approvals, cash paid, and termination.</p>
+    <div class="tw"><table id="inT"><thead><tr><th>Date</th><th>Event</th><th>P&amp;L</th><th>Bal before</th><th>Bal after</th><th>Floor</th><th>Eligible</th><th>Cash paid</th></tr></thead><tbody id="inB"></tbody></table></div>
+  </div>
+
+  <div class="note"><b>Model limits (always true):</b> realized end-of-trade P&amp;L only — intraday trailing drawdown,
+    daily-loss timing within a day, and margin calls are approximated; failure probabilities are a <b>lower bound</b>.
+    Eligible-to-withdraw is not cash. Notional balances are not personal wealth. Rules per firm from help centers /
+    uploaded docs (2026-07); pricing best-effort — set your discounts. Not financial advice.</div>
+</div>
+
+<script>
+"use strict";
+/* ================= DATA ================= */
+const SAMPLE = [["2026-07-01",2.6],["2026-07-02",105.4],["2026-07-06",-139.9],["2026-07-08",77.4],["2026-07-10",-63.6],["2026-07-13",68.4],["2026-07-15",-53.2],["2026-07-16",45.4],["2026-07-17",-59.9],["2026-07-21",105.0],["2026-07-22",-78.1],["2026-07-24",53.6],["2026-07-25",-82.5],["2026-07-28",92.2],["2026-07-29",-90.0],["2026-07-30",203.1],["2026-08-03",-46.3],["2026-08-04",126.4],["2026-08-06",-54.6],["2026-08-07",-1.8],["2026-08-11",87.8],["2026-08-13",5.2],["2026-08-18",111.4],["2026-08-20",-64.8],["2026-08-25",165.2],["2026-09-01",89.3],["2026-09-02",-70.4],["2026-09-03",57.7],["2026-09-04",3.4],["2026-09-07",49.2],["2026-09-08",-47.8],["2026-09-09",-38.1],["2026-09-10",103.7],["2026-09-14",78.4],["2026-09-15",-56.3],["2026-09-16",-4.2],["2026-09-17",-58.0],["2026-09-18",162.4],["2026-09-21",78.3],["2026-09-22",-63.2],["2026-09-23",98.5],["2026-09-24",49.4],["2026-09-25",-94.2],["2026-09-28",71.1],["2026-09-29",203.6],["2026-10-01",-77.1],["2026-10-02",-104.3],["2026-10-05",6.1],["2026-10-06",88.4],["2026-10-07",-3.2],["2026-10-08",-76.1],["2026-10-09",1.8],["2026-10-12",-68.4],["2026-10-13",134.9],["2026-10-14",-59.7],["2026-10-15",3.7],["2026-10-16",-52.3],["2026-10-19",-2.9],["2026-10-20",142.1],["2026-10-21",-97.7],["2026-10-22",-97.7],["2026-10-23",210.2],["2026-10-26",83.6],["2026-10-27",-76.2],["2026-10-28",4.3],["2026-10-29",104.0],["2026-10-30",-118.5],["2026-11-03",-5.1],["2026-11-04",94.2],["2026-11-05",-57.3],["2026-11-06",2.8],["2026-11-10",133.6],["2026-11-12",-44.5],["2026-11-13",68.9],["2026-11-17",6.3],["2026-11-18",-94.7],["2026-11-19",95.4],["2026-11-20",-88.3],["2026-11-24",102.7],["2026-11-25",-3.1],["2026-12-01",87.2],["2026-12-02",135.4],["2026-12-03",-46.8],["2026-12-04",5.7],["2026-12-08",162.3],["2026-12-09",-3.8],["2026-12-10",98.6],["2026-12-11",-37.2],["2026-12-15",204.8],["2026-12-16",-76.4],["2026-12-17",1.4],["2027-01-05",-80.4],["2027-01-06",53.7],["2027-01-07",4.2],["2027-01-08",75.3],["2027-01-09",-97.6],["2027-01-12",62.4],["2027-01-13",-2.1],["2027-01-14",-108.4],["2027-01-15",49.8],["2027-01-16",-89.2],["2027-01-20",3.7],["2027-01-21",72.1],["2027-01-22",-61.8],["2027-01-23",-5.3],["2027-01-26",52.6],["2027-01-27",-77.3],["2027-01-28",58.4],["2027-01-29",-95.1],["2027-01-30",68.3],["2027-01-31",-119.8],["2027-02-02",103.2],["2027-02-03",5.8],["2027-02-04",98.7],["2027-02-09",-4.1],["2027-02-10",-47.3],["2027-02-11",62.7],["2027-02-12",-38.5],["2027-02-17",3.2],["2027-02-18",-71.4],["2027-02-19",64.8],["2027-02-20",-63.8],["2027-02-23",89.4],["2027-02-24",-3.8],["2027-02-25",122.6],["2027-03-02",4.1],["2027-03-03",64.3],["2027-03-04",-55.2],["2027-03-05",-2.4],["2027-03-09",74.1],["2027-03-10",-83.4],["2027-03-11",56.4],["2027-03-12",3.8],["2027-03-16",-68.4],["2027-03-17",59.8],["2027-03-18",-84.6],["2027-03-19",-91.8],["2027-03-23",89.2],["2027-04-01",5.2],["2027-04-02",-68.7],["2027-04-03",-3.4],["2027-04-06",45.3],["2027-04-07",-94.2],["2027-04-08",67.8],["2027-04-09",2.1],["2027-04-10",-47.3],["2027-04-13",88.4],["2027-04-14",-42.1],["2027-04-15",3.8],["2027-04-16",83.4],["2027-04-22",-63.4],["2027-04-23",57.2],["2027-04-24",4.6],["2027-04-25",-57.8],["2027-04-28",-68.4],["2027-04-29",64.2],["2027-04-30",-5.1],["2027-05-01",-62.3],["2027-05-05",3.1],["2027-05-06",-82.4],["2027-05-07",63.7],["2027-05-08",-4.2],["2027-05-12",-72.4],["2027-05-13",99.8],["2027-05-14",-54.1],["2027-05-15",5.3],["2027-05-19",77.6],["2027-05-20",-45.8],["2027-05-21",-76.4],["2027-05-22",95.2],["2027-06-02",87.4],["2027-06-03",134.2],["2027-06-04",-58.3],["2027-06-05",78.6],["2027-06-09",-43.7],["2027-06-10",103.5],["2027-06-11",-74.2],["2027-06-12",92.1],["2027-06-16",-65.4],["2027-06-17",114.8],["2027-06-18",85.3],["2027-06-19",103.4],["2027-06-23",138.7],["2027-06-25",-44.6]];
+
+/* Presets from help centers + uploaded rule PDFs (2026-07). src/eff on each. */
+const PRESETS = [
+ {key:"apex25",firm:"Apex",plan:"EOD 25K",size:25000,target:1500,dd:1000,trail:"eod",lockAt:25000,dailyLoss:500,minDaysEval:0,minDaysPayout:5,minDailyProfit:100,cons:0.5,split:1.0,firstThresh:0,buffer:1100,minPayout:500,capSchedule:[1000,1000,1000,1000,1000,1000],cap:null,payoutPct:null,minBetween:0,mode:"standard",maxPayouts:6,evalFee:18,actFee:0,monthly:false,verified:true,src:"apex help center (EOD Evaluations/Payouts/Consistency)",eff:"2026-07"},
+ {key:"apex50",firm:"Apex",plan:"EOD 50K",size:50000,target:3000,dd:2000,trail:"eod",lockAt:50000,dailyLoss:1000,minDaysEval:0,minDaysPayout:5,minDailyProfit:250,cons:0.5,split:1.0,firstThresh:0,buffer:2100,minPayout:500,capSchedule:[1500,1500,2000,2500,2500,3000],cap:null,payoutPct:null,minBetween:0,mode:"standard",maxPayouts:6,evalFee:35,actFee:0,monthly:false,verified:true,src:"apex help center (EOD Evaluations/Payouts/Consistency)",eff:"2026-07"},
+ {key:"apex100",firm:"Apex",plan:"EOD 100K",size:100000,target:6000,dd:3000,trail:"eod",lockAt:100000,dailyLoss:1500,minDaysEval:0,minDaysPayout:5,minDailyProfit:300,cons:0.5,split:1.0,firstThresh:0,buffer:3100,minPayout:500,capSchedule:[2000,2500,2500,3000,4000,4000],cap:null,payoutPct:null,minBetween:0,mode:"standard",maxPayouts:6,evalFee:53,actFee:0,monthly:false,verified:true,src:"apex help center (EOD Evaluations/Payouts/Consistency)",eff:"2026-07"},
+ {key:"apex150",firm:"Apex",plan:"EOD 150K",size:150000,target:9000,dd:4000,trail:"eod",lockAt:150000,dailyLoss:2000,minDaysEval:0,minDaysPayout:5,minDailyProfit:350,cons:0.5,split:1.0,firstThresh:0,buffer:4100,minPayout:500,capSchedule:[2500,3000,3000,3000,4000,5000],cap:null,payoutPct:null,minBetween:0,mode:"standard",maxPayouts:6,evalFee:80,actFee:0,monthly:false,verified:true,src:"apex help center (EOD Evaluations/Payouts/Consistency)",eff:"2026-07"},
+ {key:"alphaZero25",firm:"Alpha",plan:"Zero 25K",size:25000,target:1500,dd:1000,trail:"eod",lockAt:25000,dailyLoss:500,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:0.4,split:0.9,firstThresh:0,buffer:0,minPayout:200,capSchedule:[1000,1000,1000,1000,1000],cap:null,payoutPct:0.5,minBetween:0,mode:"standard",maxPayouts:null,evalFee:79,actFee:0,monthly:true,verified:true,src:"alpha help center + uploaded Alpha Rules PDF",eff:"2026-07"},
+ {key:"alphaZero50",firm:"Alpha",plan:"Zero 50K",size:50000,target:3000,dd:2000,trail:"eod",lockAt:50000,dailyLoss:1000,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:0.4,split:0.9,firstThresh:0,buffer:0,minPayout:200,capSchedule:[1500,1500,1500,1500,1500],cap:null,payoutPct:0.5,minBetween:0,mode:"standard",maxPayouts:null,evalFee:119,actFee:0,monthly:true,verified:true,src:"alpha help center + uploaded Alpha Rules PDF",eff:"2026-07"},
+ {key:"alphaZero100",firm:"Alpha",plan:"Zero 100K",size:100000,target:6000,dd:3000,trail:"eod",lockAt:100000,dailyLoss:2000,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:0.4,split:0.9,firstThresh:0,buffer:0,minPayout:200,capSchedule:[2500,2500,2500,2500,2500],cap:null,payoutPct:0.5,minBetween:0,mode:"standard",maxPayouts:null,evalFee:239,actFee:0,monthly:true,verified:true,src:"alpha help center + uploaded Alpha Rules PDF",eff:"2026-07"},
+ {key:"alphaPremAct50",firm:"Alpha",plan:"Premium 50K (act)",size:50000,target:3000,dd:2000,trail:"eod",lockAt:50000,dailyLoss:1000,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:null,split:0.9,firstThresh:0,buffer:0,minPayout:500,capSchedule:[2000,2250,2500,3000,4000],cap:null,payoutPct:0.5,minBetween:0,mode:"standard",maxPayouts:null,evalFee:79,actFee:149,monthly:true,verified:true,src:"alpha help center + uploaded Alpha Rules PDF",eff:"2026-07"},
+ {key:"alphaPremNo50",firm:"Alpha",plan:"Premium 50K (no-act)",size:50000,target:3000,dd:2000,trail:"eod",lockAt:50000,dailyLoss:1000,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:null,split:0.9,firstThresh:0,buffer:0,minPayout:500,capSchedule:[2000,2250,2500,3000,4000],cap:null,payoutPct:0.5,minBetween:0,mode:"standard",maxPayouts:null,evalFee:159,actFee:0,monthly:true,verified:true,src:"alpha help center + uploaded Alpha Rules PDF",eff:"2026-07"},
+ {key:"alphaPremAct100",firm:"Alpha",plan:"Premium 100K (act)",size:100000,target:6000,dd:3000,trail:"eod",lockAt:100000,dailyLoss:2000,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:null,split:0.9,firstThresh:0,buffer:0,minPayout:500,capSchedule:[2500,3000,3500,4000,5000],cap:null,payoutPct:0.5,minBetween:0,mode:"standard",maxPayouts:null,evalFee:159,actFee:149,monthly:true,verified:true,src:"alpha help center + uploaded Alpha Rules PDF",eff:"2026-07"},
+ {key:"alphaPremNo100",firm:"Alpha",plan:"Premium 100K (no-act)",size:100000,target:6000,dd:3000,trail:"eod",lockAt:100000,dailyLoss:2000,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:null,split:0.9,firstThresh:0,buffer:0,minPayout:500,capSchedule:[2500,3000,3500,4000,5000],cap:null,payoutPct:0.5,minBetween:0,mode:"standard",maxPayouts:null,evalFee:269,actFee:0,monthly:true,verified:true,src:"alpha help center + uploaded Alpha Rules PDF",eff:"2026-07"},
+ {key:"alphaPremAct150",firm:"Alpha",plan:"Premium 150K (act)",size:150000,target:9000,dd:4500,trail:"eod",lockAt:150000,dailyLoss:null,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:null,split:0.9,firstThresh:0,buffer:0,minPayout:500,capSchedule:[3000,3500,4000,5000,6000],cap:null,payoutPct:0.5,minBetween:0,mode:"standard",maxPayouts:null,evalFee:239,actFee:149,monthly:true,verified:true,src:"alpha help center + uploaded Alpha Rules PDF",eff:"2026-07"},
+ {key:"alphaPremNo150",firm:"Alpha",plan:"Premium 150K (no-act)",size:150000,target:9000,dd:4500,trail:"eod",lockAt:150000,dailyLoss:null,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:null,split:0.9,firstThresh:0,buffer:0,minPayout:500,capSchedule:[3000,3500,4000,5000,6000],cap:null,payoutPct:0.5,minBetween:0,mode:"standard",maxPayouts:null,evalFee:379,actFee:0,monthly:true,verified:true,src:"alpha help center + uploaded Alpha Rules PDF",eff:"2026-07"},
+ {key:"alphaAdv50",firm:"Alpha",plan:"Advanced 50K",size:50000,target:3000,dd:2000,trail:"eod",lockAt:50000,dailyLoss:null,minDaysEval:2,minDaysPayout:5,minDailyProfit:200,cons:null,split:0.9,firstThresh:0,buffer:0,minPayout:1000,capSchedule:[15000,15000,15000,15000,15000],cap:null,payoutPct:0.5,minBetween:0,mode:"standard",maxPayouts:null,evalFee:139,actFee:149,monthly:true,verified:true,src:"alpha help center + uploaded Alpha Rules PDF",eff:"2026-07"},
+ {key:"alphaAdv100",firm:"Alpha",plan:"Advanced 100K",size:100000,target:6000,dd:3000,trail:"eod",lockAt:100000,dailyLoss:null,minDaysEval:2,minDaysPayout:5,minDailyProfit:200,cons:null,split:0.9,firstThresh:0,buffer:0,minPayout:1000,capSchedule:[15000,15000,15000,15000,15000],cap:null,payoutPct:0.5,minBetween:0,mode:"standard",maxPayouts:null,evalFee:279,actFee:149,monthly:true,verified:true,src:"alpha help center + uploaded Alpha Rules PDF",eff:"2026-07"},
+ {key:"alphaAdv150",firm:"Alpha",plan:"Advanced 150K",size:150000,target:9000,dd:4500,trail:"eod",lockAt:150000,dailyLoss:null,minDaysEval:2,minDaysPayout:5,minDailyProfit:200,cons:null,split:0.9,firstThresh:0,buffer:0,minPayout:1000,capSchedule:[15000,15000,15000,15000,15000],cap:null,payoutPct:0.5,minBetween:0,mode:"standard",maxPayouts:null,evalFee:419,actFee:149,monthly:true,verified:true,src:"alpha help center + uploaded Alpha Rules PDF",eff:"2026-07"},
+ {key:"fnLegacy25",firm:"FundedNext",plan:"Legacy 25K",size:25000,target:1250,dd:1000,trail:"eod",lockAt:25000,dailyLoss:null,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:0.4,split:0.8,firstThresh:0,buffer:100,minPayout:0,capSchedule:[1000,1000,1000,1000,1000],cap:1000,payoutPct:null,minBetween:5,mode:"standard",maxPayouts:null,evalFee:135,actFee:0,monthly:false,verified:true,src:"uploaded FundedNext Rules PDF (futures challenge terms)",eff:"2026-07"},
+ {key:"fnLegacy50",firm:"FundedNext",plan:"Legacy 50K",size:50000,target:3000,dd:2000,trail:"eod",lockAt:50000,dailyLoss:null,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:0.4,split:0.8,firstThresh:0,buffer:100,minPayout:0,capSchedule:[1500,1500,1500,1500,1500],cap:1500,payoutPct:null,minBetween:5,mode:"standard",maxPayouts:null,evalFee:135,actFee:0,monthly:false,verified:true,src:"uploaded FundedNext Rules PDF (futures challenge terms)",eff:"2026-07"},
+ {key:"fnLegacy100",firm:"FundedNext",plan:"Legacy 100K",size:100000,target:6000,dd:3000,trail:"eod",lockAt:100000,dailyLoss:null,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:0.4,split:0.8,firstThresh:0,buffer:100,minPayout:0,capSchedule:[2500,2500,2500,2500,2500],cap:2500,payoutPct:null,minBetween:5,mode:"standard",maxPayouts:null,evalFee:135,actFee:0,monthly:false,verified:true,src:"uploaded FundedNext Rules PDF (futures challenge terms)",eff:"2026-07"},
+ {key:"fnRapid25",firm:"FundedNext",plan:"Rapid 25K",size:25000,target:1500,dd:1000,trail:"eod",lockAt:25000,dailyLoss:null,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:0.4,split:0.8,firstThresh:0,buffer:100,minPayout:0,capSchedule:[1000,1000,1000,1000,1000],cap:1000,payoutPct:null,minBetween:5,mode:"standard",maxPayouts:null,evalFee:99,actFee:0,monthly:false,verified:true,src:"uploaded FundedNext Rules PDF (futures challenge terms)",eff:"2026-07"},
+ {key:"fnRapid50",firm:"FundedNext",plan:"Rapid 50K",size:50000,target:3000,dd:2000,trail:"eod",lockAt:50000,dailyLoss:null,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:0.4,split:0.8,firstThresh:0,buffer:100,minPayout:0,capSchedule:[1500,1500,1500,1500,1500],cap:1500,payoutPct:null,minBetween:5,mode:"standard",maxPayouts:null,evalFee:99,actFee:0,monthly:false,verified:true,src:"uploaded FundedNext Rules PDF (futures challenge terms)",eff:"2026-07"},
+ {key:"fnRapid100",firm:"FundedNext",plan:"Rapid 100K",size:100000,target:5000,dd:3000,trail:"eod",lockAt:100000,dailyLoss:null,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:0.4,split:0.8,firstThresh:0,buffer:100,minPayout:0,capSchedule:[2500,2500,2500,2500,2500],cap:2500,payoutPct:null,minBetween:5,mode:"standard",maxPayouts:null,evalFee:99,actFee:0,monthly:false,verified:true,src:"uploaded FundedNext Rules PDF (futures challenge terms)",eff:"2026-07"},
+ {key:"tptPro25",firm:"Take Profit",plan:"PRO 25K",size:25000,target:1500,dd:1500,trail:"eot",lockAt:25000,dailyLoss:null,minDaysEval:0,minDaysPayout:0,minDailyProfit:0,cons:null,split:0.8,firstThresh:1500,buffer:1500,minPayout:0,capSchedule:null,cap:null,payoutPct:null,minBetween:0,mode:"standard",maxPayouts:null,evalFee:150,actFee:0,monthly:true,verified:false,src:"uploaded TPT Rules PDF (PRO rules/split/buffer)",eff:"2026-07"},
+ {key:"tptPro50",firm:"Take Profit",plan:"PRO 50K",size:50000,target:3000,dd:2000,trail:"eot",lockAt:50000,dailyLoss:null,minDaysEval:0,minDaysPayout:0,minDailyProfit:0,cons:null,split:0.8,firstThresh:2000,buffer:2000,minPayout:0,capSchedule:null,cap:null,payoutPct:null,minBetween:0,mode:"standard",maxPayouts:null,evalFee:170,actFee:0,monthly:true,verified:false,src:"uploaded TPT Rules PDF (PRO rules/split/buffer)",eff:"2026-07"},
+ {key:"tptPro100",firm:"Take Profit",plan:"PRO 100K",size:100000,target:6000,dd:3000,trail:"eot",lockAt:100000,dailyLoss:null,minDaysEval:0,minDaysPayout:0,minDailyProfit:0,cons:null,split:0.8,firstThresh:3000,buffer:3000,minPayout:0,capSchedule:null,cap:null,payoutPct:null,minBetween:0,mode:"standard",maxPayouts:null,evalFee:330,actFee:0,monthly:true,verified:false,src:"uploaded TPT Rules PDF (PRO rules/split/buffer)",eff:"2026-07"},
+ {key:"tptPro150",firm:"Take Profit",plan:"PRO 150K",size:150000,target:9000,dd:4500,trail:"eot",lockAt:150000,dailyLoss:null,minDaysEval:0,minDaysPayout:0,minDailyProfit:0,cons:null,split:0.8,firstThresh:4500,buffer:4500,minPayout:0,capSchedule:null,cap:null,payoutPct:null,minBetween:0,mode:"standard",maxPayouts:null,evalFee:360,actFee:0,monthly:true,verified:false,src:"uploaded TPT Rules PDF (PRO rules/split/buffer)",eff:"2026-07"}
+];
+PRESETS.forEach(R=>{ R.capSchedule=R.capSchedule||null; R.maxPayouts=R.maxPayouts||null;
+  R.minDailyProfit=R.minDailyProfit||0; R.minPayout=R.minPayout||0; R.payoutPct=R.payoutPct||null;
+  R.minBetween=R.minBetween||0; R.dailyLoss=(R.dailyLoss===undefined)?null:R.dailyLoss; });
+
+/* ================= CORE ================= */
+const DAY=86400000;
+const d=s=>new Date(s+"T00:00:00Z").getTime();
+const addM=(s,m)=>{const t=new Date(s+"T00:00:00Z");t.setUTCMonth(t.getUTCMonth()+m);return t.getTime();};
+const ym=s=>s.slice(0,7);
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function gauss(r){let u=0,v=0;while(!u)u=r();while(!v)v=r();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);}
+function shufflePath(tr,sig,seed){ if(sig<=0)return tr; const N=tr.length,r=mulberry32(seed);
+  const k=tr.map((t,i)=>({i,k:i+gauss(r)*sig*0.22*N})); k.sort((a,b)=>a.k-b.k);
+  return tr.map((t,i)=>({date:t.date,pts:tr[k[i].i].pts})); }
+const quant=(s,q)=>!s.length?null:s[Math.min(s.length-1,Math.max(0,Math.round(q*(s.length-1))))];
+const mean=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
+
+/*
+ ACCOUNT ENGINE. One run of one account over one trade sequence.
+ cfg: {dpp, ct, phase:'eval'|'funded', chargeFees, initBal, initPeak, initQual,
+       payoutsDone, reserve, payReq, dcE, dcA, trace}
+ ACCOUNTING IDENTITY (asserted in self-test):
+   finalBalance = startBalance + grossTrading − grossPayouts
+   netPayouts   = Σ gross×split ;  splitWithheld = grossPayouts − netPayouts
+   netPersonal  = netPayouts − fees
+ Negative monthly trading P&L is NEVER clamped. After failure the account is
+ terminated: months after failure carry active:false (not zero P&L).
+*/
+function runAccount(trades,R,cfg){
+  const dpp=cfg.dpp, ct=cfg.ct, reserve=cfg.reserve||0, payReq=cfg.payReq||0;
+  let phase=cfg.phase;
+  const startBal=(cfg.initBal!=null&&phase==="funded")?cfg.initBal:R.size;
+  let bal=startBal;
+  let peak=(cfg.initPeak!=null&&phase==="funded")?Math.max(cfg.initPeak,bal):bal;
+  let curDay=null,dayStart=null;
+  const evalDays=new Set(),fundedDaySet=new Set(),dayProfit={};
+  const qualOffset=cfg.initQual||0;
+  let payouts=cfg.payoutsDone||0, grossPay=0, netPay=0, lastPayDay=null, firstPayTs=null;
+  let blew=false,failTs=null,passed=(phase==="funded"),activTs=null,done=false,doneReason=null;
+  let fees=cfg.chargeFees?R.evalFee*(cfg.dcE!=null?cfg.dcE:1):0;
+  let grossTrading=0, unearned=0;
+  const M={}; const mrec=k=>M[k]||(M[k]={tr:0,gp:0,np:0});
+  const EV=cfg.trace?[]:null;
+  const start=trades.length?trades[0].date:null;
+  if(phase==="funded") activTs=start?d(start):null;
+  // Trailing failure floor is MONOTONE: ratchets up with the peak, caps at the
+  // lock level, and NEVER decreases — including after withdrawals.
+  let hardFloor=-Infinity;
+  const floorOf=()=>{let f=peak-R.dd; if(R.lockAt!=null)f=Math.min(f,R.lockAt);
+    if(f>hardFloor)hardFloor=f; return hardFloor;};
+
+  for(const t of trades){
+    const pnl=t.pts*dpp*ct;
+    if(done){ if(blew) unearned+=pnl; continue; }
+    if(t.date!==curDay){ if(R.trail==="eod"&&curDay!==null)peak=Math.max(peak,bal); curDay=t.date; dayStart=bal; }
+    const fBefore=floorOf(), bBefore=bal;
+    bal+=pnl; grossTrading+=pnl; mrec(ym(t.date)).tr+=pnl;
+    if(R.trail==="eot")peak=Math.max(peak,bal);
+    if(phase==="eval")evalDays.add(t.date);
+    else{ fundedDaySet.add(t.date); dayProfit[t.date]=(dayProfit[t.date]||0)+pnl; }
+    if(EV)EV.push({date:t.date,type:"trade",pnl,bb:bBefore,ba:bal,fl:floorOf()});
+    // failure checks (realized-only)
+    if(bal<=floorOf()){ blew=true;failTs=d(t.date);done=true;doneReason="drawdown";
+      if(EV)EV.push({date:t.date,type:"FAIL — drawdown floor",pnl:0,bb:bal,ba:bal,fl:floorOf()}); continue; }
+    if(R.dailyLoss!=null&&dayStart!=null&&(dayStart-bal)>=R.dailyLoss){ blew=true;failTs=d(t.date);done=true;doneReason="daily loss";
+      if(EV)EV.push({date:t.date,type:"FAIL — daily loss",pnl:0,bb:bal,ba:bal,fl:floorOf()}); continue; }
+    if(phase==="eval"){
+      if(bal-R.size>=R.target && evalDays.size>=(R.minDaysEval||0)){
+        if(cfg.chargeFees)fees+=(R.actFee||0)*(cfg.dcA!=null?cfg.dcA:1);
+        phase="funded";passed=true;bal=R.size;peak=R.size;hardFloor=-Infinity;activTs=d(t.date);
+        curDay=null;dayStart=null;fundedDaySet.clear();for(const k in dayProfit)delete dayProfit[k];
+        if(EV)EV.push({date:t.date,type:"PASSED → funded (fresh balance)",pnl:0,bb:bal,ba:bal,fl:floorOf()});
+      }
+      continue;
+    }
+    // funded payout logic
+    const profit=bal-R.size;
+    const cushion=Math.max(R.buffer||0,reserve);           // TOTAL cushion, never stacked
+    const withdrawable=profit-cushion;
+    if(withdrawable<=0)continue;
+    let qual=qualOffset; for(const k in dayProfit){ if(dayProfit[k]>=(R.minDailyProfit||0))qual++; }
+    let ok=(profit>=((payouts===0)?(R.firstThresh||0):0)) && (qual>=(R.minDaysPayout||0));
+    if(ok&&R.mode==="daily"&&lastPayDay!=null&&d(t.date)<=d(lastPayDay))ok=false;
+    if(ok&&R.mode!=="daily"&&R.minBetween>0){ const ref=lastPayDay||start; if(ref&&(d(t.date)-d(ref))/DAY<R.minBetween)ok=false; }
+    if(ok&&R.cons!=null){ let tot=0,best=-1e18; for(const k in dayProfit){const v=dayProfit[k];if(v>0)tot+=v;if(v>best)best=v;} if(tot>0&&best>=R.cons*tot)ok=false; }
+    if(!ok)continue;
+    const capNow=R.capSchedule?R.capSchedule[Math.min(payouts,R.capSchedule.length-1)]:R.cap;
+    let gross=withdrawable;
+    if(capNow!=null)gross=Math.min(gross,capNow);
+    if(R.payoutPct!=null)gross=Math.min(gross,R.payoutPct*profit);
+    if(payReq>0)gross=Math.min(gross,payReq);
+    if(gross<(R.minPayout||0))continue;
+    bal-=gross; peak-=gross; // floor is monotone via hardFloor; withdrawal never lowers it
+    if(dayStart!=null)dayStart-=gross;
+    grossPay+=gross; const nn=gross*R.split; netPay+=nn; payouts++;
+    lastPayDay=t.date; if(firstPayTs==null)firstPayTs=d(t.date);
+    const m=mrec(ym(t.date)); m.gp+=gross; m.np+=nn;
+    for(const k in dayProfit)delete dayProfit[k];
+    if(EV)EV.push({date:t.date,type:"PAYOUT approved",pnl:0,bb:bal+gross,ba:bal,fl:floorOf(),gross,paid:nn});
+    if(R.maxPayouts!=null&&payouts>=R.maxPayouts){ done=true;doneReason="max payouts (retired)";
+      if(EV)EV.push({date:t.date,type:"RETIRED — max payouts",pnl:0,bb:bal,ba:bal,fl:floorOf()}); }
+  }
+  const refTs=activTs||(start?d(start):null);
+  return {passed,blew,failTs,doneReason,payouts,grossPay,netPay,fees,
+    netPersonal:netPay-fees, grossTrading, unearned, startBal, finalBal:bal,
+    retained:bal-startBal-( -grossPay+grossPay)*0 + 0 + (0), // computed below for clarity
+    retainedInAccount: bal-startBal, // = grossTrading − grossPay (identity)
+    splitWithheld: grossPay-netPay,
+    eligibleEnd: Math.max(0,(bal-R.size)-Math.max(R.buffer||0,reserve)),
+    monthly:M, firstPayTs, daysToPay:(firstPayTs&&refTs)?(firstPayTs-refTs)/DAY:null,
+    daysToPass:(cfg.phase==="eval"&&activTs&&start)?(activTs-d(start))/DAY:null,
+    events:EV};
+}
+
+/* ---- distribution over samples, with month-indexed aggregation ---- */
+function monthKeys(startDate,H){ const out=[]; let t=new Date(startDate+"T00:00:00Z");
+  for(let i=0;i<H;i++){ out.push(t.toISOString().slice(0,7)); t.setUTCMonth(t.getUTCMonth()+1);} return out; }
+
+function fundedDist(trades,R,cfg,H,samples,seed,sigma,collectMonthly){
+  const last=d(trades[trades.length-1].date), rng=mulberry32(seed);
+  let n=0,blow=0,pay=0,allPaid=0;
+  const nets=[],ttp=[],ttf=[],WF={gt:0,un:0,gp:0,np:0,ret:0};
+  const MO=collectMonthly?Array.from({length:H},()=>({tr:[],gp:[],np:[],cumNp:[],fail:0,pay1:0,active:0})):null;
+  const paths=[]; // for inspector: store start info
+  for(let k=0;k<samples;k++){
+    const path=shufflePath(trades,sigma,seed+k*131+7);
+    const cands=path.filter(t=>addM(t.date,H)<=last+DAY).map(t=>t.date);
+    if(!cands.length)continue;
+    const s=cands[Math.floor(rng()*cands.length)];
+    const sub=path.filter(t=>{const x=d(t.date);return x>=d(s)&&x<addM(s,H);});
+    if(!sub.length)continue;
+    const r=runAccount(sub,R,{...cfg,phase:"funded",chargeFees:false});
+    n++; if(r.blew)blow++; if(r.payouts>0)pay++;
+    if(R.maxPayouts!=null&&r.payouts>=R.maxPayouts)allPaid++;
+    nets.push(r.netPersonal); if(r.daysToPay!=null)ttp.push(r.daysToPay);
+    if(r.failTs!=null)ttf.push((r.failTs-d(s))/DAY);
+    WF.gt+=r.grossTrading;WF.un+=r.unearned;WF.gp+=r.grossPay;WF.np+=r.netPay;WF.ret+=r.retainedInAccount;
+    paths.push({start:s,seedK:seed+k*131+7});
+    if(MO){ const mks=monthKeys(s,H); let cum=0;
+      const failIdx=r.failTs!=null?mks.findIndex(mk=>ym(new Date(r.failTs).toISOString())===mk):-1;
+      const firstPayIdx=r.firstPayTs!=null?mks.findIndex(mk=>ym(new Date(r.firstPayTs).toISOString())===mk):-1;
+      mks.forEach((mk,i)=>{ const rec=r.monthly[mk];
+        const activeAtStart=(failIdx<0||i<=failIdx);
+        if(activeAtStart){ MO[i].active++;
+          MO[i].tr.push(rec?rec.tr:0); MO[i].gp.push(rec?rec.gp:0); MO[i].np.push(rec?rec.np:0);
+          cum+=(rec?rec.np:0); MO[i].cumNp.push(cum);
+        }
+        if(failIdx===i)MO[i].fail++;
+        if(firstPayIdx===i)MO[i].pay1++;
+      });
+    }
+  }
+  if(!n)return null;
+  nets.sort((a,b)=>a-b);ttp.sort((a,b)=>a-b);ttf.sort((a,b)=>a-b);
+  const wf={grossTrading:WF.gt/n,unearned:WF.un/n,grossPay:WF.gp/n,netPay:WF.np/n,
+    retained:WF.ret/n,splitWithheld:(WF.gp-WF.np)/n};
+  return {n,blow:blow/n,pay:pay/n,allPaid:allPaid/n,net:mean(nets),p5:quant(nets,.05),p95:quant(nets,.95),
+    payDays50:quant(ttp,.5),payDays90:quant(ttp,.9),failDays50:quant(ttf,.5),wf,MO,paths};
+}
+
+function evalDist(trades,R,cfg,samples,seed,sigma){
+  const rng=mulberry32(seed+99); let n=0,pass=0; const days=[];
+  const passByMonth=[0,0,0,0,0,0]; // cumulative pass by month 1..6
+  const cut=Math.max(1,Math.floor(trades.length*0.6));
+  for(let k=0;k<Math.min(samples,400);k++){
+    const path=shufflePath(trades,sigma,seed+k*211+3);
+    const sub=path.slice(Math.floor(rng()*cut)); if(!sub.length)continue;
+    const r=runAccount(sub,R,{...cfg,phase:"eval",chargeFees:true}); n++;
+    if(r.passed){ pass++; if(r.daysToPass!=null){days.push(r.daysToPass);
+      for(let m=0;m<6;m++)if(r.daysToPass<=30*(m+1))passByMonth[m]++;} }
+  }
+  days.sort((a,b)=>a-b);
+  return {n,pass:n?pass/n:0,d50:quant(days,.5),d90:quant(days,.9),
+    passByMonth:passByMonth.map(x=>n?x/n:0)};
+}
+
+/* ================= PARSE ================= */
+function parseData(text){
+  text=text.trim(); if(!text)throw new Error("No data.");
+  let rows=[];
+  if(text[0]==="["){ for(const it of JSON.parse(text)){
+    if(Array.isArray(it))rows.push({date:String(it[0]).slice(0,10),pts:+it[1]});
+    else rows.push({date:String(it.sd||it.date||it.day).slice(0,10),pts:+(it.pnl!=null?it.pnl:it.pnl_pts)});}}
+  else{ const L=text.split(/\r?\n/).filter(l=>l.trim()); let di=0,pi=1,h=false;
+    const H=L[0].split(/[,\t]/).map(x=>x.trim().toLowerCase());
+    if(H.some(x=>/date|^sd$/.test(x))||H.some(x=>/pnl/.test(x))){h=true;di=Math.max(0,H.findIndex(x=>/date|^sd$/.test(x)));pi=Math.max(1,H.findIndex(x=>/pnl/.test(x)));}
+    for(let i=h?1:0;i<L.length;i++){const c=L[i].split(/[,\t]/);const dt=(c[di]||"").trim().slice(0,10);const p=parseFloat(c[pi]);if(dt&&!isNaN(p))rows.push({date:dt,pts:p});}}
+  rows=rows.filter(r=>/^\d{4}-\d{2}-\d{2}$/.test(r.date)&&!isNaN(r.pts));
+  if(!rows.length)throw new Error("Couldn't find (date, pnl) rows.");
+  rows.sort((a,b)=>d(a.date)-d(b.date)); return rows;
+}
+
+/* ================= APP STATE ================= */
+let TRADES=[],RES=null,SELROW=null,STAGE="funded",FIRMSET=new Set(),SIZESET=new Set();
+const $=id=>document.getElementById(id);
+const fmt$=v=>v==null?"—":(v<0?"−$":"$")+Math.abs(Math.round(v)).toLocaleString();
+const pct=v=>v==null?"—":(v*100).toFixed(0)+"%";
+const dys=v=>v==null?"—":Math.round(v)+"d";
+const unit=()=>document.querySelector('#fmt button.on').dataset.v;
+function cfgNow(){ return {dpp:unit()==="dollars"?1:(+$("dpp").value||1), ct:+$("ct").value||1,
+  reserve:+$("res").value||0, payReq:+$("pr").value||0,
+  dcE:1-Math.min(.95,(+$("dcE").value||0)/100), dcA:1-Math.min(.95,(+$("dcA").value||0)/100)}; }
+
+/* ================= RUN (only on button) ================= */
+function runAll(){
+  const err=$("err");err.style.display="none";
+  try{TRADES=parseData($("data").value);}catch(e){err.textContent=e.message;err.style.display="block";switchPage("setup");return;}
+  const cfg=cfgNow(), H=Math.max(1,+$("hz").value||6), N=Math.max(50,+$("ms").value||300),
+        seed=+$("seed").value||1, sg=+$("sg").value||0;
+  $("runBtn").disabled=true; $("stamp").textContent="running…";
+  setTimeout(()=>{ const t0=performance.now();
+    const rows=PRESETS.map(R=>{
+      const fd=fundedDist(TRADES,R,cfg,H,N,seed,sg,false);
+      const ev=evalDist(TRADES,R,cfg,Math.min(N,250),seed,sg);
+      const months=ev.d50!=null?Math.max(1,Math.ceil(ev.d50/30)):1;
+      const evalCost=(R.monthly?R.evalFee*months:R.evalFee)*cfg.dcE+(R.actFee||0)*cfg.dcA;
+      return {R,fd,ev,months,evalCost};
+    });
+    RES={rows,cfg,H,N,seed,sg,when:new Date().toISOString().slice(0,16).replace("T"," ")};
+    const ms=performance.now()-t0;
+    $("stamp").textContent=`ran ${PRESETS.length} accounts × ${N} paths × ${H}mo · σ=${sg} · seed ${seed} · ${(ms/1000).toFixed(1)}s · ${RES.when}`;
+    $("runBtn").disabled=false;
+    renderLedgerStats(); fillAccSelects(); renderCompare(); renderMonthly(); renderLive();
+    switchPage("compare");
+  },30);
+}
+
+/* ================= PAGES ================= */
+function switchPage(p){ document.querySelectorAll("#nav button").forEach(b=>b.classList.toggle("on",b.dataset.p===p));
+  ["setup","compare","monthly","live","inspect"].forEach(x=>$("pg-"+x).style.display=(x===p?"":"none")); }
+document.querySelectorAll("#nav button").forEach(b=>b.onclick=()=>switchPage(b.dataset.p));
+
+function renderLedgerStats(){
+  const cfg=RES.cfg; const dol=t=>t.pts*cfg.dpp*cfg.ct;
+  const mo={}; TRADES.forEach(t=>{mo[ym(t.date)]=(mo[ym(t.date)]||0)+dol(t);});
+  const months=Object.keys(mo).sort(); const wins=TRADES.filter(t=>t.pts>2).length,
+    losses=TRADES.filter(t=>t.pts<-2).length, be=TRADES.length-wins-losses;
+  const avgW=mean(TRADES.filter(t=>t.pts>2).map(dol)), avgL=mean(TRADES.filter(t=>t.pts<-2).map(dol));
+  let cum=0,peak=0,mdd=0;TRADES.forEach(t=>{cum+=dol(t);peak=Math.max(peak,cum);mdd=Math.min(mdd,cum-peak);});
+  $("ledgerStats").style.display="";
+  $("lsBody").innerHTML=`<div class="tiles">
+    <div class="tile"><div class="k">Trades</div><div class="v">${TRADES.length}</div></div>
+    <div class="tile"><div class="k">Span</div><div class="v" style="font-size:13px">${TRADES[0].date} → ${TRADES[TRADES.length-1].date}</div></div>
+    <div class="tile"><div class="k">Trades / month</div><div class="v">${(TRADES.length/months.length).toFixed(1)}</div></div>
+    <div class="tile"><div class="k">Gross P&L @ ${cfg.ct}×</div><div class="v ${cum>=0?'pos':'neg'}">${fmt$(cum)}</div></div>
+    <div class="tile"><div class="k">Avg win / loss</div><div class="v" style="font-size:14px">${fmt$(avgW)} / ${fmt$(avgL)}</div></div>
+    <div class="tile"><div class="k">True WR (ex-BE)</div><div class="v">${pct(wins/(wins+losses))}</div></div>
+    <div class="tile"><div class="k">BE rate</div><div class="v">${pct(be/TRADES.length)}</div></div>
+    <div class="tile"><div class="k">Max DD</div><div class="v neg">${fmt$(mdd)}</div></div>
+    <div class="tile"><div class="k">Monthly EV (pre-rules)</div><div class="v ${cum>=0?'pos':'neg'}">${fmt$(cum/months.length)}</div></div></div>
+  <div class="hint">Win/loss uses a ±2pt breakeven band. Months in ledger: ${months.length}. Incomplete first/last months are included in sampling windows; monthly EV is a simple average.</div>`;
+}
+
+function fillAccSelects(){
+  const opts=PRESETS.map(R=>`<option value="${R.key}">${R.firm} ${R.plan}</option>`).join("");
+  ["moAcc","lvAcc","inAcc"].forEach(id=>{const el=$(id);const v=el.value;el.innerHTML=opts;if([...el.options].some(o=>o.value===v))el.value=v;else if(id==="lvAcc")el.value="apex50";});
+}
+
+/* ---------- COMPARE ---------- */
+document.querySelectorAll("#stageSeg button").forEach(b=>b.onclick=()=>{document.querySelectorAll("#stageSeg button").forEach(x=>x.classList.remove("on"));b.classList.add("on");STAGE=b.dataset.v;renderCompare();});
+function renderCompare(){
+  if(!RES)return;
+  const firms=[...new Set(PRESETS.map(p=>p.firm))], sizes=[...new Set(PRESETS.map(p=>p.size))].sort((a,b)=>a-b);
+  $("firmPills").innerHTML=`<span class="pill ${FIRMSET.size?'':'on'}" onclick="FIRMSET.clear();renderCompare()">All firms</span>`+
+    firms.map(f=>`<span class="pill ${FIRMSET.has(f)?'on':''}" onclick="tg(FIRMSET,'${f}')">${f}</span>`).join("");
+  $("sizePills").innerHTML=`<span class="pill ${SIZESET.size?'':'on'}" onclick="SIZESET.clear();renderCompare()">All sizes</span>`+
+    sizes.map(s=>`<span class="pill ${SIZESET.has(s)?'on':''}" onclick="tg(SIZESET,${s})">${s/1000}K</span>`).join("");
+  let rows=RES.rows.filter(r=>(!FIRMSET.size||FIRMSET.has(r.R.firm))&&(!SIZESET.size||SIZESET.has(r.R.size)));
+  $("cmpMeta").textContent=`${RES.H}-month horizon · monthly avg = total ÷ ${RES.H}`;
+  if(STAGE==="funded"){
+    rows=rows.slice().sort((a,b)=>(b.fd?b.fd.net:-1e9)-(a.fd?a.fd.net:-1e9));
+    $("cmpH").innerHTML=`<tr><th>Account</th><th>Fail %</th><th>Payout %</th><th>Days→1st payout<br>P50/P90</th>
+      <th>Trading P&L<br><small>while active, ${RES.H}mo</small></th><th>Kept in acct</th><th>Net payouts</th>
+      <th>Net personal<br><small>÷mo avg</small></th></tr>`;
+    $("cmpB").innerHTML=rows.map((r,i)=>{const f=r.fd; if(!f)return"";
+      return `<tr onclick="showWf('${r.R.key}')" style="cursor:pointer">
+        <td>${r.R.firm} ${r.R.plan}<small>${r.R.monthly?'$'+r.R.evalFee+'/mo eval':'$'+r.R.evalFee+' once'}${r.R.actFee?' + $'+r.R.actFee+' act':''} · ${r.R.verified?'✓ verified':'⚠ partly assumed'}</small></td>
+        <td class="${f.blow>0.3?'neg':f.blow>0.1?'mid':'pos'}">${pct(f.blow)}</td>
+        <td>${pct(f.pay)}</td><td>${dys(f.payDays50)} / ${dys(f.payDays90)}</td>
+        <td class="${f.wf.grossTrading>=0?'pos':'neg'}">${fmt$(f.wf.grossTrading)}</td>
+        <td>${fmt$(f.wf.retained)}</td><td>${fmt$(f.wf.netPay)}</td>
+        <td class="${f.net>=0?'pos':'neg'}"><b>${fmt$(f.net)}</b><small>${fmt$(f.net/RES.H)}/mo avg</small></td></tr>`;}).join("");
+    $("cmpNote").innerHTML=`All accounts see the <b>same reshuffled trade paths</b> (same seed) — every difference is a
+      firm rule, cap, split, buffer or failure. Click a row for the dollar-by-dollar waterfall. "Kept in acct" is
+      profit locked inside (buffers/caps) or lost at failure — it is NOT your cash.`;
+  } else {
+    rows=rows.slice().sort((a,b)=>(b.ev.pass)-(a.ev.pass));
+    $("cmpH").innerHTML=`<tr><th>Account</th><th>Target</th><th>Pass %</th><th>Days to pass<br>P50/P90</th>
+      <th>Pass by mo 1/2/3<br><small>cumulative</small></th><th>Expected eval cost</th><th>Cost per funded acct<br><small>cost ÷ pass%</small></th></tr>`;
+    $("cmpB").innerHTML=rows.map(r=>{const e=r.ev;
+      return `<tr><td>${r.R.firm} ${r.R.plan}<small>${r.R.verified?'✓ verified':'⚠ partly assumed'}</small></td>
+      <td>${fmt$(r.R.target)}</td><td class="${e.pass>0.7?'pos':e.pass>0.4?'mid':'neg'}">${pct(e.pass)}</td>
+      <td>${dys(e.d50)} / ${dys(e.d90)}</td>
+      <td>${pct(e.passByMonth[0])} / ${pct(e.passByMonth[1])} / ${pct(e.passByMonth[2])}</td>
+      <td>${fmt$(r.evalCost)}<small>${r.R.monthly?'~'+r.months+' rebills':''}</small></td>
+      <td>${fmt$(e.pass>0?r.evalCost/e.pass:null)}</td></tr>`;}).join("");
+    $("cmpNote").innerHTML=`Evaluation stage only — funded economics are on the Funded tab. Monthly-fee firms are
+      billed per month until pass (P50 months). "Cost per funded acct" spreads failed attempts over successes.`;
+  }
+}
+function tg(set,v){set.has(v)?set.delete(v):set.add(v);renderCompare();}
+function showWf(key){
+  const r=RES.rows.find(x=>x.R.key===key); if(!r||!r.fd)return; SELROW=key;
+  const f=r.fd.wf, R=r.R;
+  const line=(lbl,v,cls)=>`<span class="line">${lbl}<b class="${cls||''}">${fmt$(v)}</b></span>`;
+  $("wfall").innerHTML=
+    `<b style="float:none">${R.firm} ${R.plan} — mean per path, ${RES.H} months</b><br>`+
+    line("Trading P&L while account alive",f.grossTrading,f.grossTrading>=0?"pos":"neg")+
+    line("− kept inside account (buffer/caps) or lost at failure",-f.retained)+
+    line("= Gross payouts approved",f.grossPay)+
+    line("− firm split withheld ("+Math.round((1-R.split)*100)+"%)",-f.splitWithheld)+
+    line("= Net payouts to you",f.netPay,"pos")+
+    line("P&L your strategy would have made after paths failed (not earned)",-f.unearned,"mut")+
+    `<span class="line" style="border-bottom:2px solid var(--blue)">Net personal cash (funded stage)<b class="${r.fd.net>=0?'pos':'neg'}">${fmt$(r.fd.net)}</b></span>
+     <span class="mut" style="font-size:11px">Identity check: trading − kept = gross payouts (${fmt$(f.grossTrading)} − ${fmt$(f.retained)} = ${fmt$(f.grossPay)}) ✓ · eval/activation costs are on the Eval tab</span>`;
+  // why is money stuck?
+  const cushion=Math.max(R.buffer||0,RES.cfg.reserve);
+  let why=`<b>Why this account differs:</b><ul style="margin:6px 0 0 16px;padding:0">`;
+  why+=`<li>Needs <b>${fmt$(cushion)}</b> profit above start before $1 is withdrawable (${R.buffer>=RES.cfg.reserve?"firm buffer/safety-net":"your cushion"}).</li>`;
+  if(R.capSchedule)why+=`<li>Payout caps: $${R.capSchedule.map(x=>x/1000+'k').join(" → ")}.</li>`;
+  if(R.payoutPct)why+=`<li>Max ${R.payoutPct*100}% of profit per request.</li>`;
+  if(R.cons)why+=`<li>${R.cons*100}% consistency gate on payouts.</li>`;
+  if(R.minDaysPayout)why+=`<li>${R.minDaysPayout} qualifying days${R.minDailyProfit?` (≥ $${R.minDailyProfit}/day)`:""} per cycle.</li>`;
+  if(R.split<1)why+=`<li>Firm keeps ${(100-R.split*100).toFixed(0)}% of every payout.</li>`;
+  if(R.maxPayouts)why+=`<li>Account closes after ${R.maxPayouts} payouts.</li>`;
+  if(R.dailyLoss)why+=`<li>Daily loss limit $${R.dailyLoss} — an extra failure mode.</li>`;
+  why+=`<li>Drawdown ${fmt$(R.dd)} (${R.trail==="eod"?"EOD":"intraday"} trailing, locks at start).</li></ul>`;
+  $("wfallWhy").innerHTML=why;
+}
+
+/* ---------- MONTHLY ---------- */
+function renderMonthly(){
+  if(!RES)return;
+  const key=$("moAcc").value||PRESETS[0].key, R=PRESETS.find(p=>p.key===key);
+  const cfg=RES.cfg;
+  const fd=fundedDist(TRADES,R,cfg,RES.H,RES.N,RES.seed,RES.sg,true); // cached inputs, small cost
+  if(!fd){$("moB").innerHTML="";return;}
+  const q=(a,p)=>{const s=a.slice().sort((x,y)=>x-y);return quant(s,p);};
+  $("moH").innerHTML=`<tr><th>Month</th><th>Active paths</th><th colspan="5">Trading P&L that month — P5 / P25 / P50 / P75 / P95</th><th>Net payout P50<br><small>that month</small></th></tr>`;
+  $("moB").innerHTML=fd.MO.map((m,i)=>{
+    if(!m.tr.length)return `<tr><td>Month ${i+1}</td><td class="dead" colspan="7">all paths terminated</td></tr>`;
+    const cells=[.05,.25,.5,.75,.95].map(p=>{const v=q(m.tr,p);return `<td class="${v>=0?'pos':'neg'}">${fmt$(v)}</td>`;}).join("");
+    return `<tr><td>Month ${i+1}</td><td>${m.active}/${fd.n}</td>${cells}<td>${fmt$(q(m.np,.5))}</td></tr>`;
+  }).join("");
+  $("moH2").innerHTML=`<tr><th>Month</th><th>Fail % in month</th><th>Fail % cumulative</th><th>1st payout in month</th><th>Cumulative net payouts P50<br><small>months 1–N, labeled cumulative</small></th></tr>`;
+  let cumF=0,cumP=0;
+  $("moB2").innerHTML=fd.MO.map((m,i)=>{cumF+=m.fail;cumP+=m.pay1;
+    return `<tr><td>Month ${i+1}</td><td class="${m.fail/fd.n>0.1?'neg':''}">${pct(m.fail/fd.n)}</td>
+      <td>${pct(cumF/fd.n)}</td><td>${pct(m.pay1/fd.n)}</td><td>${m.cumNp.length?fmt$(q(m.cumNp,.5)):"—"}</td></tr>`;}).join("");
+}
+
+/* ---------- LIVE ---------- */
+function renderLive(){
+  if(!RES)return;
+  const key=$("lvAcc").value||"apex50", R=PRESETS.find(p=>p.key===key);
+  const cfg={...RES.cfg, ct:+$("lvCt").value||RES.cfg.ct};
+  const bal=+$("lvBal").value, peakv=Math.max(+$("lvPeak").value,bal),
+        qd=+$("lvQual").value||0, pd=+$("lvPaid").value||0;
+  // deterministic "now"
+  const profit=bal-R.size, cushion=Math.max(R.buffer||0,cfg.reserve);
+  let floor=peakv-R.dd; if(R.lockAt!=null)floor=Math.min(floor,R.lockAt);
+  const eligibleNow=Math.max(0,profit-cushion);
+  const needProfit=Math.max(cushion+(R.minPayout||0),(pd===0?(R.firstThresh||0):0));
+  const distPayout=Math.max(0,needProfit-profit);
+  const qualLeft=Math.max(0,(R.minDaysPayout||0)-qd);
+  const capNow=R.capSchedule?R.capSchedule[Math.min(pd,R.capSchedule.length-1)]:R.cap;
+  $("lvNow").innerHTML=
+    `<span class="line">Account profit now<b class="${profit>=0?'pos':'neg'}">${fmt$(profit)}</b></span>
+     <span class="line">Failure floor<b>${fmt$(floor)}</b> </span>
+     <span class="line">Room above floor<b class="${bal-floor>1000?'pos':'neg'}">${fmt$(bal-floor)}</b></span>
+     <span class="line">Eligible to request NOW (not cash)<b>${fmt$(eligibleNow)}</b></span>
+     <span class="line">$ more profit until a payout is possible<b>${fmt$(distPayout)}</b></span>
+     <span class="line">Qualifying days remaining<b>${qualLeft}</b></span>
+     <span class="line">Max next request (cap #${pd+1})<b>${capNow!=null?fmt$(capNow):"no cap"}</b></span>
+     <span class="line">You'd receive of a ${fmt$(Math.min(eligibleNow||0,capNow||1e9))} request<b class="pos">${fmt$(Math.min(eligibleNow||0,capNow||1e9)*R.split)}</b></span>`;
+  // forward distribution from exact state, same engine, over remaining ledger orderings
+  const H=RES.H, N=Math.min(RES.N,400);
+  let n=0,fail=0;const nets=[],ttp=[];const failBy=Array(H).fill(0);
+  for(let k=0;k<N;k++){
+    const path=shufflePath(TRADES,RES.sg,RES.seed+k*317+5);
+    const r=runAccount(path,R,{...cfg,phase:"funded",chargeFees:false,initBal:bal,initPeak:peakv,initQual:qd,payoutsDone:pd});
+    n++; if(r.blew){fail++; const mi=Math.min(H-1,Math.floor(((r.failTs-d(path[0].date))/DAY)/30)); failBy[mi]++;}
+    nets.push(r.netPersonal); if(r.daysToPay!=null)ttp.push(r.daysToPay);
+  }
+  nets.sort((a,b)=>a-b);ttp.sort((a,b)=>a-b);
+  $("lvTiles").innerHTML=`
+    <div class="tile"><div class="k">Days → next payout P50/P90</div><div class="v" style="font-size:16px">${dys(quant(ttp,.5))} / ${dys(quant(ttp,.9))}</div></div>
+    <div class="tile"><div class="k">P(payout at all)</div><div class="v pos">${pct(ttp.length/n)}</div></div>
+    <div class="tile"><div class="k">P(fail, ${H}mo)</div><div class="v ${fail/n>0.3?'neg':fail/n>0.1?'mid':'pos'}">${pct(fail/n)}</div></div>
+    <div class="tile"><div class="k">Net cash P50</div><div class="v ${quant(nets,.5)>=0?'pos':'neg'}">${fmt$(quant(nets,.5))}</div></div>
+    <div class="tile"><div class="k">Net cash P5 · P95</div><div class="v" style="font-size:14px">${fmt$(quant(nets,.05))} · ${fmt$(quant(nets,.95))}</div></div>`;
+  $("lvH").innerHTML=`<tr><th>Month</th><th>P(fail in month)</th><th>P(fail cumulative)</th></tr>`;
+  let cum=0;$("lvB").innerHTML=failBy.map((f,i)=>{cum+=f;return `<tr><td>Month ${i+1}</td><td class="${f/n>0.1?'neg':''}">${pct(f/n)}</td><td>${pct(cum/n)}</td></tr>`;}).join("");
+}
+
+/* ---------- INSPECTOR ---------- */
+function renderInspect(){
+  if(!RES)return;
+  const key=$("inAcc").value||PRESETS[0].key, R=PRESETS.find(p=>p.key===key);
+  const k=Math.max(0,+$("inPath").value||0);
+  const path=shufflePath(TRADES,RES.sg,RES.seed+k*131+7);
+  const last=d(path[path.length-1].date);
+  const cands=path.filter(t=>addM(t.date,RES.H)<=last+DAY).map(t=>t.date);
+  const rng=mulberry32(RES.seed); for(let i=0;i<k;i++)rng(); // advance like dist
+  const s=cands.length?cands[Math.floor(rng()*cands.length)]:path[0].date;
+  const sub=path.filter(t=>{const x=d(t.date);return x>=d(s)&&x<addM(s,RES.H);});
+  const r=runAccount(sub,R,{...RES.cfg,phase:"funded",chargeFees:false,trace:true});
+  $("inB").innerHTML=(r.events||[]).map(e=>{
+    const isFail=e.type.startsWith("FAIL"),isPay=e.type.startsWith("PAYOUT");
+    return `<tr style="${isFail?'background:var(--redbg)':''}${isPay?'background:rgba(63,214,160,.07)':''}">
+    <td>${e.date}</td><td style="font-family:var(--sans);font-weight:${isFail||isPay?700:400}">${e.type}</td>
+    <td class="${e.pnl>0?'pos':e.pnl<0?'neg':''}">${e.pnl?fmt$(e.pnl):""}</td>
+    <td>${fmt$(e.bb)}</td><td>${fmt$(e.ba)}</td><td>${fmt$(e.fl)}</td>
+    <td>${fmt$(Math.max(0,e.ba-R.size-Math.max(R.buffer||0,RES.cfg.reserve)))}</td>
+    <td class="pos">${e.paid?fmt$(e.paid):""}</td></tr>`;}).join("")||
+    `<tr><td colspan="8" class="dead">no events — check path # or Run first</td></tr>`;
+}
+
+/* ================= WIRING ================= */
+document.querySelectorAll('#fmt button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#fmt button').forEach(x=>x.classList.remove('on'));b.classList.add('on');$('dpp').disabled=(b.dataset.v==='dollars');});
+$("file").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{$("data").value=r.result;};r.readAsText(f);};
+$("moAcc")&&($("moAcc").onchange=renderMonthly);
+function loadSample(){$("data").value=JSON.stringify(SAMPLE);}
+function toggleTheme(){const c=document.documentElement.dataset.theme||'dark';document.documentElement.dataset.theme=c==='dark'?'light':'dark';}
+document.documentElement.dataset.theme='dark';
+loadSample();
+</script>

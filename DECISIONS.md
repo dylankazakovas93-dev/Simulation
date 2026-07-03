@@ -303,3 +303,16 @@ which is documented as a follow-up to fold back into the tested core.
 (Apex was wrong from secondary sources) are unacceptable; the verified/assumed flag and
 help-center sourcing make trust auditable, and the shuffler prevents front-loaded single
 paths from flattering the result.
+
+## ADR-025 — v2 rebuild: monthly-first accounting, monotone floor, browser delivery
+**Status:** ACCEPTED (Review 016, user mandate)
+**Decision:** The Lab is rebuilt around per-calendar-month ledgers and an enforced
+accounting identity (finalBal = start + tradingP&L − grossPayouts; netPersonal =
+netPayouts − fees), rendered as an explicit waterfall with per-row "why this firm
+differs". Failed paths are terminated, never zero-P&L months; negative months are
+never clamped. The trailing failure floor is monotone (never decreases, including
+after withdrawals). The user cushion is a TOTAL above the floor (max with the firm
+buffer, never additive). Eval and funded are separate views. Compute happens only on
+Run; display changes re-render cache. Delivery is the zero-install browser app whose
+engine is verified by a 22-test acceptance suite (Scenarios A–E); the Python core
+remains the reference for the pipeline and gains ledger parity next.
