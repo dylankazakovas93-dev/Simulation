@@ -1,0 +1,145 @@
+03/07/2026, 18:05
+
+PRO Account Rules – TakeProﬁtTrader
+
+https://takeproﬁttraderhelp.zendesk.com/hc/en-us/articles/15171769361053-PRO-Account-Rules
+
+1/4
+
+TakeProfitTrader>PRO Account>Pro Account FAQ'sPRO Account RulesVlada7 months ago·UpdatedHere you will find all the rules for PRO accounts. This will all be in the PRO contract we sendyou as well.1. No Trading bots/AlgosWe do not allow any automated or bot trading of any kind.All trades must be manually executed by the trader.  2. Avoid the Limit Up/DownUnderstanding Market Price LimitsFutures and related markets can reach limit up or limit down levels, triggering circuitbreakers.This limits how far the market can go in a single day. Current daily price limits can be found on the CME website: CME PRICE LIMITSTrader ResponsibilitiesYou must exit all open positions before a price limit is reached.If the market approaches a limit, our company must "hedge" against traders holdingpositions near those levels.SearchArticles in this section03/07/2026, 18:05
+
+PRO Account Rules – TakeProﬁtTrader
+
+https://takeproﬁttraderhelp.zendesk.com/hc/en-us/articles/15171769361053-PRO-Account-Rules
+
+2/4
+
+Account LiquidationIf a price limit is hit, and you have not exited your position, you will lose your PROAccount.3. Trade your AccountWeekly Trading RequirementTo keep your PRO Account active, you must trade at least one day per calendarweek (Sunday–Friday).A “traded day” is defined as a day where at least one round-trip has been executedon any permitted instrument.Purpose of This RuleEnsures traders remain active and do not keep capital idle or “squat” on a PROAccount.ExceptionsLife circumstances may prevent trading.Contact support if you need a temporary exception. 4. No Counter Positions You cannot hold open positions in opposite directions within the same product orclosely related products.This applies across all account types: Test, PRO, and PRO+.5. Intraday Trailing DrawdownHow the Drawdown WorksThe Trailing Drawdown is calculated intraday using your peak balance, whichincludes realized gains and unrealized gains.The drawdown trails intraday as your unrealized profits rise.The drawdown will never exceed your starting account balance.Maximum drawdown in PRO = maximum drawdown from your passed test.ExampleFor a $25,000 PRO Account:03/07/2026, 18:05
+
+PRO Account Rules – TakeProﬁtTrader
+
+https://takeproﬁttraderhelp.zendesk.com/hc/en-us/articles/15171769361053-PRO-Account-Rules
+
+3/4
+
+Drawdown = $1,500If unrealized profit reaches $1,000, your minimum account balance rises to $24,500in real time.If you close the trade with a $500 realized gain, your balance becomes $25,500,but your minimum remains $24,500.You are now $1,000 away from hitting the drawdown limit.The drawdown continues to trail profits until it reaches your starting balance; once itreaches that level, it no longer moves.Account LiquidationIf your account balance drops to the Minimum Account Balance at any time —through realized or unrealized losses — the account is immediately liquidated.6. No Open Positions During Prohibited News General RuleAll PRO Accounts must be out of all open positions and have no open orders oneminute before, during and one minute after any prohibited news event.Prohibited News Events (All Products)FOMC statements/announcements Wednesdays at 2:00 PM ET (FED speakers,FOMC meeting minutes are allowed)Non-Farm Payroll (NFP) Monthly, Fridays at 8:30 AM ETConsumer Price Index (CPI)In addition to these news events, the following news events are prohibited forspecific instruments:Crude Oil Inventories → Prohibited product: Crude OilBond Auctions → Prohibited products: 10-Year Note, 30-Year BondHow to Track Prohibited NewsReview news marked with the red folder, USD currency, on:forexfactory.comAll required news events also appear on the trader calendar:https://takeprofittrader.com/user-info/calendar03/07/2026, 18:05
+
+PRO Account Rules – TakeProﬁtTrader
+
+https://takeproﬁttraderhelp.zendesk.com/hc/en-us/articles/15171769361053-PRO-Account-Rules
+
+4/4
+
+Was this article helpful?YesNo53 out of 60 found this helpfulReturn to top Recently viewed articlesRule 5: Be ConsistentRule 4: Trade Approved Products, During Approved HoursRule 3: Do Not Hit End-Of-Day (EOD) Maximum Trailing DrawdownRule 2: Do Not Exceed Maximum Position SizeRule 1: Hit Your Profit TargetRelated articlesHow to Keep Track Of Your DrawdownPRO Account Profit Split & Withdrawal RulesAdvantages of PRO+Taxes on WithdrawalsPermitted ProductsTakeProfitTraderEnglish (United States) 03/07/2026, 17:59
+
+PRO Account Proﬁt Split & Withdrawal Rules – TakeProﬁtTrader
+
+https://takeproﬁttraderhelp.zendesk.com/hc/en-us/articles/15172219527581-PRO-Account-Proﬁt-Split-Withdrawal-Rules
+
+1/3
+
+TakeProfitTrader>Withdrawals>WithdrawalPRO Account Profit Split & WithdrawalRulesVlada7 months ago·UpdatedProfit Split In the PRO account, the profit split is 80/20, where the trader keeps 80% of the profits. Withdrawal Rules When you reach your PRO account, you have the ability withdraw funds on day one. However,you must build a buffer on the account first. You can withdraw your profits at 80% once you reach the level of your maximum drawdownwhich we refer to as the "buffer zone". For example, if you have a $50,000 account, yourmaximum drawdown or buffer zone is $2,000. In this case, you will need to reach a balance of$52,000 in order to start withdrawing at 80% of total profit.  Buffer Zones Per Account Size The buffer is equal to the maximum drawdown amount on your account. Account SizeBuffer Zone 25k $26,50050k$52,00075k$77,500SearchArticles in this section03/07/2026, 17:59
+
+PRO Account Proﬁt Split & Withdrawal Rules – TakeProﬁtTrader
+
+https://takeproﬁttraderhelp.zendesk.com/hc/en-us/articles/15172219527581-PRO-Account-Proﬁt-Split-Withdrawal-Rules
+
+2/3
+
+100k$103,000150k$154,500Withdrawing from the Buffer A trader may withdraw profits inside of the buffer zone, however, this action can only beperformed once the account has been terminated. The profit split is determined by thelength of time the PRO account was traded on.Profits Taken Inside Buffer ZoneAmount of Buffer Received≤60 days since account opening50%>60 days since account opening80%Please note it is 60 trading days, the last day being last trading day on your PRO account.For more information on how to withdraw from your PRO account, please follow these steps.Was this article helpful?YesNo33 out of 39 found this helpfulReturn to top Related articlesHow to Withdraw from PRO Account to the WalletPayout SystemPRO Account RulesWithdrawal FeesHow to Keep Track Of Your Drawdown03/07/2026, 17:59
+
+PRO Account Proﬁt Split & Withdrawal Rules – TakeProﬁtTrader
+
+https://takeproﬁttraderhelp.zendesk.com/hc/en-us/articles/15172219527581-PRO-Account-Proﬁt-Split-Withdrawal-Rules
+
+3/3
+
+TakeProfitTraderEnglish (United States) 03/07/2026, 18:05
+
+How to Keep Track Of Your Drawdown – TakeProﬁtTrader
+
+https://takeproﬁttraderhelp.zendesk.com/hc/en-us/articles/15171820366109-How-to-Keep-Track-Of-Your-Drawdown
+
+1/5
+
+TakeProfitTrader>PRO Account>Pro Account FAQ'sHow to Keep Track Of Your DrawdownVlada7 months ago·UpdatedOn the PRO accounts, the Trailing Drawdown is calculated intraday, which is based on yourpeak balance including realized and unrealized gains. The Drawdown will follow your accountintraday as you experience gains, and will stop trailing when it reaches the starting balance ofthe account. Here are the steps to find your drawdown in real time: For Rithmic Accounts 1. Login to RTrader Pro 2. Go to your Trader Dashboard within Rtrader3. Look at the ''Auto Liquidate Threshold Value.'' That is your minimum account balance. For CQG Accounts1. Log into Tradovate here and open the modules window by clicking the (+) sign in the topleft corner of the page.SearchArticles in this section03/07/2026, 18:05
+
+How to Keep Track Of Your Drawdown – TakeProﬁtTrader
+
+https://takeproﬁttraderhelp.zendesk.com/hc/en-us/articles/15171820366109-How-to-Keep-Track-Of-Your-Drawdown
+
+2/5
+
+2. Select the ''Accounts'' widget and drag it onto your main screen.03/07/2026, 18:05
+
+How to Keep Track Of Your Drawdown – TakeProﬁtTrader
+
+https://takeproﬁttraderhelp.zendesk.com/hc/en-us/articles/15171820366109-How-to-Keep-Track-Of-Your-Drawdown
+
+3/5
+
+3. Now you have to select specific columns. You can do that by clicking settings wheel onthe top of the screen and click''Select Columns''.4. Select ''Drawdow Auto Liq Level'' to see your current trailing drawdown limit and ''DistDrawdown'' to see how much you have left before reaching the drawdown amount.03/07/2026, 18:05
+
+How to Keep Track Of Your Drawdown – TakeProﬁtTrader
+
+https://takeproﬁttraderhelp.zendesk.com/hc/en-us/articles/15171820366109-How-to-Keep-Track-Of-Your-Drawdown
+
+4/5
+
+Was this article helpful?YesNo25 out of 29 found this helpfulReturn to top Recently viewed articlesPRO Account RulesRule 5: Be ConsistentRule 4: Trade Approved Products, During Approved HoursRule 3: Do Not Hit End-Of-Day (EOD) Maximum Trailing DrawdownRule 2: Do Not Exceed Maximum Position SizeRelated articlesPRO Account RulesPRO Account Profit Split & Withdrawal RulesRule 3: Do Not Hit End-Of-Day (EOD) Maximum Trailing DrawdownPermitted ProductsHow to Withdraw from the Wallet03/07/2026, 18:05
+
+How to Keep Track Of Your Drawdown – TakeProﬁtTrader
+
+https://takeproﬁttraderhelp.zendesk.com/hc/en-us/articles/15171820366109-How-to-Keep-Track-Of-Your-Drawdown
+
+5/5
+
+TakeProfitTraderEnglish (United States) 03/07/2026, 18:06
+
+PRO+ Account Rules – TakeProﬁtTrader
+
+https://takeproﬁttraderhelp.zendesk.com/hc/en-us/articles/15172006753821-PRO-Account-Rules
+
+1/4
+
+TakeProfitTrader>PRO+ Account>PRO+ Account FAQ'sPRO+ Account RulesVlada3 months ago·UpdatedListed below are the rules that are applicable for PRO+ accounts.1. Eligible Instruments & Trading HoursYou may only trade approved instruments during the permitted trading hours.2. End-Of-Day (EOD) DrawdownYour account balance—including open positions—must not reach or exceed themaximum EOD drawdown limit.3. Trade your AccountWeekly Trading RequirementTo keep your PRO+ Account active, you must trade at least one day per calendarweek (Sunday–Friday).A “traded day” is defined as a day where at least one round-trip has been executedon any permitted instrument.4. No Counter Positions SearchArticles in this section03/07/2026, 18:06
+
+PRO+ Account Rules – TakeProﬁtTrader
+
+https://takeproﬁttraderhelp.zendesk.com/hc/en-us/articles/15172006753821-PRO-Account-Rules
+
+2/4
+
+You cannot hold open positions in opposite directions within the same product orclosely related products.This applies across all account types: Test, PRO, and PRO+.5. Avoid the Limit Up/DownUnderstanding Market Price LimitsFutures and related markets can reach limit up or limit down levels, triggering circuitbreakers.This limits how far the market can go in a single day. Current daily price limits can be found on the CME website: CME PRICE LIMITSTrader ResponsibilitiesYou must exit all open positions before a price limit is reached.If the market approaches a limit, our company must "hedge" against traders holdingpositions near those levels.Account LiquidationIf a price limit is hit, and you have not exited your position, you will lose your PRO+Account.6. No Open Positions During Prohibited News General RuleAll PRO/PRO+ Accounts must be out of all open positions and have no open ordersone minute before, during and one minute after any prohibited news event.Prohibited News Events (All Products)FOMC statements/announcements Wednesdays at 2:00 PM ET (FED speakers,FOMC meeting minutes are allowed)Non-Farm Payroll (NFP) Monthly, Fridays at 8:30 AM ETConsumer Price Index (CPI)In addition to these news events, the following news events are prohibited forspecific instruments:Crude Oil Inventories → Prohibited product: Crude OilBond Auctions → Prohibited products: 10-Year Note, 30-Year Bond03/07/2026, 18:06
+
+PRO+ Account Rules – TakeProﬁtTrader
+
+https://takeproﬁttraderhelp.zendesk.com/hc/en-us/articles/15172006753821-PRO-Account-Rules
+
+3/4
+
+How to Track Prohibited NewsReview news marked with the red folder, USD currency, on:forexfactory.comAll required news events also appear on the trader calendar:https://takeprofittrader.com/user-info/calendarWas this article helpful?YesNo9 out of 11 found this helpfulReturn to top Recently viewed articlesPRO+ Account Upgrade Process – Overview and GuidelinesAdvantages of PRO+How to Keep Track Of Your DrawdownPRO Account RulesRule 5: Be ConsistentRelated articlesAdvantages of PRO+PRO+ Account Upgrade Process – Overview and GuidelinesPermitted ProductsActivating Your CQG Data Feed03/07/2026, 18:06
+
+PRO+ Account Rules – TakeProﬁtTrader
+
+https://takeproﬁttraderhelp.zendesk.com/hc/en-us/articles/15172006753821-PRO-Account-Rules
+
+4/4
+
+TPT's Rewards SystemTakeProfitTraderEnglish (United States) 03/07/2026, 18:05
+
+Advantages of PRO+ – TakeProﬁtTrader
+
+https://takeproﬁttraderhelp.zendesk.com/hc/en-us/articles/15171929948829-Advantages-of-PRO
+
+1/2
+
+TakeProfitTrader>PRO+ Account>PRO+ Account FAQ'sAdvantages of PRO+Vlada3 months ago·UpdatedWhat is a PRO+ Account?PRO+ accounts are live accounts that have a $0 margin. Upon transitioning to a PRO+account, the trader is classified as a professional trader. How Do I Become Eligible for a PRO+ Account? Once a trader becomes eligible for a PRO+ upgrade, an official invitation will be sent via emailby the Take Profit Trader team. Please note that the decision to upgrade a trader to a PRO+account is made solely at the discretion of Take Profit Trader.Benefits of a PRO+ Account1. 90/10 profit split, where the trader keeps 90% of the profits2. Trader directly routed to the exchange, not on the simulation or ''copy traded''3. No buffer zone requirement for withdrawal4. EOD (End-Of-Day) DrawdownWas this article helpful?YesNoSearchArticles in this section03/07/2026, 18:05
+
+Advantages of PRO+ – TakeProﬁtTrader
+
+https://takeproﬁttraderhelp.zendesk.com/hc/en-us/articles/15171929948829-Advantages-of-PRO
+
+2/2
+
+25 out of 26 found this helpfulReturn to top Recently viewed articlesHow to Keep Track Of Your DrawdownPRO Account RulesRule 5: Be ConsistentRule 4: Trade Approved Products, During Approved HoursRule 3: Do Not Hit End-Of-Day (EOD) Maximum Trailing DrawdownRelated articlesPRO+ Account Upgrade Process – Overview and GuidelinesPRO+ Account RulesPRO Account RulesPRO Account Profit Split & Withdrawal RulesHow to Keep Track Of Your DrawdownTakeProfitTraderEnglish (United States) 

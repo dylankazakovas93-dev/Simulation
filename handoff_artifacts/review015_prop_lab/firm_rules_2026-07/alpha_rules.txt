@@ -1,0 +1,297 @@
+03/07/2026, 17:39
+
+Advanced Account Overview | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/11634907-advanced-account-overview
+
+1/3
+
+Search for articles...All CollectionsTrading Rules and ParametersAdvanced Account OverviewAdvanced Account OverviewAlpha Futures Advanced Account Rules and ParametersBWritten by Benjamin ChaffeeApril 29, 2026In order to take a Trading Evaluation, a monthly subscription is required.Our Trading Evaluation is meant to help traders build their skills and habits as they hope to move into a Qualified Account. Those that pass will become Alpha Futures Qualified Traders. Our Qualified Traders are the talent considered for Alpha Prime.In order to pass an Advanced Evaluation: there are two conditions to be met, the trader must reach (+ maintain) the profit target, and satisfy the 50% consistency rule.There is only one way to fail on Evaluation Accounts, do not allow the Account Balance to hit or exceed the Maximum Loss Limit.Benefits of Advanced Account:1.) Largest withdrawal cap in industry of $15,000, per request, per account.2.) Consistent Profit Target to Drawdown Ratios on all account sizes.3.) No Daily Loss Guard on Evaluation or Qualified Accounts4.) No Consistency Rule on Advanced Qualified Accounts5.) No News Trading Rule or restrictions6.) No Scaling Plan on Advanced Accounts. Get access to full contract limit at all times. 7.) 90% profit split from the start, no tiered system. 8.) Pay yourself up to 4 times per month. Withdraw when you want after 5 winning days of $200 or more, no assigned payout dates. Advanced Account Parameters03/07/2026, 17:39
+
+Advanced Account Overview | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/11634907-advanced-account-overview
+
+2/3
+
+ParametersAdvanced 50KAdvanced 100KAdvanced 150KProfit Target$4,000$8,000$12,000Maximum Loss Limit$1,750$3,500$5,250Daily Loss GuardNONENONENONEPrice$139/month$279/month$419/monthReset$139$279$419Max Position5 minis, 50 micros10 minis, 100 micros15 minis, 150 microsScaling RuleNoNoNoConsistency50% on Evaluation only50% on Evaluation only50% on Evaluation onlyNews TradingNo restrictionsNo restrictionsNo restrictionsQualification for PayoutsWithdraw up to 50% of your profits every 5 winning days of $200 or more.Withdraw up to 50% of your profits every 5 winning days of $200 or more. Withdraw up to 50% of your profits every 5 winning days of $200 or more. Withdrawal Limit$1,000 minimum $15,000 maximum$1,000 minimum $15,000 maximum$1,000 minimum $15,000 maximumProfit Split90%90%90%Activation Fee$149$149$149Did this answer your question?😞😐😃03/07/2026, 17:39
+
+Advanced Account Overview | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/11634907-advanced-account-overview
+
+3/3
+
+03/07/2026, 17:36
+
+Consistency Rule | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/9492048-consistency-rule
+
+1/3
+
+Search for articles...All CollectionsTrading Rules and ParametersConsistency RuleConsistency RuleConsistency Rule on Evaluation and Qualified AccountsBWritten by Benjamin ChaffeeMay 1, 2026Table of contentsEvaluationsThe Consistency Rule on Premium and Advanced Evaluations is 50%. This means that during your Evaluation, profits from one single trading day cannot be larger than 50% of your net profits made.You will not pass your Evaluation until this rule is satisfied. Your largest day cannot be more than half of your net profit. While we don't recommend trying to pass your Evaluation as fast as possible. Below are the suggested largest/best days to satisfy the consistency rule as efficiently as possible on the Premium and Advanced Accounts. Premium Account SizeProfit TargetRecommended Best/Largest Day50k$3,000$1,500 or less100k$6,000$3,000 or less150k$9,000$4,500 or less03/07/2026, 17:36
+
+Consistency Rule | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/9492048-consistency-rule
+
+2/3
+
+Advanced Account SizeProfit TargetRecommended Best/Largest Day50k$4,000$2,000 or less100k$8,000$4,000 or less150k$12,000$6,000 or lessQualified Accounts There is a 40% Consistency Rule on Zero Qualified Accounts however.The 40% Consistency Rule states during the Qualified stage, profits from any single trading day cannot be greater than or equal to 40% of net profits accumulated since last payout request.You will not be eligible for a payout if any of your trading day profits are greater than 40% of net profits made since last payout request. This value will always be visible in your dashboard, and your payout button/feature will not be available until this rule is satisfied.This rule resets in between each account withdrawal request.If you make more than 40% in a single day, your account will NOT be breached, but you will need to continue to trade and make more profit until the rule is satisfied.The equation is as follows: biggest day/total net profit (since last request) = 40%There is NO Consistency Rule on Advanced or Premium Qualified Accounts. Use this calculator for help on your consistency rule at any time: https://consistencycalculator.alpha-futures.com/Did this answer your question?😞😐😃03/07/2026, 17:36
+
+Consistency Rule | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/9492048-consistency-rule
+
+3/3
+
+03/07/2026, 17:37
+
+Copy Trading | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/10573989-copy-trading
+
+1/2
+
+Search for articles...All CollectionsTrading Rules and ParametersCopy TradingCopy TradingCan I copy across my Alpha Futures Accounts?BWritten by Benjamin ChaffeeMarch 6, 2026Many platforms have built in trade copiers such as Tradovate. Copy trading in general is permitted as long as it is a single user executing the trades, and it is the single individual listed on the Alpha Futures Accounts. Automated, Group, and Reverse Trading are strictly prohibited. To avoid complications with copy trading, use your smallest account/one with the least amount of profit or leverage as your leader account. If the accounts have different leverage or buying power trades may not copy. Please be aware copy traders are not perfect and impose risk, even if they are available directly on your trading platform. Alpha Futures is not liable or able to fix any issues you may face while using a trade copying software. It's a risk traders accept while scaling.  Did this answer your question?😞😐😃03/07/2026, 17:37
+
+Copy Trading | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/10573989-copy-trading
+
+2/2
+
+03/07/2026, 17:35
+
+Daily Loss Guard | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/9492014-daily-loss-guard
+
+1/2
+
+Search for articles...All CollectionsTrading Rules and ParametersDaily Loss GuardDaily Loss GuardDaily Loss Guard, also known as Daily Loss Limit, Daily DrawdownBWritten by Benjamin ChaffeeApril 29, 2026The Daily Loss Limit also referred to as the Daily Loss Guard is a soft breach rule on Alpha Futures Accounts. If you hit the Daily Loss Guard, you do not lose your Account, but your account will be locked until the next trading day (6PM ET).There is no Daily Loss Guard on Premium or Advanced Evaluations, but there is on Zero Evaluations. The Daily Loss Guard is 2% of starting account balance on Zero Accounts.Daily Loss Guard by Zero Account Size:25k Zero Account = $50050K Zero Account  = -$1,000100K Zero Account = -$2,000Advanced and Premium Accounts, there is no preset Daily Loss Guard, but traders may set one themselves at any time in their trading platform.  If your open or closed (unrealized or realized) P&L at any point reaches -2% during the trading day, all open positions will be flattened, any pending orders will be canceled, and your account will be prevented from placing any new trades until the start of the next trading day.This is in place because we donʼt want to see our Qualified Traders losing their accounts in one day. We want to help them build consistency and discipline, but this 03/07/2026, 17:35
+
+Daily Loss Guard | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/9492014-daily-loss-guard
+
+2/2
+
+feature should not replace stop losses. The Daily Loss Guard is based on each trading dayʼs P&L, which includes simulated commissions, fees, and both unrealized and realized trade P&L.You can monitor your Daily Loss Guard in your dashboard. Traders can also make their Daily Loss Guard a smaller value on their selected trading platform. PLEASE NOTE: DLL should NOT replace a stop loss nor will it return exact fills of a 2% loss. It is a threshold that triggers the system to send out liquidation market orders, depending on market volatility fills will vary. Did this answer your question?😞😐😃03/07/2026, 17:39
+
+Inactivity Rule | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/12757982-inactivity-rule
+
+1/1
+
+Search for articles...All CollectionsTrading Rules and ParametersInactivity RuleInactivity RuleInactivity Rule on Qualified Accounts and Evaluation AccountsBWritten by Benjamin ChaffeeNovember 5, 2025Trading platforms archive trading data after 10 inactive trading days. To keep your account active you must place a trade at least once every 10 trading days (does not matter size of trade). Did this answer your question?😞😐😃03/07/2026, 17:36
+
+Maximum Allocation | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/9492088-maximum-allocation
+
+1/2
+
+Search for articles...All CollectionsTrading Rules and ParametersMaximum AllocationMaximum AllocationHow many accounts can I have?BWritten by Benjamin ChaffeeApril 30, 2026Maximum Allocation for each account type is:Premium Account: 5 Qualified AccountsZero Account: 5 Qualified AccountsStandard Account: 3 Qualified Accounts (Retired May 1, 2026)Advanced Account: 3 Qualified AccountsAny user that has an active Standard or Advanced Qualified account will be limited to 3. Only one username per individual is permitted, and one individual per household may use our services. Did this answer your question?😞😐😃03/07/2026, 17:36
+
+Maximum Allocation | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/9492088-maximum-allocation
+
+2/2
+
+03/07/2026, 17:34
+
+Maximum Loss Limit (MLL) | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/9491999-maximum-loss-limit-mll
+
+1/2
+
+Search for articles...All CollectionsTrading Rules and ParametersMaximum Loss Limit (MLL)Maximum Loss Limit (MLL)Maximum Loss Limit, or Maximum DrawdownBWritten by Benjamin ChaffeeApril 30, 2026The Maximum Loss Limit (MLL) is EOD (end of day) trailing on all of our accounts here at Alpha Futures. None of our accounts utilize intraday trailing drawdown you will see elsewhere in industry. Maximum Loss Limit stops trailing at the account starting balance on all of our accounts. How is it calculated? The Maximum Loss Limit is calculated from your account balance high at the end of each trading day, not intraday equity high like many others out there. See the example below to understand. You start with a $50k Premium or Zero Account, your starting MLL will be $48,000 (-$2,000). If you make $500 on the first trading day in the $50K account, your account balance will be $50,500, which will make your Maximum Loss Limit $48,500 ($2,000 from the account balance high).If you lose $500 the next day, your account balance would go back to $50,000, but your MLL will remain $48,500. This MLL will not go below $48,500 for the remainder of that account lifespan. Once the Maximum Loss Limit reaches the initial starting balance, it wonʼt continue to trail. Meaning, if your EOD balance reaches $52,000 (+4%) your MLL will now be 03/07/2026, 17:34
+
+Maximum Loss Limit (MLL) | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/9491999-maximum-loss-limit-mll
+
+2/2
+
+$50,000 and remain there for the account lifespan.You can monitor your MLL on your dashboard.What happens if I hit the Maximum Loss Limit? If you break MLL at any point, floating equity or closed balance of account, your account will be liquidated. This means any attempted orders after the breach will not execute. Hitting the MLL on an Evaluation Account means that account will no longer be eligible to become a Qualified Account. You may try again by purchasing a Reset, or wait for your monthly rebill to return the account to the original starting balance to try again. Hitting MLL on an Alpha Futures Qualified Account means the account has been breached and will be closed.Did this answer your question?😞😐😃03/07/2026, 17:38
+
+News Trading Policy | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/9492063-news-trading-policy
+
+1/2
+
+Search for articles...All CollectionsTrading Rules and ParametersNews Trading PolicyNews Trading PolicyCan I trade news?BWritten by Benjamin ChaffeeApril 30, 2026Table of contentsThere are no news trading restrictions for any Evaluation Accounts. Advanced Qualified Accountsand Premium Qualified Accounts do not have News Trading Restrictions, but please review the Prohibited Trading Practices. An "all or nothing" approach or gambling tendencies still will not be tolerated at any time, especially during high volatility events. Standard and Zero Qualified AccountsYou may hold through news releases following your trading plan, but no orders may be executed within 2 minutes before or 2 minutes after high impact news events.Here at Alpha Futures we refer to the Calendar on ForexFactory. Any events related to the asset you are trading (USD for /ES, NQ, /GC, /CL for example) with a red folder is considered high impact and this rule applies.SpeechesThe high impact speeches will be marked in Forex Factory with a red folder, just like other High Impact Events. The 4 minute window only applies to the start time listed of the speech event, not its entirety. 03/07/2026, 17:38
+
+News Trading Policy | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/9492063-news-trading-policy
+
+2/2
+
+If you violate this policy, your profits on the trade within the 4 minute window will be void, your payout will be denied, and you will have to wait until the next eligible payout date to request again. We understand people make mistakes, the first time violating this rule will only be a warning, and trader will be able to keep their account. Subsequent violations after warning will lead to breach of the account. Did this answer your question?😞😐😃03/07/2026, 17:39
+
+Premium Account Overview | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/14851994-premium-account-overview
+
+1/5
+
+Search for articles...All CollectionsTrading Rules and ParametersPremium Account OverviewPremium Account OverviewAlpha Futures Premium Account Rules and ParametersBWritten by Benjamin ChaffeeUpdated over a week agoIn an effort to implement trader feedback and diversify our offerings, Alpha Futures has launched the Premium Plan. The Premium Plan is available as of May 1, 2026, retiring the Standard Plan. The Premium Plan combines several of the beloved features the Zero, Standard, and Advanced Accounts have at Alpha FuturesIn order to take a Trading Evaluation, a monthly subscription is required.In order to pass a Premium Evaluation: there are two conditions to be met, the trader must reach (+ maintain) the profit target, and satisfy the 50% consistency rule.There is only one way to fail on Evaluation Accounts, do not allow the Account Balance to hit or exceed the Maximum Loss Limit. Benefits of Premium Account:1.) Choose between No Activation Fee or $149 Activation Fee (decreased Evaluation cost) Pricing2.)Tiered withdrawal caps up to $4,000, $5,000 and $6,000 per account per request, above the industry standard.3.) No Daily Loss Guard on Evaluation or Qualified Accounts4.) No Consistency Rule on Premium Qualified Accounts5.) No News Trading Rule or restrictions6.) 90% profit split on every withdrawal7.) Pay yourself up to 4 times per month. Withdraw when you want after 5 winning days of $200 or more. 03/07/2026, 17:39
+
+Premium Account Overview | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/14851994-premium-account-overview
+
+2/5
+
+8.) No "MLL slides to $0 at first withdrawal" rule. Other firms punish you for taking small payouts, not here. If MLL was at $49,300 before payout, it will be after as well Premium Account Parameters03/07/2026, 17:39
+
+Premium Account Overview | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/14851994-premium-account-overview
+
+3/5
+
+03/07/2026, 17:39
+
+Premium Account Overview | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/14851994-premium-account-overview
+
+4/5
+
+ParametersPremium 50KPremium 100KPremium 150KProfit Target$3,000$6,000$9,000Maximum Loss Limit$2,000$3,000$4,500Daily Loss GuardNONENONENONEPrice(Choice between Activation Fee or No Activation Fee)$79/month or $159/month (No Activation Fee)$159/month or $269/month (No Activation Fee)$239/month or $379/month (No Activation Fee)Reset$69 or $149 (No Activation Fee)$139 or $239 (No Activation Fee)$219 or $329 (No Activation Fee)Max Position4 minis, 40 micros8 minis, 80 micros12 minis, 120 microsScaling RuleYesYesYesConsistency50% on Evaluation only50% on Evaluation only50% on Evaluation onlyNews TradingNo restrictionsNo restrictionsNo restrictionsQualification for PayoutsWithdraw up to 50% of your profits every 5 winning days of $200 or more.Withdraw up to 50% of your profits every 5 winning days of $200 or more.Withdraw up to 50% of your profits every 5 winning days of $200 or more.Withdrawal Limit$500 minimum1st payout $2,000 maximum2nd payout $2,250 maximum3rd payout $2,500 maximum4th payout $3,000 maximum5th+ payout$4,000 maximum$500 minimum1st payout $2,500 maximum2nd payout $3,000 maximum3rd payout $3,500 maximum4th payout $4,000 maximum5th+ payout$5,000 maximum$500 minimum1st payout $3,000 maximum2nd payout $3,500 maximum3rd payout $4,000 maximum4th payout $5,000 maximum5th+ payout$6,000 maximum03/07/2026, 17:39
+
+Premium Account Overview | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/14851994-premium-account-overview
+
+5/5
+
+Profit Split90%90%90%Activation Fee(Depends on pricing chosen)$149 or $0$149 or $0$149 or $0Did this answer your question?😞😐😃03/07/2026, 17:37
+
+Price Limit Trading | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/9806068-price-limit-trading
+
+1/3
+
+Search for articles...All CollectionsTrading Rules and ParametersPrice Limit TradingPrice Limit TradingTrading within 2% of a Price LimitBWritten by Benjamin ChaffeeAugust 30, 2024Table of contentsAt Alpha Futures, we prioritize protecting our traders from high volatility and hazardous market conditions. To achieve this, we enforce strict guidelines to prevent trading when a product is within 2% of a CME price limit. This policy ensures our traders are not exposed to extreme market fluctuations that could lead to significant losses, or run the risk of their trades being open while markets are halted.A price limit is the maximum price range permitted for a futures contract in each trading session. When markets hit the price limit, different actions occur depending on the product being traded. Markets may temporarily halt until price limits can be expanded, remain in a limit condition, or stop trading for the day based on regulatory rules.This prohibited conduct is enforced on ALL Alpha Futures Accounts, not just Evaluations.How do I know what the CME Price Limits are for the contracts I trade?Price limits are calculated based on the end-of-day settlement price and vary by product, contract month, and time of day (i.e., overnight price limits differ from the price limits used during business hours).03/07/2026, 17:37
+
+Price Limit Trading | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/9806068-price-limit-trading
+
+2/3
+
+The price limits are updated at 5:05 PM EST after each trading session and can be found on the CME Price Limits page.Equity Products ES, MES, NQ, MNQ, RTY, M2K, YM, and MYM overnight price limits are 7%.One of the most effective ways to ensure you are not trading within 2% of any price limit is to monitor the % Net Change for the contract you are participating in via your trading platform's quote board.For example, if you are trading one of the assets above or any other with a price limit up or down of 7%, it would be time to stop trading if that asset reach a 5% net gain or loss on the day, because any larger net change would be within 2% of a Price Limit.How to find the % Net Change for the contract I am trading?Your trading platformʼs quote board/radar screen not only displays the “Net Change” on the day as prices move but can also display “Net Change” as a percentage or “% Net Change.” If the “% Net Change” is not currently displayed on your quote board, simply add that column to display how close your product is to the price limit. Example:In this picture taken on August 4th, 2024  directly on CME Price Limits Page we see that the reference price is 18,556.00 and the 7% limit is up and down are said to be 19846.75 and 17265.25. So, for the 2% price limit rule calculation is done on these premises. Stop trading when market priced above: 18556 x (1 + 0.07 - 0.02) = 19483 (+5%)Stop trading when market priced below: 18556 x (1 - 0.07 + 0.02) = 17628 (-5%)Why is this Prohibited Conduct at Alpha Futures?To protect our firm and our traders, we do not allow market participation when a product is trading within 2% of a price limit. This could run the risk of an order being filled then getting "trapped" in a halt. This prohibited conduct is enforced on all Alpha Futures Accounts.03/07/2026, 17:37
+
+Price Limit Trading | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/9806068-price-limit-trading
+
+3/3
+
+Moreover, all speculators assuming risk in a market should have intimate knowledge of that market. It is crucial to be aware of the contract specifications and price limits for any product you trade.For more information about your favorite products, please reference the CME Group website. Click on your product from the home page for detailed information.Did this answer your question?😞😐😃03/07/2026, 17:35
+
+Prohibited Trading Practices | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/9508585-prohibited-trading-practices
+
+1/3
+
+Search for articles...All CollectionsTrading Rules and ParametersProhibited Trading PracticesProhibited Trading PracticesProhibited ConductBWritten by Benjamin ChaffeeOctober 30, 2025Table of contentsCertain trading practices can exploit the simulated environment, but lose when transferred to live markets. We intend to maintain the integrity of our simulated markets here at Alpha Futures. A small subset of traders, either inadvertently or with the intent to manipulate the system, engage in these practices, which are strictly prohibited at Alpha Futures, in Evaluation and Qualified stages. We are committed to creating a sustainable and fair trading environment for all here at Alpha Futures, in which traders can build their skills and learn to become profitable.Can I automate my trading?Alpha Futures enforces the following guidelines on automation to maintain a fair and transparent trading environment:Alpha Futures restricts the use of automated systems designed for high-frequency trading (HFT), particularly those resulting in over 100 trades per day. Alpha Futures & Alpha Prime team are not interested in working with strategies taking 100+ trades per day, automated or not. The use of AI, bots, and other automated trading mechanisms is strictly prohibited across all account types.Semi-Automated Trading, such as a custom indicator that gives buy or sell signals, is permissible under the condition that the user manually places, monitors, and 03/07/2026, 17:35
+
+Prohibited Trading Practices | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/9508585-prohibited-trading-practices
+
+2/3
+
+manages the trade while understanding the system and semi-automation's purpose.Any form of hands-off, continuous day and night trading, or any other type of full automation is strictly forbidden.What is the prohibited conduct when executing my trades?Alpha Futures emphasizes ethical trading practices and order management to ensure a stable and reliable trading environment:At Alpha Futures, we are looking for traders to develop and practice strategies that can eventually translate to a live trading environment. Some of these practices that do not represent this goal would be:"All or Nothing" approach. As stated above, we are looking for strategies we can create long term partnerships with to transfer to live funds. We have Daily Loss Guards in place to keep traders from going on tilt, but it does not replace a stop loss. Using maximum leverage on a single position and using DLL as a stop loss will not be tolerated. "Order Book Spamming" we have no rules against reasonable DCA on positions, but excessively stacking orders (known as order book spamming) is taking advantage of the sim environment and will not be tolerated. "Tick or Micro Scalping" (trades less than 10 ticks AND less than 2 minutes) Consistently just opening and closing positions less than 2 minutes to make profits without any plan, this is tick scalping. There is no "must hold past X minutes" rule, and we understand that market volatility takes over sometimes. This is only an issue when it is a clear pattern in the trader's profit. Taking max leverage positions then quickly closing with a favorable fill is taking advantage of the sim environment. Exploiting the absence of slippage and utilizing tight brackets to gain from favorable fills are not permitted.Simultaneously placing multiple limit orders at the same price to manipulate order fills is prohibited.Gambling tendencies or "Account Rolling",  taking max leverage positions with no plan, no stop loss, and hitting max loss on the account then buying more accounts and repeating the process until a trade hits. More examples of Account Rolling are also known as "Account Stacking", meaning excessive Evaluations and storing multiple passed accounts, so when you withdraw or hit MLL, you can roll right into your next Qualified Account. "Reverse Trading" or Hedging, meaning going short on one account, and long on the other is strictly prohibited at Evaluation and Qualified Phase. Long NQ and short MNQ on the same account is another example, and strictly prohibited. Initiating trades to profit from isolated fills in gapped or illiquid markets is not allowed.03/07/2026, 17:35
+
+Prohibited Trading Practices | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/9508585-prohibited-trading-practices
+
+3/3
+
+All trading activities must adhere to CME Group's rules and regulations.Collaborating with others to execute identical or opposite strategies across unconnected accounts is prohibited. Also referred to as “Group Trading”.The use of VPS is permitted in your trading, however the use of VPN attempting to hide or change you IP address is not. What happens if I violate any of these? Alpha Futures holds the right to enforce strict consequences in the event of policy violation:Alpha Futures reserves the right to terminate agreements immediately in the event of any breach by the trader.Profits generated from prohibited trading practices will be void.All passed Evaluations are subject to review, and traders found guilty of policy ignorance or abuse will not advance to the Qualified phase.Did this answer your question?😞😐😃03/07/2026, 17:36
+
+Scaling Plan | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/9492025-scaling-plan
+
+1/2
+
+Search for articles...All CollectionsTrading Rules and ParametersScaling PlanScaling PlanScaling Plan on Qualified Accounts that affects buying power and maximum positionsizingBWritten by Benjamin ChaffeeApril 30, 2026We are firm believers here at Alpha Futures in “earn your large positions”. There is a time and place to size up as a trader, no doubt, but you should only begin doing it once you have built up some profit on your account. The Scaling Plan ensures you do not over leverage the account, and increase your buying power as the account grows.There is no Scaling Plan on Advanced Accounts.Maximum positions with the Scaling Plan on Premium Qualified Accounts:Account Size50k50k100k100k150k15ContractsminismicrosminismicrosminismLess than $1,500 profit22033033$1,500-2,000 profit33044044$2,000-3,000 profit44055055$3,000-4,500 profit8808803/07/2026, 17:36
+
+Scaling Plan | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/9492025-scaling-plan
+
+2/2
+
+$4,500+ profit1212Maximum positions with the Scaling Plan on Zero Qualified Accounts:Account Size50k50k100k100kContractsminismicrosminismicrosLess than $1,500 profit110220$1,500-2,000 profit220330$2,000-3,000 profit330440$3,000-4,500 profit--550$4,500+ profit--660Did this answer your question?😞😐😃03/07/2026, 17:38
+
+Standard Account Overview | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/11632512-standard-account-overview
+
+1/4
+
+Search for articles...All CollectionsTrading Rules and ParametersStandard Account OverviewStandard Account OverviewAlpha Futures Standard Account Rules & ParametersBWritten by Benjamin ChaffeeMay 6, 2026Standard Account has been RETIRED as of May 1, 2026. No retroactive changes, but it is no longer for sale here at Alpha. For legacy users looking to review policies on the site at the time of purchase, that may be viewed below. In order to pass a Standard Evaluation: there are two conditions to be met, the trader must reach (+ maintain) the profit target, and satisfy the 50% consistency rule. There is only one way to fail on Evaluation Accounts, do not allow the Account Balance to hit or exceed the Maximum Loss Limit.Benefits of Standard Account:1.) Largest withdrawal cap in industry of $15,000, per request, per account.2.) Consistent Profit Target to Drawdown Ratios on all account sizes. Other firms tighten drawdown on their 100k+ accounts.3.) No Daily Loss Guard on Evaluations. 4.) Trade with more freedom. Most accounts on market have BOTH tough consistency and 5-10 trading day requirements. It only takes 3 trading days to be able to satisfy our 40% consistency rule. 5.) No buffer requirements. No "can't withdraw until ____ level" or "must keep $____" in your account, that is up to the user how they would like to manage it. 6.) No "MLL slides to $0 at first withdrawal" rule. Other firms punish you for taking small payouts, not here. If MLL was at $49,200 before payout, it will be after as well. Standard Account Parameters03/07/2026, 17:38
+
+Standard Account Overview | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/11632512-standard-account-overview
+
+2/4
+
+ParametersStandard 50KStandard 100KStandard 150KProfit Target$3,000$6,000$9,000Maximum Loss Limit$2,000$4,000$6,000Daily Loss Guard(NONE on Evaluation!)$1,000$2,000$3,000Price$79/month$159/month$239/monthReset$59$129$199Max Position5 minis, 50 micros10 minis, 100 micros15 minis, 150 microsScaling Rule(Qualified Only)YesYesYesConsistency50% on Evaluation40% on Qualified50% on Evaluation40% on Qualified50% on Evaluation40% on QualifiedNews TradingNo restrictions on Evaluations. Restrictions on Qualified here.No restrictions on Evaluations. Restrictions on Qualified here.No restrictions on Evaluations. Restrictions on Qualified here.Qualification for PayoutsSatisfy 40% Consistency and request on your bi-weekly payout dateSatisfy 40% Consistency and request on your bi-weekly payout dateSatisfy 40% Consistency and request on your bi-weekly payout dateWithdrawal Limit$200 minimum $15,000 maximum$200 minimum $15,000 maximum$200 minimum $15,000 maximumProfit Split70% on payouts 1-280% on payouts 3-490% on payouts 5+70% on payouts 1-280% on payouts 3-490% on payouts 5+70% on payouts 1-280% on payouts 3-490% on payouts 5+Activation Fee$149$149$14903/07/2026, 17:38
+
+Standard Account Overview | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/11632512-standard-account-overview
+
+3/4
+
+Scaling Plan for Standard Qualified Accounts:Account Size50k50k100k100k150k150kContractsminismicrosminismicrosminismicrosLess than $1,500 profit220330330$1,500-2,000 profit330440440$2,000-3,000profit550550550$3,000-4,500 profit5501010010100$4,500+ profit5501010015150Standard Account Payout Policy:Traders may request payouts every 14 days from first trade placed on their Qualified Account as long as the 40% Consistency Rule is satisfied. Payouts will be processed in 48 hours or less.Realize your withdrawals contribute towards your Maximum Loss Limit. For example, letʼs say you have grown your $50k account to $55,000, your MLL is $50,000. If you want to, you may withdraw all $5,000 of your profit and receive $4,500 (90%).However, your account balance will now be $50,000 which would breach MLL and effectively close your account.We encourage traders to focus on longevity and pay themselves as they profit, rather than trying to catch one big day or week then close out the account. Did this answer your question?😞😐😃03/07/2026, 17:38
+
+Standard Account Overview | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/11632512-standard-account-overview
+
+4/4
+
+03/07/2026, 17:39
+
+Zero Account Overview | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/11771813-zero-account-overview
+
+1/3
+
+Search for articles...All CollectionsTrading Rules and ParametersZero Account OverviewZero Account OverviewAlpha Futures Zero Account Rules and ParametersBWritten by Benjamin ChaffeeMarch 11, 2026In an effort to implement trader feedback and diversify our offerings, Alpha Futures has launched the ZERO Plan. An account type with $0 Activation Fee, permanently. In order to take a Trading Evaluation, a monthly subscription is required.There is only one way to fail on Evaluation Accounts, do not allow the Account Balance to hit or exceed the Maximum Loss Limit.Benefits of Zero Account:1.) ONE DAY PASS! No Consistency Rule on Zero Evaluations means you may pass in one day. 2.) NO ACTIVATION FEE, ever. These accounts are named after their $0 Activation Fee. 3.) Offered in 25k, 50k, and 100k account size, ideal for traders getting started with low barrier to market.4.) 90% profit split from the start, no tiered system.5.) Pay yourself up to 4 times per month. Withdraw when you want after 5 winning days of $200 or more, no assigned payout dates.6.) No "MLL slides to $0 at first withdrawal" rule. Other firms punish you for taking small payouts, not here. If MLL was at $49,200 before payout, it will be after as wellZero Account Parameters03/07/2026, 17:39
+
+Zero Account Overview | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/11771813-zero-account-overview
+
+2/3
+
+ParametersZero 25kZero 50KZero 100KProfit Target$1,500$3,000$6,000Maximum Loss Limit$1,000$2,000$3,000Daily Loss Guard$500$1,000$2,000Price$79/month$119/month$239/monthEvaluation Reset$69$109$219Max Position1 mini, 10 micros3 minis, 30 micros6 minis, 60 microsScaling Rule(Qualified only)NoYes Yes Consistency40% on Qualified only40% on Qualified only40% on Qualified onlyNews TradingNo restrictions on Evaluations.Restrictions on Qualified here.No restrictions on Evaluations.Restrictions on Qualified here.No restrictions on Evaluations.Restrictions on Qualified here.Qualification for PayoutsWithdraw up to 50% of your profits every 5 winning days of $200 or more.Withdraw up to 50% of your profits every 5 winning days of $200 or more.Withdraw up to 50% of your profits every 5 winning days of $200 or more. Withdrawal Limit$200 minimum $1,000 maximum$200 minimum $1,500 maximum$200 minimum $2,500 maximumProfit Split90%90%90%Activation Fee$0$0$0Did this answer your question?03/07/2026, 17:39
+
+Zero Account Overview | Alpha Futures Limited Help Center
+
+https://help.alpha-futures.com/en/articles/11771813-zero-account-overview
+
+3/3
+
+😞😐😃

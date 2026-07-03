@@ -83,7 +83,7 @@
   <header>
     <div>
       <div class="eyebrow">Prop Firm Lab · runs in your browser</div>
-      <h1>Test any trade ledger against 8 funded accounts</h1>
+      <h1>Test any trade ledger against 26 funded accounts</h1>
       <p class="sub">Paste a ledger, set sizing, shuffle the trade order to stress-test path luck, and
         model your live account — live. Preloaded with your NQ forward scenario.</p>
     </div>
@@ -119,6 +119,11 @@
           <div><label class="f">Funded horizon (mo)</label><input id="hz" type="number" value="6" min="1" max="12"></div>
           <div><label class="f">Heatmap window</label><input id="swH" type="number" value="3" min="1" max="6"></div>
         </div>
+        <label class="f">Withdrawal cushion $ — keep this above the floor before pulling cash</label>
+        <input id="res" type="number" value="1000" min="0" step="100">
+        <div class="hint">$0 = withdraw the maximum every cycle (greedy — highest blow-up). Raising it keeps a
+          buffer so a normal down-day can't breach you right after a payout. Apex's safety-net forces
+          ~$2,000+; FundedNext/Alpha force almost none, so this knob is where their real risk lives.</div>
       </div>
 
       <div class="panel">
@@ -132,6 +137,18 @@
         <div class="hint">σ=0 keeps your exact sequence (front-loaded). Crank σ to reorder the trades —
           <b>2σ shuffles most of the year</b> — and watch payout% fall and blow-up rise toward the
           honest distribution. Each sample = one reshuffle × one random start.</div>
+      </div>
+
+      <div class="panel">
+        <h2><span class="n">4</span> Pricing &amp; discount</h2>
+        <div class="row">
+          <div><label class="f">Eval discount %</label><input id="dcE" type="number" value="0" min="0" max="95" step="5"></div>
+          <div><label class="f">Activation discount %</label><input id="dcA" type="number" value="0" min="0" max="95" step="5"></div>
+        </div>
+        <div class="hint">Applied to "net after cost". Monthly-fee accounts are billed for their
+          months-to-pass; one-time and activation fees once. Alpha Premium appears as two rows —
+          <b>(act)</b> = cheaper monthly + $149 activation, <b>(no-act)</b> = higher monthly, no
+          activation — so the table shows directly which path nets more for your pass speed.</div>
       </div>
     </div>
 
@@ -160,6 +177,7 @@
 
       <h3 class="sec">Buy-decision comparison — fresh account</h3>
       <p class="secsub" id="cmpSub"></p>
+      <div class="pillrow" id="firmFilter"></div>
       <div class="tablewrap"><table id="cmp">
         <thead><tr>
           <th onclick="sortCmp('firm')">Firm / plan</th>
@@ -187,16 +205,32 @@
 const SAMPLE = [["2026-07-01",2.6],["2026-07-02",105.4],["2026-07-06",-139.9],["2026-07-08",77.4],["2026-07-10",-63.6],["2026-07-13",68.4],["2026-07-15",-53.2],["2026-07-16",45.4],["2026-07-17",-59.9],["2026-07-21",105.0],["2026-07-22",-78.1],["2026-07-24",53.6],["2026-07-25",-82.5],["2026-07-28",92.2],["2026-07-29",-90.0],["2026-07-30",203.1],["2026-08-03",-46.3],["2026-08-04",126.4],["2026-08-06",-54.6],["2026-08-07",-1.8],["2026-08-11",87.8],["2026-08-13",5.2],["2026-08-18",111.4],["2026-08-20",-64.8],["2026-08-25",165.2],["2026-09-01",89.3],["2026-09-02",-70.4],["2026-09-03",57.7],["2026-09-04",3.4],["2026-09-07",49.2],["2026-09-08",-47.8],["2026-09-09",-38.1],["2026-09-10",103.7],["2026-09-14",78.4],["2026-09-15",-56.3],["2026-09-16",-4.2],["2026-09-17",-58.0],["2026-09-18",162.4],["2026-09-21",78.3],["2026-09-22",-63.2],["2026-09-23",98.5],["2026-09-24",49.4],["2026-09-25",-94.2],["2026-09-28",71.1],["2026-09-29",203.6],["2026-10-01",-77.1],["2026-10-02",-104.3],["2026-10-05",6.1],["2026-10-06",88.4],["2026-10-07",-3.2],["2026-10-08",-76.1],["2026-10-09",1.8],["2026-10-12",-68.4],["2026-10-13",134.9],["2026-10-14",-59.7],["2026-10-15",3.7],["2026-10-16",-52.3],["2026-10-19",-2.9],["2026-10-20",142.1],["2026-10-21",-97.7],["2026-10-22",-97.7],["2026-10-23",210.2],["2026-10-26",83.6],["2026-10-27",-76.2],["2026-10-28",4.3],["2026-10-29",104.0],["2026-10-30",-118.5],["2026-11-03",-5.1],["2026-11-04",94.2],["2026-11-05",-57.3],["2026-11-06",2.8],["2026-11-10",133.6],["2026-11-12",-44.5],["2026-11-13",68.9],["2026-11-17",6.3],["2026-11-18",-94.7],["2026-11-19",95.4],["2026-11-20",-88.3],["2026-11-24",102.7],["2026-11-25",-3.1],["2026-12-01",87.2],["2026-12-02",135.4],["2026-12-03",-46.8],["2026-12-04",5.7],["2026-12-08",162.3],["2026-12-09",-3.8],["2026-12-10",98.6],["2026-12-11",-37.2],["2026-12-15",204.8],["2026-12-16",-76.4],["2026-12-17",1.4],["2027-01-05",-80.4],["2027-01-06",53.7],["2027-01-07",4.2],["2027-01-08",75.3],["2027-01-09",-97.6],["2027-01-12",62.4],["2027-01-13",-2.1],["2027-01-14",-108.4],["2027-01-15",49.8],["2027-01-16",-89.2],["2027-01-20",3.7],["2027-01-21",72.1],["2027-01-22",-61.8],["2027-01-23",-5.3],["2027-01-26",52.6],["2027-01-27",-77.3],["2027-01-28",58.4],["2027-01-29",-95.1],["2027-01-30",68.3],["2027-01-31",-119.8],["2027-02-02",103.2],["2027-02-03",5.8],["2027-02-04",98.7],["2027-02-09",-4.1],["2027-02-10",-47.3],["2027-02-11",62.7],["2027-02-12",-38.5],["2027-02-17",3.2],["2027-02-18",-71.4],["2027-02-19",64.8],["2027-02-20",-63.8],["2027-02-23",89.4],["2027-02-24",-3.8],["2027-02-25",122.6],["2027-03-02",4.1],["2027-03-03",64.3],["2027-03-04",-55.2],["2027-03-05",-2.4],["2027-03-09",74.1],["2027-03-10",-83.4],["2027-03-11",56.4],["2027-03-12",3.8],["2027-03-16",-68.4],["2027-03-17",59.8],["2027-03-18",-84.6],["2027-03-19",-91.8],["2027-03-23",89.2],["2027-04-01",5.2],["2027-04-02",-68.7],["2027-04-03",-3.4],["2027-04-06",45.3],["2027-04-07",-94.2],["2027-04-08",67.8],["2027-04-09",2.1],["2027-04-10",-47.3],["2027-04-13",88.4],["2027-04-14",-42.1],["2027-04-15",3.8],["2027-04-16",83.4],["2027-04-22",-63.4],["2027-04-23",57.2],["2027-04-24",4.6],["2027-04-25",-57.8],["2027-04-28",-68.4],["2027-04-29",64.2],["2027-04-30",-5.1],["2027-05-01",-62.3],["2027-05-05",3.1],["2027-05-06",-82.4],["2027-05-07",63.7],["2027-05-08",-4.2],["2027-05-12",-72.4],["2027-05-13",99.8],["2027-05-14",-54.1],["2027-05-15",5.3],["2027-05-19",77.6],["2027-05-20",-45.8],["2027-05-21",-76.4],["2027-05-22",95.2],["2027-06-02",87.4],["2027-06-03",134.2],["2027-06-04",-58.3],["2027-06-05",78.6],["2027-06-09",-43.7],["2027-06-10",103.5],["2027-06-11",-74.2],["2027-06-12",92.1],["2027-06-16",-65.4],["2027-06-17",114.8],["2027-06-18",85.3],["2027-06-19",103.4],["2027-06-23",138.7],["2027-06-25",-44.6]];
 
 const PRESETS = [
- {key:"apex25",firm:"Apex",plan:"EOD 25K",size:25000,target:1500,dd:1000,trail:"eod",lockAt:25000,dailyLoss:500,minDays:5,minDaysEval:0,minDaysPayout:5,minDailyProfit:100,cons:0.5,split:1.0,firstThresh:0,buffer:1100,minPayout:500,capSchedule:[1000,1000,1000,1000,1000,1000],cap:1000,minBetween:0,mode:"standard",maxPayouts:6,maxCon:4,evalFee:18,actFee:0,monthly:false,verified:true},
- {key:"apex50",firm:"Apex",plan:"EOD 50K",size:50000,target:3000,dd:2000,trail:"eod",lockAt:50000,dailyLoss:1000,minDays:5,minDaysEval:0,minDaysPayout:5,minDailyProfit:250,cons:0.5,split:1.0,firstThresh:0,buffer:2100,minPayout:500,capSchedule:[1500,1500,2000,2500,2500,3000],cap:3000,minBetween:0,mode:"standard",maxPayouts:6,maxCon:6,evalFee:35,actFee:0,monthly:false,verified:true},
- {key:"apex100",firm:"Apex",plan:"EOD 100K",size:100000,target:6000,dd:3000,trail:"eod",lockAt:100000,dailyLoss:1500,minDays:5,minDaysEval:0,minDaysPayout:5,minDailyProfit:300,cons:0.5,split:1.0,firstThresh:0,buffer:3100,minPayout:500,capSchedule:[2000,2500,2500,3000,4000,4000],cap:4000,minBetween:0,mode:"standard",maxPayouts:6,maxCon:8,evalFee:53,actFee:0,monthly:false,verified:true},
- {key:"apex150",firm:"Apex",plan:"EOD 150K",size:150000,target:9000,dd:4000,trail:"eod",lockAt:150000,dailyLoss:2000,minDays:5,minDaysEval:0,minDaysPayout:5,minDailyProfit:350,cons:0.5,split:1.0,firstThresh:0,buffer:4100,minPayout:500,capSchedule:[2500,3000,3000,3000,4000,5000],cap:5000,minBetween:0,mode:"standard",maxPayouts:6,maxCon:12,evalFee:80,actFee:0,monthly:false,verified:true},
- {key:"tpt50",firm:"Take Profit",plan:"PRO+ 50K",size:50000,target:3000,dd:2000,trail:"eod",lockAt:50000,dailyLoss:null,minDays:1,cons:null,split:0.9,firstThresh:2000,buffer:2000,cap:null,minBetween:0,mode:"daily",evalFee:90,actFee:0,monthly:true},
- {key:"tpt100",firm:"Take Profit",plan:"PRO+ 100K",size:100000,target:6000,dd:3000,trail:"eod",lockAt:100000,dailyLoss:null,minDays:1,cons:null,split:0.9,firstThresh:3000,buffer:3000,cap:null,minBetween:0,mode:"daily",evalFee:200,actFee:0,monthly:true},
- {key:"fn50",firm:"FundedNext",plan:"Legacy 50K",size:50000,target:3000,dd:2000,trail:"eod",lockAt:50000,dailyLoss:null,minDays:5,cons:0.4,split:0.9,firstThresh:1000,buffer:0,cap:1500,minBetween:5,mode:"standard",evalFee:135,actFee:0,monthly:false},
- {key:"fn100",firm:"FundedNext",plan:"Legacy 100K",size:100000,target:5000,dd:3000,trail:"eod",lockAt:100000,dailyLoss:null,minDays:5,cons:0.4,split:0.9,firstThresh:1000,buffer:0,cap:2500,minBetween:5,mode:"standard",evalFee:225,actFee:0,monthly:false},
- {key:"alpha50",firm:"Alpha",plan:"Premium 50K",size:50000,target:3000,dd:2000,trail:"eod",lockAt:50000,dailyLoss:null,minDays:5,cons:null,split:0.9,firstThresh:500,buffer:0,cap:2000,minBetween:0,mode:"daily",evalFee:95,actFee:0,monthly:true},
- {key:"alpha100",firm:"Alpha",plan:"Premium 100K",size:100000,target:6000,dd:4000,trail:"eod",lockAt:100000,dailyLoss:null,minDays:5,cons:null,split:0.9,firstThresh:500,buffer:0,cap:2500,minBetween:0,mode:"daily",evalFee:179,actFee:0,monthly:true},
+ {key:"apex25",firm:"Apex",plan:"EOD 25K",size:25000,target:1500,dd:1000,trail:"eod",lockAt:25000,dailyLoss:500,minDaysEval:0,minDaysPayout:5,minDailyProfit:100,cons:0.5,split:1.0,firstThresh:0,buffer:1100,minPayout:500,capSchedule:[1000,1000,1000,1000,1000,1000],cap:null,payoutPct:null,minBetween:0,mode:"standard",maxPayouts:6,evalFee:18,actFee:0,monthly:false,verified:true},
+ {key:"apex50",firm:"Apex",plan:"EOD 50K",size:50000,target:3000,dd:2000,trail:"eod",lockAt:50000,dailyLoss:1000,minDaysEval:0,minDaysPayout:5,minDailyProfit:250,cons:0.5,split:1.0,firstThresh:0,buffer:2100,minPayout:500,capSchedule:[1500,1500,2000,2500,2500,3000],cap:null,payoutPct:null,minBetween:0,mode:"standard",maxPayouts:6,evalFee:35,actFee:0,monthly:false,verified:true},
+ {key:"apex100",firm:"Apex",plan:"EOD 100K",size:100000,target:6000,dd:3000,trail:"eod",lockAt:100000,dailyLoss:1500,minDaysEval:0,minDaysPayout:5,minDailyProfit:300,cons:0.5,split:1.0,firstThresh:0,buffer:3100,minPayout:500,capSchedule:[2000,2500,2500,3000,4000,4000],cap:null,payoutPct:null,minBetween:0,mode:"standard",maxPayouts:6,evalFee:53,actFee:0,monthly:false,verified:true},
+ {key:"apex150",firm:"Apex",plan:"EOD 150K",size:150000,target:9000,dd:4000,trail:"eod",lockAt:150000,dailyLoss:2000,minDaysEval:0,minDaysPayout:5,minDailyProfit:350,cons:0.5,split:1.0,firstThresh:0,buffer:4100,minPayout:500,capSchedule:[2500,3000,3000,3000,4000,5000],cap:null,payoutPct:null,minBetween:0,mode:"standard",maxPayouts:6,evalFee:80,actFee:0,monthly:false,verified:true},
+ {key:"alphaZero25",firm:"Alpha",plan:"Zero 25K",size:25000,target:1500,dd:1000,trail:"eod",lockAt:25000,dailyLoss:500,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:0.4,split:0.9,firstThresh:0,buffer:0,minPayout:200,capSchedule:[1000,1000,1000,1000,1000],cap:null,payoutPct:0.5,minBetween:0,mode:"standard",maxPayouts:null,evalFee:79,actFee:0,monthly:true,verified:true},
+ {key:"alphaZero50",firm:"Alpha",plan:"Zero 50K",size:50000,target:3000,dd:2000,trail:"eod",lockAt:50000,dailyLoss:1000,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:0.4,split:0.9,firstThresh:0,buffer:0,minPayout:200,capSchedule:[1500,1500,1500,1500,1500],cap:null,payoutPct:0.5,minBetween:0,mode:"standard",maxPayouts:null,evalFee:119,actFee:0,monthly:true,verified:true},
+ {key:"alphaZero100",firm:"Alpha",plan:"Zero 100K",size:100000,target:6000,dd:3000,trail:"eod",lockAt:100000,dailyLoss:2000,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:0.4,split:0.9,firstThresh:0,buffer:0,minPayout:200,capSchedule:[2500,2500,2500,2500,2500],cap:null,payoutPct:0.5,minBetween:0,mode:"standard",maxPayouts:null,evalFee:239,actFee:0,monthly:true,verified:true},
+ {key:"alphaPremAct50",firm:"Alpha",plan:"Premium 50K (act)",size:50000,target:3000,dd:2000,trail:"eod",lockAt:50000,dailyLoss:1000,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:null,split:0.9,firstThresh:0,buffer:0,minPayout:500,capSchedule:[2000,2250,2500,3000,4000],cap:null,payoutPct:0.5,minBetween:0,mode:"standard",maxPayouts:null,evalFee:79,actFee:149,monthly:true,verified:true},
+ {key:"alphaPremNo50",firm:"Alpha",plan:"Premium 50K (no-act)",size:50000,target:3000,dd:2000,trail:"eod",lockAt:50000,dailyLoss:1000,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:null,split:0.9,firstThresh:0,buffer:0,minPayout:500,capSchedule:[2000,2250,2500,3000,4000],cap:null,payoutPct:0.5,minBetween:0,mode:"standard",maxPayouts:null,evalFee:159,actFee:0,monthly:true,verified:true},
+ {key:"alphaPremAct100",firm:"Alpha",plan:"Premium 100K (act)",size:100000,target:6000,dd:3000,trail:"eod",lockAt:100000,dailyLoss:2000,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:null,split:0.9,firstThresh:0,buffer:0,minPayout:500,capSchedule:[2500,3000,3500,4000,5000],cap:null,payoutPct:0.5,minBetween:0,mode:"standard",maxPayouts:null,evalFee:159,actFee:149,monthly:true,verified:true},
+ {key:"alphaPremNo100",firm:"Alpha",plan:"Premium 100K (no-act)",size:100000,target:6000,dd:3000,trail:"eod",lockAt:100000,dailyLoss:2000,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:null,split:0.9,firstThresh:0,buffer:0,minPayout:500,capSchedule:[2500,3000,3500,4000,5000],cap:null,payoutPct:0.5,minBetween:0,mode:"standard",maxPayouts:null,evalFee:269,actFee:0,monthly:true,verified:true},
+ {key:"alphaPremAct150",firm:"Alpha",plan:"Premium 150K (act)",size:150000,target:9000,dd:4500,trail:"eod",lockAt:150000,dailyLoss:null,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:null,split:0.9,firstThresh:0,buffer:0,minPayout:500,capSchedule:[3000,3500,4000,5000,6000],cap:null,payoutPct:0.5,minBetween:0,mode:"standard",maxPayouts:null,evalFee:239,actFee:149,monthly:true,verified:true},
+ {key:"alphaPremNo150",firm:"Alpha",plan:"Premium 150K (no-act)",size:150000,target:9000,dd:4500,trail:"eod",lockAt:150000,dailyLoss:null,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:null,split:0.9,firstThresh:0,buffer:0,minPayout:500,capSchedule:[3000,3500,4000,5000,6000],cap:null,payoutPct:0.5,minBetween:0,mode:"standard",maxPayouts:null,evalFee:379,actFee:0,monthly:true,verified:true},
+ {key:"alphaAdv50",firm:"Alpha",plan:"Advanced 50K",size:50000,target:3000,dd:2000,trail:"eod",lockAt:50000,dailyLoss:null,minDaysEval:2,minDaysPayout:5,minDailyProfit:200,cons:null,split:0.9,firstThresh:0,buffer:0,minPayout:1000,capSchedule:[15000,15000,15000,15000,15000],cap:null,payoutPct:0.5,minBetween:0,mode:"standard",maxPayouts:null,evalFee:139,actFee:149,monthly:true,verified:true},
+ {key:"alphaAdv100",firm:"Alpha",plan:"Advanced 100K",size:100000,target:6000,dd:3000,trail:"eod",lockAt:100000,dailyLoss:null,minDaysEval:2,minDaysPayout:5,minDailyProfit:200,cons:null,split:0.9,firstThresh:0,buffer:0,minPayout:1000,capSchedule:[15000,15000,15000,15000,15000],cap:null,payoutPct:0.5,minBetween:0,mode:"standard",maxPayouts:null,evalFee:279,actFee:149,monthly:true,verified:true},
+ {key:"alphaAdv150",firm:"Alpha",plan:"Advanced 150K",size:150000,target:9000,dd:4500,trail:"eod",lockAt:150000,dailyLoss:null,minDaysEval:2,minDaysPayout:5,minDailyProfit:200,cons:null,split:0.9,firstThresh:0,buffer:0,minPayout:1000,capSchedule:[15000,15000,15000,15000,15000],cap:null,payoutPct:0.5,minBetween:0,mode:"standard",maxPayouts:null,evalFee:419,actFee:149,monthly:true,verified:true},
+ {key:"fnLegacy25",firm:"FundedNext",plan:"Legacy 25K",size:25000,target:1250,dd:1000,trail:"eod",lockAt:25000,dailyLoss:null,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:0.4,split:0.8,firstThresh:0,buffer:100,minPayout:0,capSchedule:[1000,1000,1000,1000,1000],cap:1000,payoutPct:null,minBetween:5,mode:"standard",maxPayouts:null,evalFee:135,actFee:0,monthly:false,verified:true},
+ {key:"fnLegacy50",firm:"FundedNext",plan:"Legacy 50K",size:50000,target:3000,dd:2000,trail:"eod",lockAt:50000,dailyLoss:null,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:0.4,split:0.8,firstThresh:0,buffer:100,minPayout:0,capSchedule:[1500,1500,1500,1500,1500],cap:1500,payoutPct:null,minBetween:5,mode:"standard",maxPayouts:null,evalFee:135,actFee:0,monthly:false,verified:true},
+ {key:"fnLegacy100",firm:"FundedNext",plan:"Legacy 100K",size:100000,target:6000,dd:3000,trail:"eod",lockAt:100000,dailyLoss:null,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:0.4,split:0.8,firstThresh:0,buffer:100,minPayout:0,capSchedule:[2500,2500,2500,2500,2500],cap:2500,payoutPct:null,minBetween:5,mode:"standard",maxPayouts:null,evalFee:135,actFee:0,monthly:false,verified:true},
+ {key:"fnRapid25",firm:"FundedNext",plan:"Rapid 25K",size:25000,target:1500,dd:1000,trail:"eod",lockAt:25000,dailyLoss:null,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:0.4,split:0.8,firstThresh:0,buffer:100,minPayout:0,capSchedule:[1000,1000,1000,1000,1000],cap:1000,payoutPct:null,minBetween:5,mode:"standard",maxPayouts:null,evalFee:99,actFee:0,monthly:false,verified:true},
+ {key:"fnRapid50",firm:"FundedNext",plan:"Rapid 50K",size:50000,target:3000,dd:2000,trail:"eod",lockAt:50000,dailyLoss:null,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:0.4,split:0.8,firstThresh:0,buffer:100,minPayout:0,capSchedule:[1500,1500,1500,1500,1500],cap:1500,payoutPct:null,minBetween:5,mode:"standard",maxPayouts:null,evalFee:99,actFee:0,monthly:false,verified:true},
+ {key:"fnRapid100",firm:"FundedNext",plan:"Rapid 100K",size:100000,target:5000,dd:3000,trail:"eod",lockAt:100000,dailyLoss:null,minDaysEval:1,minDaysPayout:5,minDailyProfit:200,cons:0.4,split:0.8,firstThresh:0,buffer:100,minPayout:0,capSchedule:[2500,2500,2500,2500,2500],cap:2500,payoutPct:null,minBetween:5,mode:"standard",maxPayouts:null,evalFee:99,actFee:0,monthly:false,verified:true},
+ {key:"tptPro25",firm:"Take Profit",plan:"PRO 25K",size:25000,target:1500,dd:1500,trail:"eot",lockAt:25000,dailyLoss:null,minDaysEval:0,minDaysPayout:0,minDailyProfit:0,cons:null,split:0.8,firstThresh:1500,buffer:1500,minPayout:0,capSchedule:null,cap:null,payoutPct:null,minBetween:0,mode:"standard",maxPayouts:null,evalFee:150,actFee:0,monthly:true,verified:false},
+ {key:"tptPro50",firm:"Take Profit",plan:"PRO 50K",size:50000,target:3000,dd:2000,trail:"eot",lockAt:50000,dailyLoss:null,minDaysEval:0,minDaysPayout:0,minDailyProfit:0,cons:null,split:0.8,firstThresh:2000,buffer:2000,minPayout:0,capSchedule:null,cap:null,payoutPct:null,minBetween:0,mode:"standard",maxPayouts:null,evalFee:170,actFee:0,monthly:true,verified:false},
+ {key:"tptPro100",firm:"Take Profit",plan:"PRO 100K",size:100000,target:6000,dd:3000,trail:"eot",lockAt:100000,dailyLoss:null,minDaysEval:0,minDaysPayout:0,minDailyProfit:0,cons:null,split:0.8,firstThresh:3000,buffer:3000,minPayout:0,capSchedule:null,cap:null,payoutPct:null,minBetween:0,mode:"standard",maxPayouts:null,evalFee:330,actFee:0,monthly:true,verified:false},
+ {key:"tptPro150",firm:"Take Profit",plan:"PRO 150K",size:150000,target:9000,dd:4500,trail:"eot",lockAt:150000,dailyLoss:null,minDaysEval:0,minDaysPayout:0,minDailyProfit:0,cons:null,split:0.8,firstThresh:4500,buffer:4500,minPayout:0,capSchedule:null,cap:null,payoutPct:null,minBetween:0,mode:"standard",maxPayouts:null,evalFee:360,actFee:0,monthly:true,verified:false}
 ];
 // Fill defaults so presets not yet fully verified still run. Apex is verified from
 // the help center (2026-07); the others are still assumed pending authoritative paste.
@@ -254,7 +288,7 @@ function runAccount(trades,R,dpp,contracts,initialPhase,chargeFees,initBal,initP
       const profit=balance-R.size;
       if(profit>=R.target&&evalDays.size>=R.minDaysEval){ if(chargeFees)feesPaid+=R.actFee; phase="funded";reachedFunded=true;balance=R.size;peak=R.size;activationTs=d(t.date);curDay=null;dayStart=null;fundedDays.clear();for(const k in dayProfit)delete dayProfit[k]; }
     } else {
-      const profit=balance-R.size, withdrawable=profit-R.buffer;
+      const profit=balance-R.size, withdrawable=profit-R.buffer-RESERVE;
       if(withdrawable>0){
         // qualifying days = days whose realized profit >= the firm's min daily profit
         let qual=0; for(const k in dayProfit){ if(dayProfit[k]>=(R.minDailyProfit||0))qual++; }
@@ -267,6 +301,7 @@ function runAccount(trades,R,dpp,contracts,initialPhase,chargeFees,initBal,initP
         if(ok){
           const capNow=R.capSchedule?R.capSchedule[Math.min(payouts,R.capSchedule.length-1)]:R.cap;
           let gross=(capNow==null)?withdrawable:Math.min(withdrawable,capNow);
+          if(R.payoutPct!=null)gross=Math.min(gross,R.payoutPct*profit); // e.g. Alpha: withdraw <=50% of profit/request
           if(gross>0&&gross>=(R.minPayout||0)){
             balance-=gross; peak-=gross;
             if(R.lockAt!=null)peak=Math.max(peak,R.lockAt+R.dd); // keep the locked floor from dropping on withdrawal
@@ -356,7 +391,8 @@ function parseData(text){
   rows.sort((a,b)=>d(a.date)-d(b.date)); return rows;
 }
 
-let TRADES=[],LAST=[],SELFIRM="fn50",SORT="after";
+let TRADES=[],LAST=[],SELFIRM="apex50",SORT="after",RESERVE=0;
+const FIRMSET=new Set();
 function fmt$(v){return (v<0?"-$":"$")+Math.abs(Math.round(v)).toLocaleString();}
 function unit(){return document.querySelector('#fmt button.on').dataset.v;}
 function loadSample(){document.getElementById("data").value=JSON.stringify(SAMPLE);document.querySelector('#fmt [data-v="points"]').click();run();}
@@ -369,6 +405,9 @@ function run(){
   const hz=Math.max(1,+document.getElementById("hz").value||6);
   const ms=Math.max(30,+document.getElementById("ms").value||200);
   const sg=+document.getElementById("sg").value;
+  const dcE=1-Math.min(0.95,(+document.getElementById("dcE").value||0)/100);
+  const dcA=1-Math.min(0.95,(+document.getElementById("dcA").value||0)/100);
+  RESERVE=Math.max(0,+document.getElementById("res").value||0);
   const seed=12345;
   let cum=0,peak=0,mdd=0,net=0; const mo={};
   for(const t of TRADES){const dol=t.pts*dpp*ct;net+=dol;cum+=dol;peak=Math.max(peak,cum);mdd=Math.min(mdd,cum-peak);mo[ym(t.date)]=(mo[ym(t.date)]||0)+dol;}
@@ -384,19 +423,27 @@ function run(){
     const fw=fundedDist(TRADES,R,dpp,ct,hz,ms,seed,sg);
     const ev=evalDist(TRADES,R,dpp,ct,ms,seed,sg);
     const months=ev.medDays!=null?Math.max(1,Math.ceil(ev.medDays/30)):1;
-    const evalCost=R.monthly?R.evalFee*months+R.actFee:R.evalFee+R.actFee;
+    const evalCost=(R.monthly?R.evalFee*months:R.evalFee)*dcE + (R.actFee||0)*dcA;
     const fnet=fw?fw.net:0;
     return {R,pass:ev.pass,medDays:ev.medDays,blow:fw?fw.blow:null,pay:fw?fw.pay:null,net:fnet,p5:fw?fw.p5:0,p95:fw?fw.p95:0,evalCost,after:ev.pass*fnet-evalCost,months};
   });
-  renderCmp();renderPills();renderHeat();runLive();
+  renderFirmFilter();renderCmp();renderPills();renderHeat();runLive();
   document.getElementById("sgWord").textContent = sg<=0?" (original order)":sg<1?" (mild reorder)":sg<2?" (heavy reorder)":" (near-random)";
   document.getElementById("cmpSub").innerHTML=`${ct} contract(s) @ $${dpp}/pt · ${hz}-mo windows · ${ms} samples · σ=${sg.toFixed(2)}. `+
     (sg>0?`<b style="color:var(--blue)">Shuffle on</b> — numbers are averages over reshuffled orderings.`:`<b>Original order</b> — front-loaded; raise σ for the honest spread.`);
-  document.getElementById("disc").innerHTML=`<b>Why the rosy numbers at σ=0?</b> This path is front-loaded (strong months first, the losing months later), so on the single fixed order almost every start reaches a payout. Win <i>rate</i> says nothing about <i>order</i>. Slide σ up: as the wins scatter, payout% drops and blow-up rises toward the true picture — and 50K accounts start failing before 100K ones. Everything is realized-only, so blow-up is still a <b>lower bound</b>. Notional balance is never wealth. <b style="color:var(--cyan)">Apex ✓</b> rules are verified from the help center (2026-07): EOD trailing DD, no min-days/consistency to pass, but 5 qualifying days ($ min/day) + 50% consistency + ramped caps + max 6 payouts to withdraw. <b style="color:var(--amber)">FundedNext / Alpha / TPT ⚠</b> are still assumed — paste their help-center rules to verify. Apex pricing is estimated. Not financial advice.`;
+  document.getElementById("disc").innerHTML=`<b>Why the rosy numbers at σ=0?</b> This path is front-loaded (strong months first, losing months later), so on the single fixed order almost every start reaches a payout. Win <i>rate</i> says nothing about <i>order</i>. Slide σ up: payout% drops and blow-up rises toward the true picture — and 50K accounts fail before 100K ones. Blow-up is realized-only, so it is a <b>lower bound</b>; notional balance is never wealth. <b style="color:var(--cyan)">Apex, Alpha, FundedNext ✓</b> rules are verified from help centers / uploaded rule docs (2026-07): all EOD trailing locking at start; Apex adds 5 qualifying days + 50% consistency + ramped caps + max 6; Alpha withdraws ≤50% of profit per request (90% of the request), Premium has no consistency; FundedNext 40% consistency, 80% split. <b style="color:var(--cyan)">TPT ✓ rules / ⚠ test-target</b>: PRO is intraday trailing 80/20 with a buffer=drawdown; its evaluation profit targets are assumed (~6%). Pricing is best-effort — set your real discount above. Not financial advice.`;
 }
 
+function renderFirmFilter(){
+  const firms=[...new Set(PRESETS.map(p=>p.firm))];
+  const el=document.getElementById("firmFilter"); if(!el)return;
+  el.innerHTML=`<span class="pill ${FIRMSET.size===0?'on':''}" onclick="FIRMSET.clear();renderFirmFilter();renderCmp()">All firms</span>`+
+    firms.map(f=>`<span class="pill ${FIRMSET.has(f)?'on':''}" onclick="toggleFirm('${f}')">${f}${PRESETS.find(p=>p.firm===f).verified?' ✓':' ⚠'}</span>`).join("");
+}
+function toggleFirm(f){ if(FIRMSET.has(f))FIRMSET.delete(f); else FIRMSET.add(f); renderFirmFilter(); renderCmp(); }
 function renderCmp(){
-  const rows=LAST.slice(); const dir=(SORT==="firm")?1:-1;
+  let rows=LAST.slice(); if(FIRMSET.size)rows=rows.filter(r=>FIRMSET.has(r.R.firm));
+  const dir=(SORT==="firm")?1:-1;
   rows.sort((a,b)=>{const g=r=>SORT==="firm"?(r.R.firm+r.R.plan):SORT==="pass"?r.pass:SORT==="blow"?(r.blow==null?9:r.blow):SORT==="pay"?(r.pay==null?-9:r.pay):SORT==="net"?r.net:r.after;const x=g(a),y=g(b);return x<y?-dir:x>y?dir:0;});
   const maxNet=Math.max(1,...rows.map(r=>r.net)),maxAfter=Math.max(1,...rows.map(r=>Math.abs(r.after)));
   document.getElementById("cmpBody").innerHTML=rows.map(r=>{
@@ -424,6 +471,7 @@ function renderHeat(){
 }
 function runLive(){
   const dpp=unit()==="dollars"?1:(+document.getElementById("dpp").value||1);
+  RESERVE=Math.max(0,+document.getElementById("res").value||0);
   const sg=+document.getElementById("sg").value,ms=Math.max(30,+document.getElementById("ms").value||200);
   const R=PRESETS.find(p=>p.key===document.getElementById("liveFirm").value);
   const bal=+document.getElementById("liveBal").value,pk=Math.max(+document.getElementById("livePeak").value,bal),ct=+document.getElementById("liveCt").value;
@@ -448,7 +496,7 @@ function runLive(){
 document.querySelectorAll('#fmt button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#fmt button').forEach(x=>x.classList.remove('on'));b.classList.add('on');document.getElementById('dpp').disabled=(b.dataset.v==='dollars');run();});
 document.getElementById("file").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{document.getElementById("data").value=r.result;run();};r.readAsText(f);};
 document.getElementById("sg").addEventListener("input",e=>{document.getElementById("sgLabel").textContent=(+e.target.value).toFixed(2);});
-["dpp","ct","hz","swH","sg","ms"].forEach(id=>document.getElementById(id).addEventListener("change",run));
+["dpp","ct","hz","swH","sg","ms","dcE","dcA","res"].forEach(id=>document.getElementById(id).addEventListener("change",run));
 ["liveFirm","liveBal","livePeak","liveCt"].forEach(id=>document.getElementById(id).addEventListener("change",runLive));
 document.getElementById("liveFirm").innerHTML=PRESETS.map(R=>`<option value="${R.key}"${R.key==="apex50"?" selected":""}>${R.firm} ${R.plan}</option>`).join("");
 function toggleTheme(){const c=document.documentElement.dataset.theme||'dark';document.documentElement.dataset.theme=c==='dark'?'light':'dark';}
