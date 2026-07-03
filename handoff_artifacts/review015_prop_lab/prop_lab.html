@@ -1,0 +1,457 @@
+<title>Prop Firm Lab — test your ledger</title>
+<style>
+  :root{
+    --ground:#070b16;--panel:#0e1524;--panel2:#0b1120;--ink:#e9eef8;--muted:#7e8aa6;
+    --hair:#1b2540;--hair2:#141c33;--field:#0b1120;
+    --blue:#4c8dff;--blue2:#2f6fe0;--cyan:#38cfd6;--cash1:#2f6fd0;--cash2:#3fd6c0;
+    --rust:#ff6f57;--rust-soft:#2a1410;--amber:#e2b45a;--amber-soft:#221b0c;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  :root[data-theme="light"]{
+    --ground:#eef1f7;--panel:#fff;--panel2:#f6f8fc;--ink:#0f1830;--muted:#5a678a;
+    --hair:#dce2ee;--hair2:#eaeff7;--field:#f6f8fc;
+    --blue:#2f6fe0;--blue2:#2f6fe0;--cyan:#179aa2;--cash1:#2f6fd0;--cash2:#1f9e86;
+    --rust:#c9412a;--rust-soft:#f7e2dd;--amber:#a97d1a;--amber-soft:#f5ecd6;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);line-height:1.5;
+    -webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+  .wrap{max-width:1180px;margin:0 auto;padding:clamp(16px,3vw,40px)}
+  h1{font-size:clamp(23px,3.4vw,33px);font-weight:670;letter-spacing:-.015em;margin:0;
+    background:linear-gradient(90deg,var(--ink),var(--blue));-webkit-background-clip:text;background-clip:text}
+  .eyebrow{font-family:var(--mono);font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--blue);font-weight:600}
+  .sub{color:var(--muted);font-size:15px;max-width:70ch;margin-top:5px}
+  header{border-bottom:1px solid var(--hair);padding-bottom:18px;margin-bottom:20px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:flex-start}
+  .layout{display:grid;grid-template-columns:330px 1fr;gap:20px}
+  @media(max-width:900px){.layout{grid-template-columns:1fr}}
+  .panel{background:var(--panel);border:1px solid var(--hair);border-radius:14px;padding:17px;margin-bottom:15px}
+  .panel h2{font-size:12.5px;font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--blue);margin:0 0 12px;display:flex;align-items:center;gap:8px}
+  .panel h2 .n{width:19px;height:19px;border-radius:6px;background:var(--blue);color:#04122c;display:grid;place-items:center;font-size:11px;font-weight:700}
+  label.f{display:block;font-size:11.5px;color:var(--muted);margin:11px 0 4px;font-weight:600}
+  textarea,input,select{width:100%;background:var(--field);border:1px solid var(--hair);color:var(--ink);
+    border-radius:8px;padding:8px 10px;font-family:var(--mono);font-size:12.5px}
+  input[type=range]{padding:0;accent-color:var(--blue)}
+  textarea{height:88px;resize:vertical;white-space:pre;overflow:auto;font-size:11.5px}
+  .row{display:flex;gap:10px}.row>div{flex:1}
+  .btn{display:inline-block;background:linear-gradient(180deg,var(--blue),var(--blue2));color:#04122c;border:none;border-radius:9px;padding:10px 14px;
+    font-family:var(--sans);font-size:13px;font-weight:700;cursor:pointer;margin-top:12px}
+  .btn.ghost{background:transparent;color:var(--blue);border:1px solid var(--hair);font-weight:600}
+  .btn:active{transform:translateY(1px)}
+  .seg{display:flex;border:1px solid var(--hair);border-radius:8px;overflow:hidden;margin-top:4px}
+  .seg button{flex:1;background:var(--field);border:none;color:var(--muted);padding:7px;font-size:12px;cursor:pointer;font-family:var(--sans)}
+  .seg button.on{background:var(--blue);color:#04122c;font-weight:700}
+  .hint{font-size:11px;color:var(--muted);margin-top:7px;line-height:1.5}
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px}
+  .tile{background:var(--panel);border:1px solid var(--hair);border-radius:11px;padding:12px 14px}
+  .tile .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .tile .v{font-size:20px;font-weight:690;margin-top:3px} .pos{color:var(--cyan)}.neg{color:var(--rust)}
+  .tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:13px;background:var(--panel);margin-bottom:18px}
+  table{border-collapse:collapse;width:100%;min-width:660px;font-size:13px}
+  thead th{background:var(--panel2);text-align:left;padding:10px 12px;font-family:var(--mono);font-size:9.5px;
+    letter-spacing:.05em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--hair);white-space:nowrap;cursor:pointer}
+  tbody td{padding:9px 12px;border-bottom:1px solid var(--hair2);vertical-align:middle}
+  tbody tr:last-child td{border-bottom:none}
+  .firm{font-weight:640;white-space:nowrap}.firm small{display:block;font-weight:500;color:var(--muted);font-family:var(--mono);font-size:10px}
+  .num{font-family:var(--mono);text-align:right;white-space:nowrap}
+  .bar{position:relative;height:18px;border-radius:5px;background:var(--hair2);overflow:hidden;min-width:86px}
+  .bar>span{position:absolute;inset:0 auto 0 0;border-radius:5px}
+  .bar.cash>span{background:linear-gradient(90deg,var(--cash1),var(--cash2))}
+  .bar.blow>span{background:linear-gradient(90deg,#c65a44,var(--rust))}
+  .bar em{position:absolute;right:6px;top:0;line-height:18px;font-style:normal;font-family:var(--mono);font-size:10.5px;color:#eaf1ff}
+  .heat{border-collapse:separate;border-spacing:4px;min-width:520px}
+  .heat th{font-family:var(--mono);font-size:10.5px;color:var(--muted);text-transform:uppercase;padding:4px 6px;text-align:center}
+  .heat td.mo{font-family:var(--mono);font-size:11.5px;font-weight:600;text-align:left;padding-right:8px;white-space:nowrap;color:var(--ink)}
+  .cell{font-family:var(--mono);font-size:12px;text-align:center;padding:8px 5px;border-radius:6px;font-weight:600;min-width:74px}
+  h3.sec{font-size:15px;margin:4px 0 2px}
+  .secsub{color:var(--muted);font-size:13px;margin:0 0 6px}
+  .disc{background:var(--panel);border:1px solid var(--hair);border-left:3px solid var(--amber);border-radius:10px;padding:12px 14px;font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.6}
+  .err{background:var(--rust-soft);border:1px solid var(--rust);color:var(--rust);border-radius:8px;padding:8px 10px;font-size:12px;margin-top:8px;display:none}
+  .toggle{background:none;border:1px solid var(--hair);color:var(--muted);border-radius:7px;padding:5px 10px;font-size:11px;cursor:pointer;font-family:var(--mono)}
+  .pillrow{display:flex;gap:7px;flex-wrap:wrap;margin:9px 0}
+  .pill{font-family:var(--mono);font-size:11px;padding:5px 10px;border-radius:999px;border:1px solid var(--hair);background:var(--field);color:var(--muted);cursor:pointer}
+  .pill.on{background:var(--blue);color:#04122c;border-color:var(--blue);font-weight:700}
+  .live{background:linear-gradient(160deg,var(--panel),var(--panel2));border:1px solid var(--blue);border-radius:14px;padding:18px;margin-bottom:18px}
+  .liveres{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-top:14px}
+  .lr{background:var(--field);border:1px solid var(--hair);border-radius:10px;padding:12px 14px}
+  .lr .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+  .lr .v{font-size:22px;font-weight:700;margin-top:2px}
+  .badge{display:inline-block;font-family:var(--mono);font-size:10px;padding:3px 9px;border-radius:999px;border:1px solid var(--blue);color:var(--blue);letter-spacing:.05em}
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">Prop Firm Lab · runs in your browser</div>
+      <h1>Test any trade ledger against 8 funded accounts</h1>
+      <p class="sub">Paste a ledger, set sizing, shuffle the trade order to stress-test path luck, and
+        model your live account — live. Preloaded with your NQ forward scenario.</p>
+    </div>
+    <button class="toggle" onclick="toggleTheme()">◐ theme</button>
+  </header>
+
+  <div class="layout">
+    <!-- CONTROLS -->
+    <div>
+      <div class="panel">
+        <h2><span class="n">1</span> Your ledger</h2>
+        <div class="seg" id="fmt">
+          <button data-v="points" class="on">P&amp;L in points</button>
+          <button data-v="dollars">in dollars</button>
+        </div>
+        <label class="f">Paste — <span style="color:var(--blue)">[["2026-07-01",2.6],…]</span> or CSV (date,pnl)</label>
+        <textarea id="data" spellcheck="false"></textarea>
+        <div class="row">
+          <div><button class="btn ghost" style="width:100%" onclick="document.getElementById('file').click()">Upload</button>
+            <input type="file" id="file" accept=".csv,.json,.txt" style="display:none"></div>
+          <div><button class="btn ghost" style="width:100%" onclick="loadSample()">Reload sample</button></div>
+        </div>
+        <div class="err" id="err"></div>
+      </div>
+
+      <div class="panel">
+        <h2><span class="n">2</span> Sizing</h2>
+        <label class="f">$ per point (MNQ micro = $2 · NQ = $20)</label>
+        <input id="dpp" type="number" value="2" step="0.5" min="0.1">
+        <label class="f">Contracts: <b id="ctLabel" style="color:var(--blue)">2</b></label>
+        <input id="ct" type="range" min="1" max="6" value="2" step="1" oninput="ctLabel.textContent=this.value">
+        <div class="row">
+          <div><label class="f">Funded horizon (mo)</label><input id="hz" type="number" value="6" min="1" max="12"></div>
+          <div><label class="f">Heatmap window</label><input id="swH" type="number" value="3" min="1" max="6"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2><span class="n">3</span> Path shuffle · stress</h2>
+        <label class="f">Shuffle strength σ: <b id="sgLabel" style="color:var(--blue)">0.0</b>
+          <span id="sgWord" style="color:var(--muted)"> (original order)</span></label>
+        <input id="sg" type="range" min="0" max="3" value="0" step="0.25">
+        <label class="f">Monte-Carlo samples: <b id="msLabel" style="color:var(--blue)">200</b></label>
+        <input id="ms" type="range" min="30" max="800" value="200" step="10" oninput="msLabel.textContent=this.value">
+        <button class="btn" style="width:100%" onclick="run()">Run simulation ▸</button>
+        <div class="hint">σ=0 keeps your exact sequence (front-loaded). Crank σ to reorder the trades —
+          <b>2σ shuffles most of the year</b> — and watch payout% fall and blow-up rise toward the
+          honest distribution. Each sample = one reshuffle × one random start.</div>
+      </div>
+    </div>
+
+    <!-- RESULTS -->
+    <div>
+      <div class="tiles" id="tiles"></div>
+
+      <!-- LIVE ACCOUNT -->
+      <div class="live">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+          <h3 class="sec" style="margin:0">◆ Your live account — forward risk from now</h3>
+          <span class="badge" id="liveVerdict">—</span>
+        </div>
+        <p class="secsub">Simulate the rest of the ledger from your current balance, across the shuffle
+          distribution. Set it to your real position.</p>
+        <div class="row" style="flex-wrap:wrap;gap:10px">
+          <div style="min-width:150px"><label class="f">Account</label>
+            <select id="liveFirm"></select></div>
+          <div style="min-width:110px"><label class="f">Current balance $</label><input id="liveBal" type="number" value="50500" step="50"></div>
+          <div style="min-width:110px"><label class="f">Current peak $</label><input id="livePeak" type="number" value="50500" step="50"></div>
+          <div style="min-width:90px"><label class="f">Contracts</label><input id="liveCt" type="number" value="2" min="1" max="10"></div>
+        </div>
+        <div class="liveres" id="liveRes"></div>
+        <div class="hint" id="liveHint" style="margin-top:10px"></div>
+      </div>
+
+      <h3 class="sec">Buy-decision comparison — fresh account</h3>
+      <p class="secsub" id="cmpSub"></p>
+      <div class="tablewrap"><table id="cmp">
+        <thead><tr>
+          <th onclick="sortCmp('firm')">Firm / plan</th>
+          <th onclick="sortCmp('pass')" class="num">Eval pass</th>
+          <th onclick="sortCmp('blow')" class="num">Blow-up</th>
+          <th onclick="sortCmp('pay')" class="num">Payout %</th>
+          <th onclick="sortCmp('net')">Funded net</th>
+          <th onclick="sortCmp('after')">Net after cost</th>
+        </tr></thead>
+        <tbody id="cmpBody"></tbody>
+      </table></div>
+
+      <h3 class="sec">Start-month timing <span style="font-weight:400;color:var(--muted);font-size:12px">· original order</span></h3>
+      <p class="secsub">Net cash from a funded run beginning each calendar month. Pick a firm:</p>
+      <div class="pillrow" id="firmPills"></div>
+      <div class="tablewrap" style="padding:12px"><table class="heat" id="heat"></table></div>
+
+      <div class="disc" id="disc"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const SAMPLE = [["2026-07-01",2.6],["2026-07-02",105.4],["2026-07-06",-139.9],["2026-07-08",77.4],["2026-07-10",-63.6],["2026-07-13",68.4],["2026-07-15",-53.2],["2026-07-16",45.4],["2026-07-17",-59.9],["2026-07-21",105.0],["2026-07-22",-78.1],["2026-07-24",53.6],["2026-07-25",-82.5],["2026-07-28",92.2],["2026-07-29",-90.0],["2026-07-30",203.1],["2026-08-03",-46.3],["2026-08-04",126.4],["2026-08-06",-54.6],["2026-08-07",-1.8],["2026-08-11",87.8],["2026-08-13",5.2],["2026-08-18",111.4],["2026-08-20",-64.8],["2026-08-25",165.2],["2026-09-01",89.3],["2026-09-02",-70.4],["2026-09-03",57.7],["2026-09-04",3.4],["2026-09-07",49.2],["2026-09-08",-47.8],["2026-09-09",-38.1],["2026-09-10",103.7],["2026-09-14",78.4],["2026-09-15",-56.3],["2026-09-16",-4.2],["2026-09-17",-58.0],["2026-09-18",162.4],["2026-09-21",78.3],["2026-09-22",-63.2],["2026-09-23",98.5],["2026-09-24",49.4],["2026-09-25",-94.2],["2026-09-28",71.1],["2026-09-29",203.6],["2026-10-01",-77.1],["2026-10-02",-104.3],["2026-10-05",6.1],["2026-10-06",88.4],["2026-10-07",-3.2],["2026-10-08",-76.1],["2026-10-09",1.8],["2026-10-12",-68.4],["2026-10-13",134.9],["2026-10-14",-59.7],["2026-10-15",3.7],["2026-10-16",-52.3],["2026-10-19",-2.9],["2026-10-20",142.1],["2026-10-21",-97.7],["2026-10-22",-97.7],["2026-10-23",210.2],["2026-10-26",83.6],["2026-10-27",-76.2],["2026-10-28",4.3],["2026-10-29",104.0],["2026-10-30",-118.5],["2026-11-03",-5.1],["2026-11-04",94.2],["2026-11-05",-57.3],["2026-11-06",2.8],["2026-11-10",133.6],["2026-11-12",-44.5],["2026-11-13",68.9],["2026-11-17",6.3],["2026-11-18",-94.7],["2026-11-19",95.4],["2026-11-20",-88.3],["2026-11-24",102.7],["2026-11-25",-3.1],["2026-12-01",87.2],["2026-12-02",135.4],["2026-12-03",-46.8],["2026-12-04",5.7],["2026-12-08",162.3],["2026-12-09",-3.8],["2026-12-10",98.6],["2026-12-11",-37.2],["2026-12-15",204.8],["2026-12-16",-76.4],["2026-12-17",1.4],["2027-01-05",-80.4],["2027-01-06",53.7],["2027-01-07",4.2],["2027-01-08",75.3],["2027-01-09",-97.6],["2027-01-12",62.4],["2027-01-13",-2.1],["2027-01-14",-108.4],["2027-01-15",49.8],["2027-01-16",-89.2],["2027-01-20",3.7],["2027-01-21",72.1],["2027-01-22",-61.8],["2027-01-23",-5.3],["2027-01-26",52.6],["2027-01-27",-77.3],["2027-01-28",58.4],["2027-01-29",-95.1],["2027-01-30",68.3],["2027-01-31",-119.8],["2027-02-02",103.2],["2027-02-03",5.8],["2027-02-04",98.7],["2027-02-09",-4.1],["2027-02-10",-47.3],["2027-02-11",62.7],["2027-02-12",-38.5],["2027-02-17",3.2],["2027-02-18",-71.4],["2027-02-19",64.8],["2027-02-20",-63.8],["2027-02-23",89.4],["2027-02-24",-3.8],["2027-02-25",122.6],["2027-03-02",4.1],["2027-03-03",64.3],["2027-03-04",-55.2],["2027-03-05",-2.4],["2027-03-09",74.1],["2027-03-10",-83.4],["2027-03-11",56.4],["2027-03-12",3.8],["2027-03-16",-68.4],["2027-03-17",59.8],["2027-03-18",-84.6],["2027-03-19",-91.8],["2027-03-23",89.2],["2027-04-01",5.2],["2027-04-02",-68.7],["2027-04-03",-3.4],["2027-04-06",45.3],["2027-04-07",-94.2],["2027-04-08",67.8],["2027-04-09",2.1],["2027-04-10",-47.3],["2027-04-13",88.4],["2027-04-14",-42.1],["2027-04-15",3.8],["2027-04-16",83.4],["2027-04-22",-63.4],["2027-04-23",57.2],["2027-04-24",4.6],["2027-04-25",-57.8],["2027-04-28",-68.4],["2027-04-29",64.2],["2027-04-30",-5.1],["2027-05-01",-62.3],["2027-05-05",3.1],["2027-05-06",-82.4],["2027-05-07",63.7],["2027-05-08",-4.2],["2027-05-12",-72.4],["2027-05-13",99.8],["2027-05-14",-54.1],["2027-05-15",5.3],["2027-05-19",77.6],["2027-05-20",-45.8],["2027-05-21",-76.4],["2027-05-22",95.2],["2027-06-02",87.4],["2027-06-03",134.2],["2027-06-04",-58.3],["2027-06-05",78.6],["2027-06-09",-43.7],["2027-06-10",103.5],["2027-06-11",-74.2],["2027-06-12",92.1],["2027-06-16",-65.4],["2027-06-17",114.8],["2027-06-18",85.3],["2027-06-19",103.4],["2027-06-23",138.7],["2027-06-25",-44.6]];
+
+const PRESETS = [
+ {key:"apex25",firm:"Apex",plan:"EOD 25K",size:25000,target:1500,dd:1000,trail:"eod",lockAt:25000,dailyLoss:500,minDays:5,minDaysEval:0,minDaysPayout:5,minDailyProfit:100,cons:0.5,split:1.0,firstThresh:0,buffer:1100,minPayout:500,capSchedule:[1000,1000,1000,1000,1000,1000],cap:1000,minBetween:0,mode:"standard",maxPayouts:6,maxCon:4,evalFee:18,actFee:0,monthly:false,verified:true},
+ {key:"apex50",firm:"Apex",plan:"EOD 50K",size:50000,target:3000,dd:2000,trail:"eod",lockAt:50000,dailyLoss:1000,minDays:5,minDaysEval:0,minDaysPayout:5,minDailyProfit:250,cons:0.5,split:1.0,firstThresh:0,buffer:2100,minPayout:500,capSchedule:[1500,1500,2000,2500,2500,3000],cap:3000,minBetween:0,mode:"standard",maxPayouts:6,maxCon:6,evalFee:35,actFee:0,monthly:false,verified:true},
+ {key:"apex100",firm:"Apex",plan:"EOD 100K",size:100000,target:6000,dd:3000,trail:"eod",lockAt:100000,dailyLoss:1500,minDays:5,minDaysEval:0,minDaysPayout:5,minDailyProfit:300,cons:0.5,split:1.0,firstThresh:0,buffer:3100,minPayout:500,capSchedule:[2000,2500,2500,3000,4000,4000],cap:4000,minBetween:0,mode:"standard",maxPayouts:6,maxCon:8,evalFee:53,actFee:0,monthly:false,verified:true},
+ {key:"apex150",firm:"Apex",plan:"EOD 150K",size:150000,target:9000,dd:4000,trail:"eod",lockAt:150000,dailyLoss:2000,minDays:5,minDaysEval:0,minDaysPayout:5,minDailyProfit:350,cons:0.5,split:1.0,firstThresh:0,buffer:4100,minPayout:500,capSchedule:[2500,3000,3000,3000,4000,5000],cap:5000,minBetween:0,mode:"standard",maxPayouts:6,maxCon:12,evalFee:80,actFee:0,monthly:false,verified:true},
+ {key:"tpt50",firm:"Take Profit",plan:"PRO+ 50K",size:50000,target:3000,dd:2000,trail:"eod",lockAt:50000,dailyLoss:null,minDays:1,cons:null,split:0.9,firstThresh:2000,buffer:2000,cap:null,minBetween:0,mode:"daily",evalFee:90,actFee:0,monthly:true},
+ {key:"tpt100",firm:"Take Profit",plan:"PRO+ 100K",size:100000,target:6000,dd:3000,trail:"eod",lockAt:100000,dailyLoss:null,minDays:1,cons:null,split:0.9,firstThresh:3000,buffer:3000,cap:null,minBetween:0,mode:"daily",evalFee:200,actFee:0,monthly:true},
+ {key:"fn50",firm:"FundedNext",plan:"Legacy 50K",size:50000,target:3000,dd:2000,trail:"eod",lockAt:50000,dailyLoss:null,minDays:5,cons:0.4,split:0.9,firstThresh:1000,buffer:0,cap:1500,minBetween:5,mode:"standard",evalFee:135,actFee:0,monthly:false},
+ {key:"fn100",firm:"FundedNext",plan:"Legacy 100K",size:100000,target:5000,dd:3000,trail:"eod",lockAt:100000,dailyLoss:null,minDays:5,cons:0.4,split:0.9,firstThresh:1000,buffer:0,cap:2500,minBetween:5,mode:"standard",evalFee:225,actFee:0,monthly:false},
+ {key:"alpha50",firm:"Alpha",plan:"Premium 50K",size:50000,target:3000,dd:2000,trail:"eod",lockAt:50000,dailyLoss:null,minDays:5,cons:null,split:0.9,firstThresh:500,buffer:0,cap:2000,minBetween:0,mode:"daily",evalFee:95,actFee:0,monthly:true},
+ {key:"alpha100",firm:"Alpha",plan:"Premium 100K",size:100000,target:6000,dd:4000,trail:"eod",lockAt:100000,dailyLoss:null,minDays:5,cons:null,split:0.9,firstThresh:500,buffer:0,cap:2500,minBetween:0,mode:"daily",evalFee:179,actFee:0,monthly:true},
+];
+// Fill defaults so presets not yet fully verified still run. Apex is verified from
+// the help center (2026-07); the others are still assumed pending authoritative paste.
+PRESETS.forEach(R=>{
+  if(R.minDaysEval==null)R.minDaysEval=(R.minDays!=null?R.minDays:0);
+  if(R.minDaysPayout==null)R.minDaysPayout=(R.minDays!=null?R.minDays:0);
+  if(R.minDailyProfit==null)R.minDailyProfit=0;
+  if(R.minPayout==null)R.minPayout=0;
+  if(R.capSchedule==null)R.capSchedule=null;
+  if(R.maxPayouts==null)R.maxPayouts=null;
+  if(R.verified==null)R.verified=false;
+});
+
+const DAY=86400000;
+function d(s){return new Date(s+"T00:00:00Z").getTime();}
+function addMonths(s,m){const dt=new Date(s+"T00:00:00Z");dt.setUTCMonth(dt.getUTCMonth()+m);return dt.getTime();}
+function ym(s){return s.slice(0,7);}
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function gauss(rng){let u=0,v=0;while(u===0)u=rng();while(v===0)v=rng();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);}
+
+// Reorder trades by Gaussian displacement of sort keys, keeping the SAME calendar
+// dates (pnls are permuted across the fixed date slots). sigma in "series" units:
+// sigma=1 ~ 0.22*N std displacement; sigma>=2 shuffles most of the year.
+function shufflePath(trades,sigma,seed){
+  if(sigma<=0)return trades;
+  const N=trades.length, rng=mulberry32(seed);
+  const keyed=trades.map((t,i)=>({i,k:i+gauss(rng)*sigma*0.22*N}));
+  keyed.sort((a,b)=>a.k-b.k);
+  return trades.map((t,i)=>({date:t.date,pts:trades[keyed[i].i].pts}));
+}
+
+// prop engine — mirrors sim_core/prop_firm.py (EOD/eot trailing, lock, daily-loss
+// with withdrawal-adjusted baseline, standard/daily payouts, consistency).
+function runAccount(trades,R,dpp,contracts,initialPhase,chargeFees,initBal,initPeak){
+  let phase=initialPhase;
+  let balance=(initBal!=null&&initialPhase==="funded")?initBal:R.size;
+  let peak=(initPeak!=null&&initialPhase==="funded")?Math.max(initPeak,balance):balance;
+  let curDay=null,dayStart=null;
+  const evalDays=new Set(),fundedDays=new Set(),dayProfit={};
+  let payouts=0,traderPay=0,lastPayoutDay=null;
+  let reachedFunded=(initialPhase==="funded"),activationTs=null,blew=false,terminal=false;
+  let feesPaid=chargeFees?R.evalFee:0;
+  const start=trades.length?trades[0].date:null;
+  if(initialPhase==="funded")activationTs=start?d(start):null;
+  for(const t of trades){
+    if(terminal)break;
+    if(t.date!==curDay){ if(R.trail==="eod"&&curDay!==null)peak=Math.max(peak,balance); curDay=t.date; dayStart=balance; }
+    const pnl=t.pts*dpp*contracts; balance+=pnl;
+    if(R.trail==="eot")peak=Math.max(peak,balance);
+    if(phase==="eval")evalDays.add(t.date); else {fundedDays.add(t.date);dayProfit[t.date]=(dayProfit[t.date]||0)+pnl;}
+    let floor=peak-R.dd; if(R.lockAt!=null)floor=Math.min(floor,R.lockAt);
+    if(balance<=floor){blew=true;terminal=true;continue;}
+    if(R.dailyLoss!=null&&dayStart!=null&&(dayStart-balance)>=R.dailyLoss){blew=true;terminal=true;continue;}
+    if(phase==="eval"){
+      const profit=balance-R.size;
+      if(profit>=R.target&&evalDays.size>=R.minDaysEval){ if(chargeFees)feesPaid+=R.actFee; phase="funded";reachedFunded=true;balance=R.size;peak=R.size;activationTs=d(t.date);curDay=null;dayStart=null;fundedDays.clear();for(const k in dayProfit)delete dayProfit[k]; }
+    } else {
+      const profit=balance-R.size, withdrawable=profit-R.buffer;
+      if(withdrawable>0){
+        // qualifying days = days whose realized profit >= the firm's min daily profit
+        let qual=0; for(const k in dayProfit){ if(dayProfit[k]>=(R.minDailyProfit||0))qual++; }
+        const thresh=(payouts===0)?R.firstThresh:0;
+        let ok=(profit>=thresh)&&(qual>=R.minDaysPayout);
+        if(ok&&R.mode==="daily"){ if(lastPayoutDay!=null&&d(t.date)<=d(lastPayoutDay))ok=false; }
+        else if(ok){ const ref=lastPayoutDay||start; if(R.minBetween>0&&ref!=null&&(d(t.date)-d(ref))/DAY<R.minBetween)ok=false; }
+        // consistency: no single day >= X% of profit since last payout (Apex 50%)
+        if(ok&&R.cons!=null){ let tot=0,best=-1e9; for(const k in dayProfit){const v=dayProfit[k];if(v>0)tot+=v;if(v>best)best=v;} if(tot>0&&best>=R.cons*tot)ok=false; }
+        if(ok){
+          const capNow=R.capSchedule?R.capSchedule[Math.min(payouts,R.capSchedule.length-1)]:R.cap;
+          let gross=(capNow==null)?withdrawable:Math.min(withdrawable,capNow);
+          if(gross>0&&gross>=(R.minPayout||0)){
+            balance-=gross; peak-=gross;
+            if(R.lockAt!=null)peak=Math.max(peak,R.lockAt+R.dd); // keep the locked floor from dropping on withdrawal
+            if(dayStart!=null)dayStart-=gross;
+            traderPay+=gross*R.split; payouts++; lastPayoutDay=t.date;
+            for(const k in dayProfit)delete dayProfit[k]; // consistency + qualifying window reset after a payout
+            if(R.maxPayouts!=null&&payouts>=R.maxPayouts)terminal=true; // account closes after max payouts (success)
+          }
+        }
+      }
+    }
+  }
+  const daysToPass=(activationTs!=null&&start!=null&&initialPhase==="eval")?(activationTs-d(start))/DAY:null;
+  return {reachedFunded,blew,payouts,traderPay,feesPaid,netCash:traderPay-feesPaid,daysToPass};
+}
+
+function subWindow(trades,startDate,months){const end=addMonths(startDate,months);return trades.filter(t=>d(t.date)>=d(startDate)&&d(t.date)<end);}
+function quant(sorted,q){if(!sorted.length)return 0;const i=Math.min(sorted.length-1,Math.max(0,Math.round(q*(sorted.length-1))));return sorted[i];}
+
+function fundedDist(trades,R,dpp,contracts,months,samples,seed,sigma){
+  const last=d(trades[trades.length-1].date);
+  const baseC=trades.filter(t=>addMonths(t.date,months)<=last).map((t,i)=>i);
+  if(!baseC.length)return null;
+  const rng=mulberry32(seed);
+  let blow=0,pay=0,n=0; const nets=[];
+  for(let k=0;k<samples;k++){
+    const path=shufflePath(trades,sigma,seed+ k*131+7);
+    const cands=path.filter(t=>addMonths(t.date,months)<=last).map(t=>t.date);
+    if(!cands.length)continue;
+    const s=cands[Math.floor(rng()*cands.length)];
+    const sub=subWindow(path,s,months); if(!sub.length)continue;
+    const r=runAccount(sub,R,dpp,contracts,"funded",false,null,null);
+    blow+=r.blew?1:0; pay+=r.payouts>=1?1:0; nets.push(r.netCash); n++;
+  }
+  if(!n)return null;
+  nets.sort((a,b)=>a-b);
+  return {blow:blow/n,pay:pay/n,net:nets.reduce((a,b)=>a+b,0)/n,p5:quant(nets,0.05),p95:quant(nets,0.95),n};
+}
+
+function evalDist(trades,R,dpp,contracts,samples,seed,sigma){
+  const rng=mulberry32(seed+99);
+  let pass=0,n=0; const days=[];
+  const cut=Math.max(1,Math.floor(trades.length*0.6));
+  for(let k=0;k<Math.min(samples,300);k++){
+    const path=shufflePath(trades,sigma,seed+k*211+3);
+    const startIdx=Math.floor(rng()*cut);
+    const sub=path.slice(startIdx);
+    if(!sub.length)continue;
+    const r=runAccount(sub,R,dpp,contracts,"eval",true,null,null); n++;
+    if(r.reachedFunded){pass++;if(r.daysToPass!=null)days.push(r.daysToPass);}
+  }
+  days.sort((a,b)=>a-b);
+  return {pass:n?pass/n:0,medDays:days.length?quant(days,0.5):null};
+}
+
+function liveForward(trades,R,dpp,contracts,initBal,initPeak,samples,seed,sigma){
+  let blow=0,pay=0,n=0; const nets=[];
+  for(let k=0;k<samples;k++){
+    const path=shufflePath(trades,sigma,seed+k*317+5);
+    const r=runAccount(path,R,dpp,contracts,"funded",false,initBal,initPeak);
+    blow+=r.blew?1:0; pay+=r.payouts>=1?1:0; nets.push(r.netCash); n++;
+  }
+  nets.sort((a,b)=>a-b);
+  return {blow:blow/n,pay:pay/n,net:nets.reduce((a,b)=>a+b,0)/n,p5:quant(nets,0.05),p95:quant(nets,0.95),worst:nets[0]};
+}
+
+function startMonthSweep(trades,R,dpp,contracts,months){
+  const monthsList=[...new Set(trades.map(t=>ym(t.date)))].sort();
+  const last=d(trades[trades.length-1].date); const out=[];
+  for(const m of monthsList){ const s=m+"-01"; if(addMonths(s,months)>last+DAY)continue;
+    const sub=subWindow(trades,s,months); if(!sub.length){out.push({m,v:null});continue;}
+    const r=runAccount(sub,R,dpp,contracts,"funded",false,null,null); out.push({m,v:r.blew?"BLEW":r.netCash}); }
+  return out;
+}
+
+function parseData(text){
+  text=text.trim(); if(!text)throw new Error("No data.");
+  let rows=[];
+  if(text[0]==="["){ const arr=JSON.parse(text);
+    for(const it of arr){ if(Array.isArray(it))rows.push({date:String(it[0]).slice(0,10),pts:+it[1]});
+      else rows.push({date:String(it.sd||it.date||it.day).slice(0,10),pts:+(it.pnl!=null?it.pnl:it.pnl_pts)}); }
+  } else { const lines=text.split(/\r?\n/).filter(l=>l.trim()); let di=0,pi=1,hasHdr=false;
+    const h=lines[0].split(/[,\t]/).map(x=>x.trim().toLowerCase());
+    if(h.some(x=>/date|^sd$/.test(x))||h.some(x=>/pnl/.test(x))){hasHdr=true;di=h.findIndex(x=>/date|^sd$/.test(x));pi=h.findIndex(x=>/pnl/.test(x));if(di<0)di=0;if(pi<0)pi=1;}
+    for(let i=hasHdr?1:0;i<lines.length;i++){const c=lines[i].split(/[,\t]/);const dt=(c[di]||"").trim().slice(0,10);const pv=parseFloat(c[pi]);if(dt&&!isNaN(pv))rows.push({date:dt,pts:pv});} }
+  rows=rows.filter(r=>r.date&&!isNaN(r.pts)); if(!rows.length)throw new Error("Couldn't find date + pnl.");
+  rows.sort((a,b)=>d(a.date)-d(b.date)); return rows;
+}
+
+let TRADES=[],LAST=[],SELFIRM="fn50",SORT="after";
+function fmt$(v){return (v<0?"-$":"$")+Math.abs(Math.round(v)).toLocaleString();}
+function unit(){return document.querySelector('#fmt button.on').dataset.v;}
+function loadSample(){document.getElementById("data").value=JSON.stringify(SAMPLE);document.querySelector('#fmt [data-v="points"]').click();run();}
+
+function run(){
+  const err=document.getElementById("err");err.style.display="none";
+  try{TRADES=parseData(document.getElementById("data").value);}catch(e){err.textContent=e.message;err.style.display="block";return;}
+  const dpp=unit()==="dollars"?1:(+document.getElementById("dpp").value||1);
+  const ct=+document.getElementById("ct").value;
+  const hz=Math.max(1,+document.getElementById("hz").value||6);
+  const ms=Math.max(30,+document.getElementById("ms").value||200);
+  const sg=+document.getElementById("sg").value;
+  const seed=12345;
+  let cum=0,peak=0,mdd=0,net=0; const mo={};
+  for(const t of TRADES){const dol=t.pts*dpp*ct;net+=dol;cum+=dol;peak=Math.max(peak,cum);mdd=Math.min(mdd,cum-peak);mo[ym(t.date)]=(mo[ym(t.date)]||0)+dol;}
+  let wm="",w=0; for(const k in mo)if(mo[k]<w){w=mo[k];wm=k;}
+  document.getElementById("tiles").innerHTML=`
+    <div class="tile"><div class="k">Trades</div><div class="v">${TRADES.length}</div></div>
+    <div class="tile"><div class="k">Net (${ct}×)</div><div class="v ${net>=0?'pos':'neg'}">${fmt$(net)}</div></div>
+    <div class="tile"><div class="k">Max drawdown</div><div class="v neg">${fmt$(mdd)}</div></div>
+    <div class="tile"><div class="k">Worst month</div><div class="v ${w>=0?'pos':'neg'}">${fmt$(w)}${wm?` <span style="font-size:11px;color:var(--muted)">${wm.slice(5)}</span>`:''}</div></div>
+    <div class="tile"><div class="k">Span</div><div class="v" style="font-size:13px">${TRADES[0].date} → ${TRADES[TRADES.length-1].date}</div></div>`;
+
+  LAST=PRESETS.map(R=>{
+    const fw=fundedDist(TRADES,R,dpp,ct,hz,ms,seed,sg);
+    const ev=evalDist(TRADES,R,dpp,ct,ms,seed,sg);
+    const months=ev.medDays!=null?Math.max(1,Math.ceil(ev.medDays/30)):1;
+    const evalCost=R.monthly?R.evalFee*months+R.actFee:R.evalFee+R.actFee;
+    const fnet=fw?fw.net:0;
+    return {R,pass:ev.pass,medDays:ev.medDays,blow:fw?fw.blow:null,pay:fw?fw.pay:null,net:fnet,p5:fw?fw.p5:0,p95:fw?fw.p95:0,evalCost,after:ev.pass*fnet-evalCost,months};
+  });
+  renderCmp();renderPills();renderHeat();runLive();
+  document.getElementById("sgWord").textContent = sg<=0?" (original order)":sg<1?" (mild reorder)":sg<2?" (heavy reorder)":" (near-random)";
+  document.getElementById("cmpSub").innerHTML=`${ct} contract(s) @ $${dpp}/pt · ${hz}-mo windows · ${ms} samples · σ=${sg.toFixed(2)}. `+
+    (sg>0?`<b style="color:var(--blue)">Shuffle on</b> — numbers are averages over reshuffled orderings.`:`<b>Original order</b> — front-loaded; raise σ for the honest spread.`);
+  document.getElementById("disc").innerHTML=`<b>Why the rosy numbers at σ=0?</b> This path is front-loaded (strong months first, the losing months later), so on the single fixed order almost every start reaches a payout. Win <i>rate</i> says nothing about <i>order</i>. Slide σ up: as the wins scatter, payout% drops and blow-up rises toward the true picture — and 50K accounts start failing before 100K ones. Everything is realized-only, so blow-up is still a <b>lower bound</b>. Notional balance is never wealth. <b style="color:var(--cyan)">Apex ✓</b> rules are verified from the help center (2026-07): EOD trailing DD, no min-days/consistency to pass, but 5 qualifying days ($ min/day) + 50% consistency + ramped caps + max 6 payouts to withdraw. <b style="color:var(--amber)">FundedNext / Alpha / TPT ⚠</b> are still assumed — paste their help-center rules to verify. Apex pricing is estimated. Not financial advice.`;
+}
+
+function renderCmp(){
+  const rows=LAST.slice(); const dir=(SORT==="firm")?1:-1;
+  rows.sort((a,b)=>{const g=r=>SORT==="firm"?(r.R.firm+r.R.plan):SORT==="pass"?r.pass:SORT==="blow"?(r.blow==null?9:r.blow):SORT==="pay"?(r.pay==null?-9:r.pay):SORT==="net"?r.net:r.after;const x=g(a),y=g(b);return x<y?-dir:x>y?dir:0;});
+  const maxNet=Math.max(1,...rows.map(r=>r.net)),maxAfter=Math.max(1,...rows.map(r=>Math.abs(r.after)));
+  document.getElementById("cmpBody").innerHTML=rows.map(r=>{
+    const blow=r.blow==null?"—":(r.blow*100).toFixed(0)+"%",blowW=r.blow==null?0:Math.round(r.blow*100);
+    const pay=r.pay==null?"—":(r.pay*100).toFixed(0)+"%",neg=r.after<0;
+    return `<tr>
+      <td class="firm">${r.R.firm} ${r.R.verified?'<span title="rules verified from help center 2026-07" style="color:var(--cyan)">✓</span>':'<span title="rules still assumed — paste to verify" style="color:var(--amber)">⚠</span>'} <small>${r.R.plan} · ${r.R.monthly?'monthly $'+r.R.evalFee:'one-time $'+(r.R.evalFee+r.R.actFee)}</small></td>
+      <td class="num">${(r.pass*100).toFixed(0)}%${r.medDays!=null?`<small style="color:var(--muted)">~${Math.round(r.medDays)}d</small>`:''}</td>
+      <td class="num"><div class="bar blow" style="min-width:66px"><span style="width:${Math.max(2,blowW)}%"></span><em>${blow}</em></div></td>
+      <td class="num">${pay}</td>
+      <td><div class="bar cash"><span style="width:${Math.max(2,Math.round(r.net/maxNet*100))}%"></span><em>${fmt$(r.net)}</em></div></td>
+      <td>${neg?`<div class="bar" style="background:var(--rust-soft)"><em style="right:auto;left:6px;color:var(--rust)">${fmt$(r.after)}</em></div>`:`<div class="bar cash"><span style="width:${Math.max(2,Math.round(r.after/maxAfter*100))}%"></span><em>${fmt$(r.after)}</em></div>`}</td>
+    </tr>`;}).join("");
+}
+function sortCmp(k){SORT=k;renderCmp();}
+function renderPills(){document.getElementById("firmPills").innerHTML=PRESETS.map(R=>`<span class="pill ${R.key===SELFIRM?'on':''}" onclick="SELFIRM='${R.key}';renderPills();renderHeat()">${R.firm} ${R.plan.replace(/EOD |PRO\+ |Legacy |Premium /,'')}</span>`).join("");}
+function renderHeat(){
+  const dpp=unit()==="dollars"?1:(+document.getElementById("dpp").value||1),ct=+document.getElementById("ct").value,swH=Math.max(1,+document.getElementById("swH").value||3);
+  const R=PRESETS.find(p=>p.key===SELFIRM),sweep=startMonthSweep(TRADES,R,dpp,ct,swH);
+  const vals=sweep.filter(s=>typeof s.v==="number").map(s=>s.v),mx=Math.max(1,...vals);
+  function color(v){ if(v==="BLEW")return 'style="background:var(--rust);color:#fff"'; if(typeof v!=="number"||v<=0)return 'style="background:var(--rust-soft);color:var(--rust)"';
+    const f=v/mx,l=22+f*30; return `style="background:hsl(210 90% ${l}%);color:${f>0.45?'#eaf3ff':'#cfe4ff'}"`; }
+  const cell=v=>v==null?'<td class="cell" style="opacity:.4">n/a</td>':`<td class="cell" ${color(v)}>${v==="BLEW"?"BLEW":fmt$(v)}</td>`;
+  document.getElementById("heat").innerHTML=`<thead><tr><th style="text-align:left">Start month</th><th>${R.firm} ${R.plan} · ${swH}mo net</th></tr></thead><tbody>`+sweep.map(s=>`<tr><td class="mo">${s.m}</td>${cell(s.v)}</tr>`).join("")+"</tbody>";
+}
+function runLive(){
+  const dpp=unit()==="dollars"?1:(+document.getElementById("dpp").value||1);
+  const sg=+document.getElementById("sg").value,ms=Math.max(30,+document.getElementById("ms").value||200);
+  const R=PRESETS.find(p=>p.key===document.getElementById("liveFirm").value);
+  const bal=+document.getElementById("liveBal").value,pk=Math.max(+document.getElementById("livePeak").value,bal),ct=+document.getElementById("liveCt").value;
+  const lf=liveForward(TRADES,R,dpp,ct,bal,pk,ms,12345,sg);
+  let floor=pk-R.dd; if(R.lockAt!=null)floor=Math.min(floor,R.lockAt);
+  const room=bal-floor;
+  const risky=lf.blow>0.25;
+  document.getElementById("liveVerdict").textContent = sg<=0?"turn σ up ▸":(lf.blow<0.1?"low blow risk":lf.blow<0.3?"watch drawdown":"high blow risk");
+  document.getElementById("liveVerdict").style.color = lf.blow<0.1?"var(--cyan)":lf.blow<0.3?"var(--amber)":"var(--rust)";
+  document.getElementById("liveVerdict").style.borderColor = lf.blow<0.1?"var(--cyan)":lf.blow<0.3?"var(--amber)":"var(--rust)";
+  document.getElementById("liveRes").innerHTML=`
+    <div class="lr"><div class="k">Drawdown room now</div><div class="v">${fmt$(room)}</div></div>
+    <div class="lr"><div class="k">Blow-up rest of path</div><div class="v ${lf.blow<0.1?'pos':'neg'}">${(lf.blow*100).toFixed(0)}%</div></div>
+    <div class="lr"><div class="k">Payout reached</div><div class="v pos">${(lf.pay*100).toFixed(0)}%</div></div>
+    <div class="lr"><div class="k">Mean net cash</div><div class="v ${lf.net>=0?'pos':'neg'}">${fmt$(lf.net)}</div></div>
+    <div class="lr"><div class="k">P5 · P95 net</div><div class="v" style="font-size:15px">${fmt$(lf.p5)} · ${fmt$(lf.p95)}</div></div>`;
+  document.getElementById("liveHint").innerHTML = `Floor at <b>${fmt$(floor)}</b> — you breach if balance touches it. `+
+    (sg<=0?`This is the single front-loaded path; <b style="color:var(--blue)">raise σ (step 3)</b> to see the real spread of orderings, then read blow-up and P5.`:
+      `Across ${ms} reshuffled orderings (σ=${sg.toFixed(2)}): worst case ${fmt$(lf.worst)}. If blow-up is uncomfortable, cut contracts or bank payouts sooner.`);
+}
+
+document.querySelectorAll('#fmt button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#fmt button').forEach(x=>x.classList.remove('on'));b.classList.add('on');document.getElementById('dpp').disabled=(b.dataset.v==='dollars');run();});
+document.getElementById("file").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{document.getElementById("data").value=r.result;run();};r.readAsText(f);};
+document.getElementById("sg").addEventListener("input",e=>{document.getElementById("sgLabel").textContent=(+e.target.value).toFixed(2);});
+["dpp","ct","hz","swH","sg","ms"].forEach(id=>document.getElementById(id).addEventListener("change",run));
+["liveFirm","liveBal","livePeak","liveCt"].forEach(id=>document.getElementById(id).addEventListener("change",runLive));
+document.getElementById("liveFirm").innerHTML=PRESETS.map(R=>`<option value="${R.key}"${R.key==="apex50"?" selected":""}>${R.firm} ${R.plan}</option>`).join("");
+function toggleTheme(){const c=document.documentElement.dataset.theme||'dark';document.documentElement.dataset.theme=c==='dark'?'light':'dark';}
+document.documentElement.dataset.theme='dark';
+loadSample();
+</script>

@@ -5,6 +5,63 @@ top. Findings are classified `BLOCKER` / `HIGH` / `MEDIUM` / `LOW` / `OPTIONAL`.
 
 ---
 
+## Review 015 — 2026-07-03 — Firm presets, browser Lab, EOD trailing, and Apex help-center verification
+
+### Context
+Extended the prop tooling into a user-facing decision workflow and ran the user's real
+NQ ledger + a forward scenario through it. Implemented by the review lead (Codex offline).
+**Independent runs: `pytest -q` = 163 passed, 2 skipped.**
+
+### Engine (sim_core/prop_firm.py)
+- **`trailing_basis` now actually applied.** Previously validated but ignored (peak
+  ratcheted every trade). Now `end_of_day` ratchets the drawdown threshold only at the
+  session-close balance; `end_of_trade` ratchets per fill. EOD is materially more
+  forgiving (intraday spikes don't raise the floor) and is what Apex/FundedNext/Alpha use.
+  Regression: `test_end_of_day_trailing_is_more_forgiving_than_end_of_trade`.
+- **Funded-window fee double-count fixed.** `funded_window_analysis` was charging the
+  evaluation fee on an already-funded account, so weak windows showed spurious negatives.
+  Entry fees are now zeroed inside the funded stage (counted once, separately).
+- Carries the Review 013/014 work: withdrawal-not-a-daily-loss fix, payout modes
+  (standard/daily), `initial_phase="funded"`, `summarize_evaluation_stage`,
+  `funded_window_analysis`.
+
+### Firm presets (app/prop_presets.py) — Apex VERIFIED
+- **Apex EOD corrected from the help center (2026-07)** — prior values were wrong
+  (secondary sources): 50K drawdown $2,500→**$2,000**, target $4,000→**$3,000**;
+  100K daily-loss $2,000→**$1,500**. Encoded: EOD trailing locking at start, NO
+  eval min-days/consistency, but **5 qualifying days (>=$250/300 per day) + 50%
+  consistency + ramped payout caps + $500 min + max 6 payouts** for withdrawals.
+- FundedNext / Alpha / Take Profit Trader presets remain **assumed** pending
+  authoritative rules; flagged in-tool (⚠ vs ✓) and in notes.
+
+### Browser Lab (app/prop_lab.html) — the self-serve tool
+Self-contained HTML Artifact (no install) that ports the prop engine to JS
+(verified to reproduce the Python results exactly) and lets the user:
+- paste/upload any ledger (points or dollars), set $/point + contracts + horizon;
+- see eval pass, blow-up, payout%, funded net and net-after-cost across every preset;
+- **shuffle the trade order by a σ knob** (Gaussian-displacement reorder) to break the
+  path's ordering luck and reveal the true blow-up distribution + P5/P95; and
+- model a **live funded account** (balance, peak, contracts) for forward risk.
+- The JS engine models the fuller Apex rules the Python `PropFirmRules` can't yet express
+  (ramped caps, qualifying-day minimum daily profit, separate eval/payout min-days, max
+  payouts, lock-preserving peak on withdrawal).
+
+### Key finding surfaced for the user
+The forward scenario is **front-loaded** (strong months first), so at σ=0 it shows an
+unrealistic 0% blow / ~100% payout. Shuffling exposes the truth: the user's live Apex 50K
+at **2 micros** carries **~26–32% blow-up** over a shuffled forward year (vs ~1% at 1
+micro); and a bigger drawdown (100K, or 3 micros stress) changes blow-up from ~87% (50K)
+to ~16% (100K). Sizing, not firm choice, is the dominant risk lever.
+
+### Limitations / next
+- Alpha's "withdraw up to 50% of profit per request" and FundedNext/TPT full tables are
+  not yet modeled — pending verification, then the JS + Python presets get updated and the
+  ⚠ flags flip to ✓.
+- The Python `PropFirmRules` should gain ramped-cap / qualifying-day / per-request-%
+  fields to match the Lab (currently Lab-only). Deferred.
+
+---
+
 ## Review 014 — 2026-07-02 — Prop enhancements: daily payouts, stage stats, funded windows
 
 ### Scope

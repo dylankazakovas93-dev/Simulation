@@ -286,3 +286,20 @@ day's opening baseline so a payout is never miscounted as a daily-loss breach
 ("withdrawals are not losses").
 **Scope / limitation:** Funded windows overlap (reuse blocks of one history) and are
 not independent samples; documented in KNOWN_LIMITATIONS.
+
+## ADR-024 — Firm rules are declared config (verified per firm) and a browser Lab mirrors the engine
+**Status:** ACCEPTED (Review 015, review lead)
+**Decision:** Firm-specific presets live outside the engine (app/prop_presets.py) and each
+carries a verified/assumed status with sources + retrieval date. A firm is only marked
+"verified" when its rules come from that firm's own help center; Apex EOD is verified
+(2026-07). The trade-order shuffler (σ) is the sanctioned way to defeat path-ordering luck:
+single-path prop results are front-loaded and must be read through the shuffle distribution
+(blow-up + P5), never at σ=0. The browser Lab (app/prop_lab.html) is a self-contained port
+of the prop engine for the user to test their own ledgers; it is verified to reproduce the
+Python results and may model firm rules the core PropFirmRules cannot yet express (ramped
+caps, qualifying-day minimum daily profit, separate eval/payout min-days, max payouts),
+which is documented as a follow-up to fold back into the tested core.
+**Why:** The user makes real-money decisions from these numbers, so wrong firm rules
+(Apex was wrong from secondary sources) are unacceptable; the verified/assumed flag and
+help-center sourcing make trust auditable, and the shuffler prevents front-loaded single
+paths from flattering the result.
