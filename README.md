@@ -2,7 +2,8 @@
 
 Portfolio and prop-firm strategy simulation laboratory.
 
-Version 1 is a validated simulation core, not a polished UI. It supports:
+Version 1 is a validated simulation core. The repo now also includes a first
+Streamlit control surface for prop-account convexity analysis. It supports:
 
 - Loading one or more timestamped strategy CSV files.
 - Validating and normalizing required trade fields.
@@ -12,12 +13,34 @@ Version 1 is a validated simulation core, not a polished UI. It supports:
 - Equity paths, drawdown, ruin, and monthly percentile reports.
 - Deterministic random seeds.
 - CSV export helpers for simulation outputs.
+- Uploading 12-month point ledgers in Streamlit.
+- Dropping overlapping open trades by user-defined strategy priority.
+- Ranking prop-account profiles and micro-contract counts by payout, failure,
+  and convexity metrics.
 
 ## Quick Start
 
 ```bash
 python3 -m pytest
 ```
+
+Run the Streamlit app locally:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -e '.[app]'
+.venv/bin/python -m streamlit run app/streamlit_app.py
+```
+
+The app expects one or more CSV ledgers. Common column aliases are accepted:
+
+- entry: `entry_time`, `entry_utc`, `entry_ts`, `entry`, `touched_at`
+- exit: `exit_time`, `exit_utc`, `exit_ts`, `exit`
+- PnL points: `pnl_points`, `pnl_pts`, `points`, `pnl`
+- excursions: `mae_points`/`mae_pts`, `mfe_points`/`mfe_pts`
+
+Raw point ledgers are treated as one micro contract by default, with the app
+defaulting to MNQ at `$2/point/contract`.
 
 Minimal Python example:
 
@@ -77,9 +100,29 @@ sim_core/
     resampling/     Historical replay and synchronized bootstrap policies
     execution/      Fixed-contract event replay
     metrics/        Drawdown, ruin, and percentile reports
+    prop_rules.py   Prop-account rules, overlap filtering, payout ranking
 tests/              Pytest regression suite
 configs/            Example scenario configuration
 sample_data/        Small ledgers for manual smoke tests
 reports/            Intended output location for generated reports
-app/                Reserved for Streamlit after core validation
+app/                Streamlit app entrypoint
 ```
+
+## Deployment
+
+The simplest deployment path is Streamlit Community Cloud or another service
+that can run a Python app from GitHub. Point it at:
+
+```text
+app/streamlit_app.py
+```
+
+Install command:
+
+```bash
+pip install -e '.[app]'
+```
+
+For private/local hardware, run the local command above and keep the Streamlit
+process open. The app is intentionally file-upload based, so ledgers do not need
+to live in the GitHub repository.
