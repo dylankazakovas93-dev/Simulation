@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
@@ -33,7 +34,11 @@ def main() -> None:
     profiles = default_prop_rule_profiles()
     with st.sidebar:
         st.header("Inputs")
-        uploaded = st.file_uploader("12-month ledgers", type=["csv"], accept_multiple_files=True)
+        uploaded = st.file_uploader(
+            "12-month ledgers",
+            type=["csv", "html", "htm"],
+            accept_multiple_files=True,
+        )
         source_timezone = st.text_input("Source timezone for naive timestamps", value="UTC")
         default_dpp = st.number_input("Dollars per point per micro", min_value=0.01, value=2.0, step=0.5)
         fallback_minutes = st.number_input("Fallback trade duration if exit is missing", 1, 1440, 60)
@@ -59,7 +64,7 @@ def main() -> None:
     errors: list[str] = []
     for file in uploaded:
         try:
-            raw = pd.read_csv(file)
+            raw = read_uploaded_ledger(file)
             loaded_frames.append(
                 coerce_uploaded_ledger(
                     raw,
@@ -185,7 +190,7 @@ def coerce_uploaded_ledger(
     default_dpp: float,
     fallback_minutes: int,
 ) -> pd.DataFrame:
-    columns = {str(column).strip().lower(): column for column in frame.columns}
+    columns = {normalize_column_name(str(column)): column for column in frame.columns}
     entry_col = first_present(columns, ENTRY_COLUMNS)
     if entry_col is None:
         raise ValueError(f"no entry timestamp column found; tried {', '.join(ENTRY_COLUMNS)}")
@@ -228,6 +233,113 @@ def coerce_uploaded_ledger(
         out["source_row_id"] = [f"{strategy_id}:{index + 2}" for index in range(len(frame))]
     out["trade_id"] = out["source_row_id"]
     return out
+
+
+def read_uploaded_ledger(file: Any) -> pd.DataFrame:
+    suffix = Path(file.name).suffix.lower()
+    if suffix == ".csv":
+        return pd.read_csv(file)
+    if suffix in {".html", ".htm"}:
+        content = file.getvalue()
+        text = content.decode("utf-8", errors="replace") if isinstance(content, bytes) else str(content)
+        tables = HTMLTableExtractor().parse(text)
+        candidates = [table_to_frame(table) for table in tables if len(table) >= 2]
+        candidates = [frame for frame in candidates if not frame.empty]
+        if not candidates:
+            raise ValueError("no HTML tables found")
+        candidates.sort(key=ledger_table_score, reverse=True)
+        best = candidates[0]
+        if ledger_table_score(best) <= 0:
+            raise ValueError("no ledger-like HTML table found with entry and PnL columns")
+        return best
+    raise ValueError(f"unsupported file type: {suffix or 'unknown'}")
+
+
+def table_to_frame(rows: list[list[str]]) -> pd.DataFrame:
+    width = max(len(row) for row in rows)
+    padded = [row + [""] * (width - len(row)) for row in rows]
+    header = padded[0]
+    body = padded[1:]
+    return pd.DataFrame(body, columns=dedupe_columns(header))
+
+
+def dedupe_columns(columns: list[str]) -> list[str]:
+    seen: dict[str, int] = {}
+    out: list[str] = []
+    for index, column in enumerate(columns):
+        label = str(column).strip() or f"column_{index + 1}"
+        count = seen.get(label, 0)
+        seen[label] = count + 1
+        out.append(label if count == 0 else f"{label}_{count + 1}")
+    return out
+
+
+def ledger_table_score(frame: pd.DataFrame) -> int:
+    columns = {normalize_column_name(str(column)) for column in frame.columns}
+    score = 0
+    if columns & set(ENTRY_COLUMNS):
+        score += 4
+    if columns & set(EXIT_COLUMNS):
+        score += 2
+    if columns & set(PNL_POINT_COLUMNS):
+        score += 4
+    if columns & set(PNL_DOLLAR_COLUMNS):
+        score += 3
+    if columns & set(MAE_COLUMNS):
+        score += 1
+    if columns & set(MFE_COLUMNS):
+        score += 1
+    score += min(len(frame) // 25, 4)
+    return score
+
+
+def normalize_column_name(column: str) -> str:
+    normalized = column.strip().lower()
+    for old, new in (("$", "dollars"), ("%", "pct"), ("/", "_"), ("-", "_"), (" ", "_")):
+        normalized = normalized.replace(old, new)
+    return "_".join(part for part in normalized.split("_") if part)
+
+
+class HTMLTableExtractor(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.tables: list[list[list[str]]] = []
+        self._table_depth = 0
+        self._rows: list[list[str]] = []
+        self._row: list[str] | None = None
+        self._cell_parts: list[str] | None = None
+
+    def parse(self, text: str) -> list[list[list[str]]]:
+        self.feed(text)
+        return self.tables
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "table":
+            if self._table_depth == 0:
+                self._rows = []
+            self._table_depth += 1
+        elif tag == "tr" and self._table_depth:
+            self._row = []
+        elif tag in {"th", "td"} and self._table_depth and self._row is not None:
+            self._cell_parts = []
+
+    def handle_data(self, data: str) -> None:
+        if self._cell_parts is not None:
+            self._cell_parts.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in {"th", "td"} and self._cell_parts is not None and self._row is not None:
+            self._row.append(" ".join("".join(self._cell_parts).split()))
+            self._cell_parts = None
+        elif tag == "tr" and self._row is not None:
+            if any(cell != "" for cell in self._row):
+                self._rows.append(self._row)
+            self._row = None
+        elif tag == "table" and self._table_depth:
+            self._table_depth -= 1
+            if self._table_depth == 0 and self._rows:
+                self.tables.append(self._rows)
+                self._rows = []
 
 
 def first_present(columns: dict[str, Any], candidates: tuple[str, ...]) -> Any | None:
