@@ -1,0 +1,32 @@
+# Explicit per-strategy contract mapping for the real NQ/ES micro ledger.
+#
+# ADR-011: underlying symbols (NQ/ES) NEVER silently imply a contract (MNQ/MES).
+# Every strategy_id present in the CSV MUST appear below; the loader fails closed
+# on any unmapped strategy. dpp in the file is cross-checked against
+# dollars_per_point here.
+strategies:
+  NQ_LOCKED_19_11_X1_5:
+    underlying: NQ
+    contract_symbol: MNQ
+    dollars_per_point: 2
+    currency: USD
+  ES_NORMAL_19_11_X2_0:
+    underlying: ES
+    contract_symbol: MES
+    dollars_per_point: 5
+    currency: USD
+  ES_EXPANDED_19_15_X2_0:
+    underlying: ES
+    contract_symbol: MES
+    dollars_per_point: 5
+    currency: USD
+  ES_LATE_11_15_X2_0:
+    underlying: ES
+    contract_symbol: MES
+    dollars_per_point: 5
+    currency: USD
+  ES_PROFIT_ONLY_NQ_INTERRUPT_NORMAL_19_11_X1_5:
+    underlying: ES
+    contract_symbol: MES
+    dollars_per_point: 5
+    currency: USD

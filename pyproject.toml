@@ -1,0 +1,35 @@
+[project]
+name = "simulation"
+version = "0.1.0"
+description = "Portfolio and prop-firm strategy simulation laboratory"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.0",
+    "pandas>=2.2",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+app = [
+    "streamlit>=1.36",
+]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+markers = [
+    "real_ledger: integration test against the real canonical ledger; skips unless SIM_REAL_LEDGER_PATH is set",
+]
+
+[tool.setuptools.packages.find]
+include = ["sim_core*"]
+exclude = ["app*", "configs*", "reports*", "sample_data*", "tests*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
