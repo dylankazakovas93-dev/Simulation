@@ -23,6 +23,7 @@ PNL_DOLLAR_COLUMNS = ("pnl_dollars", "pnl_usd", "pnl_$", "net_dollars")
 MAE_COLUMNS = ("mae_points", "mae_pts", "mae")
 MFE_COLUMNS = ("mfe_points", "mfe_pts", "mfe")
 STOP_COLUMNS = ("stop_points", "stop_pts", "sl_points", "sl_pts")
+DEFAULT_PROFILE_KEY = "Apex Trader Funding - EOD PA 50K"
 
 
 def main() -> None:
@@ -42,7 +43,7 @@ def main() -> None:
         selected_profiles = st.multiselect(
             "Account profiles",
             list(profiles),
-            default=["Apex Trader Funding - EOD PA 50K"],
+            default=default_profile_selection(profiles),
         )
         min_contracts, max_contracts = st.slider("Micro contracts", 1, 50, (1, 8))
         paths = st.slider("Bootstrap paths", 25, 2000, 250, step=25)
@@ -240,6 +241,17 @@ def show_rule_profiles(profiles: dict[str, Any]) -> None:
     st.subheader("Rule Profiles")
     rows = [profile.to_dict() for profile in profiles.values()]
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
+def default_profile_selection(profiles: dict[str, Any]) -> list[str]:
+    if DEFAULT_PROFILE_KEY in profiles:
+        return [DEFAULT_PROFILE_KEY]
+    for key in profiles:
+        if key.startswith("Apex Trader Funding"):
+            return [key]
+    if profiles:
+        return [next(iter(profiles))]
+    return []
 
 
 def format_ranking(frame: pd.DataFrame) -> pd.DataFrame:
