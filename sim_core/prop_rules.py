@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from functools import lru_cache
 from typing import Any, Literal
 
 import numpy as np
@@ -506,14 +507,11 @@ def run_prop_ensemble(
 ) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     rng = np.random.default_rng(seed)
+    sampler = MonthBlockSampler(trades, horizon_months)
     for contracts in contract_values:
         path_results: list[PropPathResult] = []
         for _ in range(paths):
-            sampled = sample_month_blocks(
-                trades,
-                horizon_months=horizon_months,
-                rng=rng,
-            )
+            sampled = sampler.sample(rng)
             path_results.append(
                 simulate_prop_account(
                     sampled,
@@ -524,6 +522,35 @@ def run_prop_ensemble(
             )
         rows.append(_summarize_contract_results(profile, contracts, path_results))
     return pd.DataFrame(rows).sort_values(["convexity_score", "p50_cash"], ascending=[False, False])
+
+
+class MonthBlockSampler:
+    def __init__(self, trades: list[Trade], horizon_months: int) -> None:
+        self.horizon_months = horizon_months
+        self.by_month: dict[pd.Period, list[Trade]] = {}
+        for trade in trades:
+            self.by_month.setdefault(trade.source_month, []).append(trade)
+        self.months = sorted(self.by_month)
+        self.start_month = min((trade.source_month for trade in trades), default=None)
+        self.shifted_blocks: dict[tuple[pd.Period, int], list[Trade]] = {}
+
+    def sample(self, rng: np.random.Generator) -> list[Trade]:
+        if self.horizon_months <= 0 or not self.months or self.start_month is None:
+            return []
+        sampled: list[Trade] = []
+        for offset in range(self.horizon_months):
+            source_month = self.months[int(rng.integers(0, len(self.months)))]
+            sampled.extend(self._shifted_block(source_month, offset))
+        return sorted(sampled, key=lambda trade: (trade.entry_time, trade.exit_time, trade.strategy_id))
+
+    def _shifted_block(self, source_month: pd.Period, offset: int) -> list[Trade]:
+        key = (source_month, offset)
+        if key not in self.shifted_blocks:
+            target_month = self.start_month + offset
+            self.shifted_blocks[key] = [
+                trade.shifted_to_month(target_month) for trade in self.by_month[source_month]
+            ]
+        return self.shifted_blocks[key]
 
 
 def sample_month_blocks(
@@ -645,7 +672,13 @@ def _overlaps(left: Trade, right: Trade) -> bool:
 
 
 def _trade_day(timestamp: pd.Timestamp, timezone: str) -> pd.Timestamp:
-    return timestamp.tz_convert(timezone).normalize().tz_localize(None)
+    return _cached_trade_day(timestamp.value, str(timestamp.tz), timezone)
+
+
+@lru_cache(maxsize=200_000)
+def _cached_trade_day(timestamp_ns: int, source_timezone: str, target_timezone: str) -> pd.Timestamp:
+    timestamp = pd.Timestamp(timestamp_ns, tz=source_timezone)
+    return timestamp.tz_convert(target_timezone).normalize().tz_localize(None)
 
 
 def _nanpercentile(values: np.ndarray, percentile: float) -> float | None:

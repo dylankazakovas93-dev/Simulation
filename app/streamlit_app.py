@@ -64,9 +64,10 @@ def main() -> None:
             key=f"account_profiles_{firm}",
         )
         min_contracts, max_contracts = st.slider("Micro contracts", 1, 50, (1, 8))
-        paths = st.slider("Bootstrap paths", 25, 2000, 250, step=25)
+        paths = st.slider("Bootstrap paths", 5, 500, 25, step=5)
         horizon_months = st.slider("Horizon months", 1, 24, 12)
         seed = st.number_input("Seed", value=12345, step=1)
+        run_simulation = st.button("Run simulation", type="primary", use_container_width=True)
 
     if not uploaded:
         st.info("Upload one or more CSV ledgers to begin.")
@@ -125,6 +126,8 @@ def main() -> None:
     with tabs[0]:
         if not selected_profiles:
             st.warning("Select at least one account profile.")
+        elif not run_simulation:
+            st.info("Adjust inputs, then click Run simulation.")
         else:
             contract_values = list(range(int(min_contracts), int(max_contracts) + 1))
             with st.spinner("Running account/contract grid..."):

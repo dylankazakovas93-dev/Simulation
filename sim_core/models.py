@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from functools import lru_cache
 import json
 from pathlib import Path
 from typing import Any, Literal
@@ -568,8 +569,22 @@ def classify_result(pnl_dollars: float, tolerance: float = 0.0) -> TradeResult:
 
 
 def _month_start_utc(month: pd.Period) -> pd.Timestamp:
-    return pd.Timestamp(month.start_time).tz_localize("UTC")
+    month = pd.Period(month, "M")
+    return _cached_month_start_utc(month.year, month.month)
 
 
 def _month_end_utc(month: pd.Period) -> pd.Timestamp:
-    return _month_start_utc(month + 1) - pd.Timedelta(nanoseconds=1)
+    month = pd.Period(month, "M")
+    return _cached_month_end_utc(month.year, month.month)
+
+
+@lru_cache(maxsize=4096)
+def _cached_month_start_utc(year: int, month: int) -> pd.Timestamp:
+    return pd.Timestamp(year=year, month=month, day=1, tz="UTC")
+
+
+@lru_cache(maxsize=4096)
+def _cached_month_end_utc(year: int, month: int) -> pd.Timestamp:
+    period = pd.Period(f"{year}-{month:02d}", "M")
+    next_month = period + 1
+    return _cached_month_start_utc(next_month.year, next_month.month) - pd.Timedelta(nanoseconds=1)
