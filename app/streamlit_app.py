@@ -85,14 +85,14 @@ def main() -> None:
             "Existing eval": "existing_eval",
             "Funded / PA": "funded",
         }[start_mode_label]
-        current_balance = st.number_input(
-            "Current balance, 0 = account start",
+        current_profit = st.number_input(
+            "Current profit above account start",
             min_value=0.0,
             value=0.0,
             step=100.0,
         )
-        current_floor = st.number_input(
-            "Current drawdown floor, 0 = default",
+        current_cushion = st.number_input(
+            "Current drawdown cushion remaining",
             min_value=0.0,
             value=0.0,
             step=100.0,
@@ -207,10 +207,25 @@ def main() -> None:
                 for plan in selected_plans:
                     costs = firm_costs.get(plan.firm, {})
                     effective_start_mode = start_mode if plan.eval_profile is not None else "funded"
+                    active_profile = (
+                        plan.eval_profile
+                        if effective_start_mode in {"new_eval", "existing_eval"} and plan.eval_profile is not None
+                        else plan.funded_profile
+                    )
+                    actual_current_balance = (
+                        active_profile.starting_balance + float(current_profit)
+                        if effective_start_mode in {"existing_eval", "funded"} and float(current_profit) > 0
+                        else None
+                    )
+                    actual_current_floor = (
+                        active_profile.starting_balance + float(current_profit) - float(current_cushion)
+                        if effective_start_mode in {"existing_eval", "funded"} and float(current_cushion) > 0
+                        else None
+                    )
                     settings_by_plan[plan.key] = LifecycleSettings(
                         start_mode=effective_start_mode,
-                        current_balance=float(current_balance) or None,
-                        current_floor=float(current_floor) or None,
+                        current_balance=actual_current_balance,
+                        current_floor=actual_current_floor,
                         current_winning_days=int(current_winning_days),
                         current_highest_winning_day=float(current_high_day),
                         desired_payout=float(desired_payout),
@@ -236,9 +251,10 @@ def main() -> None:
                 st.session_state["lifecycle_monthly_summary"] = summarize_monthly_paths(monthly)
                 st.session_state["lifecycle_events"] = events
             st.caption(
-                "Paid before blow = paths that reached a payout before the first terminal account failure. "
-                "Blew before payout = paths that failed before any payout. "
-                "Terminal blow = failed at any time inside the horizon, including after already getting paid."
+                "Current account paid first = payout happened before the first account failure. "
+                "Current account blew first = the account failed before any payout. "
+                "Payout after rebuy = first account failed, but a later rebuy eventually got paid. "
+                "Capital exhausted = the path ran out of allowed fee/rebuy budget inside the horizon."
             )
             st.dataframe(format_lifecycle_ranking(ranking), width="stretch", hide_index=True)
 
@@ -247,8 +263,8 @@ def main() -> None:
             cols[0].metric("Best plan", str(best["account"]))
             cols[1].metric("Best contracts", int(best["contracts"]))
             cols[2].metric("P50 net cash", money(float(best["p50_net_cash"])))
-            cols[3].metric("Paid before blow", pct(float(best["paid_before_blow_rate"])))
-            cols[4].metric("Blew before payout", pct(float(best["blew_before_payout_rate"])))
+            cols[3].metric("Paid first", pct(float(best["current_account_paid_first_rate"])))
+            cols[4].metric("Blew first", pct(float(best["current_account_blew_first_rate"])))
             cols[5].metric("P50 first payout", month_or_dash(best["p50_month_to_first_payout"]))
 
     with tabs[1]:
@@ -525,11 +541,12 @@ def format_lifecycle_ranking(frame: pd.DataFrame) -> pd.DataFrame:
         "account",
         "contracts",
         "paths",
-        "paid_before_blow_rate",
-        "blew_before_payout_rate",
-        "paid_then_blew_rate",
-        "terminal_blow_rate",
-        "target_before_blow_rate",
+        "current_account_paid_first_rate",
+        "current_account_blew_first_rate",
+        "payout_after_rebuy_rate",
+        "any_payout_rate",
+        "capital_exhausted_rate",
+        "target_before_first_fail_rate",
         "p50_month_to_first_payout",
         "mean_net_cash",
         "p50_net_cash",
@@ -542,11 +559,12 @@ def format_lifecycle_ranking(frame: pd.DataFrame) -> pd.DataFrame:
     ]
     formatted = frame[[column for column in columns if column in frame.columns]].copy()
     for column in (
-        "paid_before_blow_rate",
-        "blew_before_payout_rate",
-        "paid_then_blew_rate",
-        "terminal_blow_rate",
-        "target_before_blow_rate",
+        "current_account_paid_first_rate",
+        "current_account_blew_first_rate",
+        "payout_after_rebuy_rate",
+        "any_payout_rate",
+        "capital_exhausted_rate",
+        "target_before_first_fail_rate",
     ):
         if column in formatted:
             formatted[column] = formatted[column].map(pct)
@@ -600,12 +618,7 @@ def build_monthly_heatmap(frame: pd.DataFrame):
         values="p50_pnl",
         aggfunc="first",
     ).rename(columns=lambda month: f"M{int(month)}")
-    return heatmap.style.format(money).background_gradient(
-        cmap="Greens",
-        axis=None,
-        vmin=min(-1.0, float(frame["p50_pnl"].min())),
-        vmax=max(1.0, float(frame["p50_pnl"].max())),
-    )
+    return heatmap.map(money)
 
 
 def format_path_frame(frame: pd.DataFrame) -> pd.DataFrame:

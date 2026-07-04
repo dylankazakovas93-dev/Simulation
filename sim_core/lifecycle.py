@@ -85,6 +85,8 @@ class LifecyclePathResult:
     payouts_taken: int
     first_payout_month: int | None
     first_payout_day: int | None
+    first_failure_month: int | None
+    first_failure_day: int | None
     total_payouts: float
     total_fees: float
     net_cash: float
@@ -251,6 +253,8 @@ def simulate_lifecycle_path(
             payouts_taken=0,
             first_payout_month=None,
             first_payout_day=None,
+            first_failure_month=None,
+            first_failure_day=None,
             total_payouts=0.0,
             total_fees=0.0,
             net_cash=0.0,
@@ -273,6 +277,8 @@ def simulate_lifecycle_path(
     payouts_taken = 0
     first_payout_month: int | None = None
     first_payout_day: int | None = None
+    first_failure_month: int | None = None
+    first_failure_day: int | None = None
     failed_terminal = False
     terminal_reason = ""
     max_drawdown_seen = 0.0
@@ -499,6 +505,9 @@ def simulate_lifecycle_path(
         max_drawdown_seen = max(max_drawdown_seen, state.running_peak - state.minimum_balance)
 
         if breached:
+            if first_failure_month is None:
+                first_failure_month = month_index
+                first_failure_day = int((current_day - first_day).days) if first_day is not None else None
             month_status = f"{state.stage}_failed"
             events.append(
                 LifecycleEvent(
@@ -586,6 +595,8 @@ def simulate_lifecycle_path(
         payouts_taken=payouts_taken,
         first_payout_month=first_payout_month,
         first_payout_day=first_payout_day,
+        first_failure_month=first_failure_month,
+        first_failure_day=first_failure_day,
         total_payouts=total_payouts,
         total_fees=total_fees,
         net_cash=net_cash,
@@ -670,20 +681,28 @@ def summarize_lifecycle_results(results: list[LifecyclePathResult]) -> pd.DataFr
         failed = group["failed"].astype(bool)
         target = group["target_hit"].astype(bool)
         has_payout = group["first_payout_month"].notna()
-        paid_before_blow = has_payout
-        blew_before_payout = failed & ~has_payout
-        paid_then_blew = failed & has_payout
+        has_failure = group["first_failure_month"].notna()
+        first_payout_day = group["first_payout_day"].astype(float)
+        first_failure_day = group["first_failure_day"].astype(float)
+        paid_before_first_fail = has_payout & (
+            ~has_failure | (first_payout_day <= first_failure_day)
+        )
+        blew_before_first_payout = has_failure & (
+            ~has_payout | (first_failure_day < first_payout_day)
+        )
+        payout_after_rebuy = has_payout & has_failure & (first_failure_day < first_payout_day)
         row = {
             "plan": plan_key,
             "firm": group["firm"].iloc[0],
             "account": group["account_name"].iloc[0],
             "contracts": contracts,
             "paths": len(group),
-            "terminal_blow_rate": float(failed.mean()),
-            "paid_before_blow_rate": float(paid_before_blow.mean()),
-            "blew_before_payout_rate": float(blew_before_payout.mean()),
-            "paid_then_blew_rate": float(paid_then_blew.mean()),
-            "target_before_blow_rate": float((target & has_payout).mean()),
+            "capital_exhausted_rate": float(failed.mean()),
+            "current_account_paid_first_rate": float(paid_before_first_fail.mean()),
+            "current_account_blew_first_rate": float(blew_before_first_payout.mean()),
+            "payout_after_rebuy_rate": float(payout_after_rebuy.mean()),
+            "any_payout_rate": float(has_payout.mean()),
+            "target_before_first_fail_rate": float((target & paid_before_first_fail).mean()),
             "p05_net_cash": float(np.percentile(net, 5)),
             "p50_net_cash": float(np.percentile(net, 50)),
             "p95_net_cash": float(np.percentile(net, 95)),
@@ -701,13 +720,13 @@ def summarize_lifecycle_results(results: list[LifecyclePathResult]) -> pd.DataFr
         row["risk_adjusted_roi_score"] = (
             (row["mean_net_cash"] + 0.25 * max(0.0, row["p95_net_cash"] - row["p50_net_cash"]))
             / (1.0 + downside)
-            * row["paid_before_blow_rate"]
-            * max(0.0, 1.0 - row["blew_before_payout_rate"])
+            * row["current_account_paid_first_rate"]
+            * max(0.0, 1.0 - row["current_account_blew_first_rate"])
             * (1.0 + speed_factor)
         )
         rows.append(row)
     return pd.DataFrame(rows).sort_values(
-        ["target_before_blow_rate", "risk_adjusted_roi_score", "mean_net_cash"],
+        ["target_before_first_fail_rate", "risk_adjusted_roi_score", "mean_net_cash"],
         ascending=[False, False, False],
     )
 
