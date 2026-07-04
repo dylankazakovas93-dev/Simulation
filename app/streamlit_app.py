@@ -73,7 +73,6 @@ def main() -> None:
         min_contracts, max_contracts = st.slider("Micro contracts", 1, 50, (1, 8))
         paths = st.slider("Bootstrap paths", 5, 500, 100, step=5)
         horizon_months = st.slider("Horizon months", 1, 24, 12)
-        seed = st.number_input("Seed", value=12345, step=1)
 
         st.header("Current State")
         start_mode_label = st.selectbox(
@@ -228,7 +227,7 @@ def main() -> None:
                     contract_values=contract_values,
                     paths=int(paths),
                     horizon_months=int(horizon_months),
-                    seed=int(seed),
+                    seed=1729,
                     dollars_per_point=float(default_dpp),
                     settings_by_plan=settings_by_plan,
                 )
@@ -236,6 +235,11 @@ def main() -> None:
                 st.session_state["lifecycle_monthly"] = monthly
                 st.session_state["lifecycle_monthly_summary"] = summarize_monthly_paths(monthly)
                 st.session_state["lifecycle_events"] = events
+            st.caption(
+                "Paid before blow = paths that reached a payout before the first terminal account failure. "
+                "Blew before payout = paths that failed before any payout. "
+                "Terminal blow = failed at any time inside the horizon, including after already getting paid."
+            )
             st.dataframe(format_lifecycle_ranking(ranking), width="stretch", hide_index=True)
 
             best = ranking.iloc[0]
@@ -243,8 +247,8 @@ def main() -> None:
             cols[0].metric("Best plan", str(best["account"]))
             cols[1].metric("Best contracts", int(best["contracts"]))
             cols[2].metric("P50 net cash", money(float(best["p50_net_cash"])))
-            cols[3].metric("Target hit", pct(float(best["target_rate"])))
-            cols[4].metric("Fail rate", pct(float(best["fail_rate"])))
+            cols[3].metric("Paid before blow", pct(float(best["paid_before_blow_rate"])))
+            cols[4].metric("Blew before payout", pct(float(best["blew_before_payout_rate"])))
             cols[5].metric("P50 first payout", month_or_dash(best["p50_month_to_first_payout"]))
 
     with tabs[1]:
@@ -253,6 +257,12 @@ def main() -> None:
         if monthly_summary.empty:
             st.info("Run a lifecycle simulation to see monthly PnL, drawdown, fail, and payout rates.")
         else:
+            st.subheader("Median Monthly PnL Heatmap")
+            st.dataframe(
+                build_monthly_heatmap(monthly_summary),
+                width="stretch",
+            )
+            st.subheader("Monthly Distribution Table")
             st.dataframe(format_monthly_summary(monthly_summary), width="stretch", hide_index=True)
 
     with tabs[2]:
@@ -515,31 +525,47 @@ def format_lifecycle_ranking(frame: pd.DataFrame) -> pd.DataFrame:
         "account",
         "contracts",
         "paths",
-        "fail_rate",
-        "payout_rate",
-        "target_rate",
+        "paid_before_blow_rate",
+        "blew_before_payout_rate",
+        "paid_then_blew_rate",
+        "terminal_blow_rate",
+        "target_before_blow_rate",
         "p50_month_to_first_payout",
+        "mean_net_cash",
         "p50_net_cash",
         "p95_net_cash",
         "p05_net_cash",
         "mean_fees",
         "avg_attempts",
         "p95_max_drawdown",
-        "convexity_score",
+        "risk_adjusted_roi_score",
     ]
     formatted = frame[[column for column in columns if column in frame.columns]].copy()
-    for column in ("fail_rate", "payout_rate", "target_rate"):
+    for column in (
+        "paid_before_blow_rate",
+        "blew_before_payout_rate",
+        "paid_then_blew_rate",
+        "terminal_blow_rate",
+        "target_before_blow_rate",
+    ):
         if column in formatted:
             formatted[column] = formatted[column].map(pct)
-    for column in ("p50_net_cash", "p95_net_cash", "p05_net_cash", "mean_fees", "p95_max_drawdown"):
+    for column in (
+        "mean_net_cash",
+        "p50_net_cash",
+        "p95_net_cash",
+        "p05_net_cash",
+        "mean_fees",
+        "p95_max_drawdown",
+    ):
         if column in formatted:
             formatted[column] = formatted[column].map(money)
     if "p50_month_to_first_payout" in formatted:
         formatted["p50_month_to_first_payout"] = formatted["p50_month_to_first_payout"].map(month_or_dash)
     if "avg_attempts" in formatted:
         formatted["avg_attempts"] = formatted["avg_attempts"].round(2)
-    if "convexity_score" in formatted:
-        formatted["convexity_score"] = formatted["convexity_score"].round(3)
+    if "risk_adjusted_roi_score" in formatted:
+        formatted["risk_adjusted_roi_score"] = formatted["risk_adjusted_roi_score"].round(3)
     return formatted
 
 
@@ -565,6 +591,21 @@ def format_monthly_summary(frame: pd.DataFrame) -> pd.DataFrame:
         if column in formatted:
             formatted[column] = formatted[column].map(pct)
     return formatted
+
+
+def build_monthly_heatmap(frame: pd.DataFrame):
+    heatmap = frame.pivot_table(
+        index=["plan", "contracts"],
+        columns="month_index",
+        values="p50_pnl",
+        aggfunc="first",
+    ).rename(columns=lambda month: f"M{int(month)}")
+    return heatmap.style.format(money).background_gradient(
+        cmap="Greens",
+        axis=None,
+        vmin=min(-1.0, float(frame["p50_pnl"].min())),
+        vmax=max(1.0, float(frame["p50_pnl"].max())),
+    )
 
 
 def format_path_frame(frame: pd.DataFrame) -> pd.DataFrame:
@@ -662,35 +703,63 @@ def apply_matrix_theme() -> None:
     st.markdown(
         """
         <style>
+        :root {
+            --matrix-bg: #020604;
+            --matrix-panel: #050b08;
+            --matrix-soft: #07100b;
+            --matrix-line: #0f3d25;
+            --matrix-green: #00ff88;
+            --matrix-green-dim: #18a85d;
+            --matrix-text: #d9ffe8;
+        }
         .stApp {
-            background: #020604;
-            color: #d7ffe4;
+            background: var(--matrix-bg);
+            color: var(--matrix-text);
         }
         [data-testid="stSidebar"] {
-            background: #07100b;
-            border-right: 1px solid #123b26;
+            background: var(--matrix-soft);
+            border-right: 1px solid var(--matrix-line);
         }
         h1, h2, h3, .stMarkdown, label {
-            color: #dcffe8 !important;
+            color: var(--matrix-text) !important;
         }
         div[data-testid="stMetric"] {
-            background: #050b08;
-            border: 1px solid #174c30;
+            background: var(--matrix-panel);
+            border: 1px solid var(--matrix-line);
             border-radius: 6px;
             padding: 10px 12px;
         }
         div[data-testid="stMetricValue"] {
-            color: #37ff8b;
+            color: var(--matrix-green);
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
         }
-        .stButton > button {
-            background: #00b25c;
-            color: #001b0d;
-            border: 1px solid #37ff8b;
+        .stButton > button, .stButton > button[kind="primary"] {
+            background: var(--matrix-green-dim) !important;
+            color: #001b0d !important;
+            border: 1px solid var(--matrix-green) !important;
             font-weight: 800;
         }
+        .stButton > button:hover, .stButton > button[kind="primary"]:hover {
+            background: var(--matrix-green) !important;
+            color: #001b0d !important;
+            border-color: var(--matrix-green) !important;
+        }
+        div[data-baseweb="select"] > div,
+        input,
+        textarea,
+        [data-testid="stNumberInput"] input {
+            background-color: #030806 !important;
+            border-color: var(--matrix-line) !important;
+            color: var(--matrix-text) !important;
+        }
+        [data-testid="stSlider"] div[role="slider"] {
+            background-color: var(--matrix-green) !important;
+        }
+        [data-testid="stSlider"] div[data-testid="stTickBar"] {
+            background-color: var(--matrix-line) !important;
+        }
         .stDataFrame, [data-testid="stDataFrame"] {
-            border: 1px solid #123b26;
+            border: 1px solid var(--matrix-line);
             border-radius: 6px;
         }
         </style>

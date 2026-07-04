@@ -669,15 +669,21 @@ def summarize_lifecycle_results(results: list[LifecyclePathResult]) -> pd.DataFr
         payouts = group["total_payouts"].astype(float)
         failed = group["failed"].astype(bool)
         target = group["target_hit"].astype(bool)
+        has_payout = group["first_payout_month"].notna()
+        paid_before_blow = has_payout
+        blew_before_payout = failed & ~has_payout
+        paid_then_blew = failed & has_payout
         row = {
             "plan": plan_key,
             "firm": group["firm"].iloc[0],
             "account": group["account_name"].iloc[0],
             "contracts": contracts,
             "paths": len(group),
-            "fail_rate": float(failed.mean()),
-            "payout_rate": float((payouts > 0).mean()),
-            "target_rate": float(target.mean()),
+            "terminal_blow_rate": float(failed.mean()),
+            "paid_before_blow_rate": float(paid_before_blow.mean()),
+            "blew_before_payout_rate": float(blew_before_payout.mean()),
+            "paid_then_blew_rate": float(paid_then_blew.mean()),
+            "target_before_blow_rate": float((target & has_payout).mean()),
             "p05_net_cash": float(np.percentile(net, 5)),
             "p50_net_cash": float(np.percentile(net, 50)),
             "p95_net_cash": float(np.percentile(net, 95)),
@@ -691,14 +697,17 @@ def summarize_lifecycle_results(results: list[LifecyclePathResult]) -> pd.DataFr
             "avg_attempts": float(group["attempts"].astype(float).mean()),
         }
         downside = abs(row["p05_net_cash"])
-        row["convexity_score"] = (
-            (row["p50_net_cash"] + 0.35 * max(0.0, row["p95_net_cash"] - row["p50_net_cash"]))
+        speed_factor = 1.0 / max(1.0, float(row["p50_month_to_first_payout"] or 12.0))
+        row["risk_adjusted_roi_score"] = (
+            (row["mean_net_cash"] + 0.25 * max(0.0, row["p95_net_cash"] - row["p50_net_cash"]))
             / (1.0 + downside)
-            * max(0.0, 1.0 - row["fail_rate"])
+            * row["paid_before_blow_rate"]
+            * max(0.0, 1.0 - row["blew_before_payout_rate"])
+            * (1.0 + speed_factor)
         )
         rows.append(row)
     return pd.DataFrame(rows).sort_values(
-        ["target_rate", "convexity_score", "p50_net_cash"],
+        ["target_before_blow_rate", "risk_adjusted_roi_score", "mean_net_cash"],
         ascending=[False, False, False],
     )
 
