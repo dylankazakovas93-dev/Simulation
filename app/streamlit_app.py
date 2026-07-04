@@ -8,12 +8,16 @@ import pandas as pd
 import streamlit as st
 
 from sim_core.ingestion.csv_loader import normalize_trade_frame
+from sim_core.lifecycle import (
+    LifecycleSettings,
+    default_lifecycle_plans,
+    run_lifecycle_grid,
+    summarize_monthly_paths,
+)
 from sim_core.models import TradeValidationError
 from sim_core.prop_rules import (
     default_prop_rule_profiles,
     resolve_overlapping_trades,
-    run_prop_ensemble,
-    simulate_prop_account,
 )
 
 
@@ -29,9 +33,11 @@ DEFAULT_PROFILE_KEY = "Apex Trader Funding - EOD PA 50K"
 
 def main() -> None:
     st.set_page_config(page_title="Prop Convexity Lab", layout="wide")
+    apply_matrix_theme()
     st.title("Prop Convexity Lab")
 
     profiles = default_prop_rule_profiles()
+    lifecycle_plans = default_lifecycle_plans()
     with st.sidebar:
         st.header("Inputs")
         uploaded = st.file_uploader(
@@ -45,28 +51,95 @@ def main() -> None:
         resolve_conflicts = st.checkbox("Drop overlapping trades by priority", value=True)
 
         st.header("Simulation")
-        firm_options = sorted({profile.firm for profile in profiles.values()})
-        firm = st.selectbox(
-            "Firm",
+        firm_options = sorted({plan.firm for plan in lifecycle_plans.values()})
+        selected_firms = st.multiselect(
+            "Firms",
             firm_options,
-            index=firm_options.index("Apex Trader Funding")
-            if "Apex Trader Funding" in firm_options
-            else 0,
+            default=["Apex Trader Funding"] if "Apex Trader Funding" in firm_options else firm_options[:1],
         )
-        profile_options = [
-            key for key, profile in profiles.items()
-            if profile.firm == firm
+        plan_options = [
+            key for key, plan in lifecycle_plans.items()
+            if plan.firm in set(selected_firms)
         ]
-        selected_profiles = st.multiselect(
-            "Account profiles",
-            profile_options,
-            default=default_profile_selection({key: profiles[key] for key in profile_options}),
-            key=f"account_profiles_{firm}",
+        default_plan = next(
+            (key for key in plan_options if key.startswith("Apex Trader Funding - EOD 50K")),
+            plan_options[0] if plan_options else None,
+        )
+        selected_plan_keys = st.multiselect(
+            "Lifecycle accounts",
+            plan_options,
+            default=[default_plan] if default_plan is not None else [],
         )
         min_contracts, max_contracts = st.slider("Micro contracts", 1, 50, (1, 8))
-        paths = st.slider("Bootstrap paths", 5, 500, 25, step=5)
+        paths = st.slider("Bootstrap paths", 5, 500, 100, step=5)
         horizon_months = st.slider("Horizon months", 1, 24, 12)
         seed = st.number_input("Seed", value=12345, step=1)
+
+        st.header("Current State")
+        start_mode_label = st.selectbox(
+            "Starting point",
+            ["New eval", "Existing eval", "Funded / PA"],
+            index=0,
+        )
+        start_mode = {
+            "New eval": "new_eval",
+            "Existing eval": "existing_eval",
+            "Funded / PA": "funded",
+        }[start_mode_label]
+        current_balance = st.number_input(
+            "Current balance, 0 = account start",
+            min_value=0.0,
+            value=0.0,
+            step=100.0,
+        )
+        current_floor = st.number_input(
+            "Current drawdown floor, 0 = default",
+            min_value=0.0,
+            value=0.0,
+            step=100.0,
+        )
+        current_winning_days = st.number_input("Funded qualifying days already", 0, 30, 0)
+        current_high_day = st.number_input("Highest winning day since payout", min_value=0.0, value=0.0, step=50.0)
+
+        st.header("Target")
+        desired_payout = st.number_input("Desired payout, 0 = take max allowed", min_value=0.0, value=0.0, step=100.0)
+        required_cushion = st.number_input("Required cushion after payout", min_value=0.0, value=0.0, step=100.0)
+        max_rebuy_capital = st.number_input("Max fee capital / rebuys", min_value=0.0, value=1000.0, step=50.0)
+        allow_rebuys = st.checkbox("Allow eval rebuys after fail", value=True)
+
+        selected_plans = [lifecycle_plans[key] for key in selected_plan_keys]
+        firm_costs: dict[str, dict[str, float]] = {}
+        with st.expander("Fees by firm", expanded=True):
+            for firm_name in sorted({plan.firm for plan in selected_plans}):
+                st.caption(firm_name)
+                col_a, col_b, col_c = st.columns(3)
+                firm_plans = [plan for plan in selected_plans if plan.firm == firm_name]
+                default_eval = max((plan.default_eval_fee for plan in firm_plans), default=0.0)
+                default_activation = max((plan.default_activation_fee for plan in firm_plans), default=0.0)
+                default_reset = max((plan.default_reset_fee for plan in firm_plans), default=0.0)
+                firm_costs[firm_name] = {
+                    "eval_fee": col_a.number_input(
+                        "Eval",
+                        min_value=0.0,
+                        value=float(default_eval),
+                        step=10.0,
+                        key=f"{firm_name}_eval_fee",
+                    ),
+                    "activation_fee": col_b.number_input(
+                        "Activation",
+                        min_value=0.0,
+                        value=float(default_activation),
+                        step=10.0,
+                        key=f"{firm_name}_activation_fee",
+                    ),
+                    "reset_fee": col_c.number_input(
+                        "Reset",
+                        min_value=0.0,
+                        value=float(default_reset),
+                        step=10.0,
+                        key=f"{firm_name}_reset_fee",
+                    ),
+                }
         run_simulation = st.button("Run simulation", type="primary", use_container_width=True)
 
     if not uploaded:
@@ -122,51 +195,86 @@ def main() -> None:
     top[3].metric("Strategies", f"{len(strategy_ids):,}")
     top[4].metric("Span", trade_span_label(usable_trades))
 
-    tabs = st.tabs(["Rankings", "Ledger", "Conflicts", "Rules"])
+    tabs = st.tabs(["Rankings", "Monthly", "Paths", "Events", "Ledger", "Conflicts", "Rules"])
     with tabs[0]:
-        if not selected_profiles:
-            st.warning("Select at least one account profile.")
+        if not selected_plans:
+            st.warning("Select at least one lifecycle account.")
         elif not run_simulation:
             st.info("Adjust inputs, then click Run simulation.")
         else:
             contract_values = list(range(int(min_contracts), int(max_contracts) + 1))
             with st.spinner("Running account/contract grid..."):
-                ranked = []
-                for key in selected_profiles:
-                    ranked.append(
-                        run_prop_ensemble(
-                            usable_trades,
-                            profiles[key],
-                            contract_values=contract_values,
-                            paths=int(paths),
-                            horizon_months=int(horizon_months),
-                            seed=int(seed),
-                            dollars_per_point=float(default_dpp),
-                        )
+                settings_by_plan = {}
+                for plan in selected_plans:
+                    costs = firm_costs.get(plan.firm, {})
+                    effective_start_mode = start_mode if plan.eval_profile is not None else "funded"
+                    settings_by_plan[plan.key] = LifecycleSettings(
+                        start_mode=effective_start_mode,
+                        current_balance=float(current_balance) or None,
+                        current_floor=float(current_floor) or None,
+                        current_winning_days=int(current_winning_days),
+                        current_highest_winning_day=float(current_high_day),
+                        desired_payout=float(desired_payout),
+                        required_cushion=float(required_cushion),
+                        allow_rebuys=bool(allow_rebuys),
+                        max_rebuy_capital=float(max_rebuy_capital),
+                        eval_fee=float(costs.get("eval_fee", plan.default_eval_fee)),
+                        activation_fee=float(costs.get("activation_fee", plan.default_activation_fee)),
+                        reset_fee=float(costs.get("reset_fee", plan.default_reset_fee)),
                     )
-                ranking = pd.concat(ranked, ignore_index=True).sort_values(
-                    ["convexity_score", "p50_cash"],
-                    ascending=[False, False],
+                ranking, monthly, events = run_lifecycle_grid(
+                    usable_trades,
+                    selected_plans,
+                    contract_values=contract_values,
+                    paths=int(paths),
+                    horizon_months=int(horizon_months),
+                    seed=int(seed),
+                    dollars_per_point=float(default_dpp),
+                    settings_by_plan=settings_by_plan,
                 )
-            st.dataframe(format_ranking(ranking), use_container_width=True, hide_index=True)
+                st.session_state["lifecycle_ranking"] = ranking
+                st.session_state["lifecycle_monthly"] = monthly
+                st.session_state["lifecycle_monthly_summary"] = summarize_monthly_paths(monthly)
+                st.session_state["lifecycle_events"] = events
+            st.dataframe(format_lifecycle_ranking(ranking), width="stretch", hide_index=True)
 
             best = ranking.iloc[0]
-            profile = profiles[str(best["profile"])]
-            deterministic = simulate_prop_account(
-                usable_trades,
-                profile,
-                contracts=int(best["contracts"]),
-                dollars_per_point=float(default_dpp),
-            )
             cols = st.columns(6)
-            cols[0].metric("Best profile", profile.account_name)
+            cols[0].metric("Best plan", str(best["account"]))
             cols[1].metric("Best contracts", int(best["contracts"]))
-            cols[2].metric("Historical net", money(deterministic.net_profit))
-            cols[3].metric("Historical cash", money(deterministic.payout_after_split))
-            cols[4].metric("Historical fail", "yes" if deterministic.failed else "no")
-            cols[5].metric("Eligible day", deterministic.first_eligible_day or "-")
+            cols[2].metric("P50 net cash", money(float(best["p50_net_cash"])))
+            cols[3].metric("Target hit", pct(float(best["target_rate"])))
+            cols[4].metric("Fail rate", pct(float(best["fail_rate"])))
+            cols[5].metric("P50 first payout", month_or_dash(best["p50_month_to_first_payout"]))
 
     with tabs[1]:
+        st.subheader("Month-by-month Path Distributions")
+        monthly_summary = st.session_state.get("lifecycle_monthly_summary", pd.DataFrame())
+        if monthly_summary.empty:
+            st.info("Run a lifecycle simulation to see monthly PnL, drawdown, fail, and payout rates.")
+        else:
+            st.dataframe(format_monthly_summary(monthly_summary), width="stretch", hide_index=True)
+
+    with tabs[2]:
+        st.subheader("Real Sequence Examples")
+        monthly = st.session_state.get("lifecycle_monthly", pd.DataFrame())
+        if monthly.empty:
+            st.info("Run a lifecycle simulation to inspect actual path sequences.")
+        else:
+            path_options = build_path_options(monthly)
+            selected_path = st.selectbox("Path", path_options, format_func=lambda item: item[1])
+            path_frame = monthly[monthly["path_id"] == selected_path[0]].copy()
+            st.dataframe(format_path_frame(path_frame), width="stretch", hide_index=True)
+
+    with tabs[3]:
+        st.subheader("Lifecycle Events")
+        events = st.session_state.get("lifecycle_events", pd.DataFrame())
+        if events.empty:
+            st.info("Run a lifecycle simulation to see eval passes, failures, fees, activations, and payouts.")
+        else:
+            st.dataframe(format_events(events), width="stretch", hide_index=True)
+
+    with tabs[4]:
         st.subheader("Normalized Ledger")
         st.dataframe(
             pd.DataFrame(
@@ -180,23 +288,24 @@ def main() -> None:
                     "mfe_points": [trade.mfe_points for trade in usable_trades],
                 }
             ),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
-    with tabs[2]:
+    with tabs[5]:
         st.subheader("Overlap Decisions")
         if not decisions:
             st.write("Conflict filtering is off or no overlaps were found.")
         else:
             st.dataframe(
                 pd.DataFrame([decision.to_dict() for decision in decisions]),
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
 
-    with tabs[3]:
-        show_rule_profiles({key: profiles[key] for key in selected_profiles} or profiles)
+    with tabs[6]:
+        selected_funded_keys = [plan.funded_profile.key for plan in selected_plans]
+        show_rule_profiles({key: profiles[key] for key in selected_funded_keys if key in profiles} or profiles)
 
 
 def coerce_uploaded_ledger(
@@ -368,7 +477,7 @@ def first_present(columns: dict[str, Any], candidates: tuple[str, ...]) -> Any |
 def show_rule_profiles(profiles: dict[str, Any]) -> None:
     st.subheader("Rule Profiles")
     rows = [profile.to_dict() for profile in profiles.values()]
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
 
 def default_profile_selection(profiles: dict[str, Any]) -> list[str]:
@@ -400,6 +509,129 @@ def format_ranking(frame: pd.DataFrame) -> pd.DataFrame:
     return formatted
 
 
+def format_lifecycle_ranking(frame: pd.DataFrame) -> pd.DataFrame:
+    columns = [
+        "firm",
+        "account",
+        "contracts",
+        "paths",
+        "fail_rate",
+        "payout_rate",
+        "target_rate",
+        "p50_month_to_first_payout",
+        "p50_net_cash",
+        "p95_net_cash",
+        "p05_net_cash",
+        "mean_fees",
+        "avg_attempts",
+        "p95_max_drawdown",
+        "convexity_score",
+    ]
+    formatted = frame[[column for column in columns if column in frame.columns]].copy()
+    for column in ("fail_rate", "payout_rate", "target_rate"):
+        if column in formatted:
+            formatted[column] = formatted[column].map(pct)
+    for column in ("p50_net_cash", "p95_net_cash", "p05_net_cash", "mean_fees", "p95_max_drawdown"):
+        if column in formatted:
+            formatted[column] = formatted[column].map(money)
+    if "p50_month_to_first_payout" in formatted:
+        formatted["p50_month_to_first_payout"] = formatted["p50_month_to_first_payout"].map(month_or_dash)
+    if "avg_attempts" in formatted:
+        formatted["avg_attempts"] = formatted["avg_attempts"].round(2)
+    if "convexity_score" in formatted:
+        formatted["convexity_score"] = formatted["convexity_score"].round(3)
+    return formatted
+
+
+def format_monthly_summary(frame: pd.DataFrame) -> pd.DataFrame:
+    columns = [
+        "plan",
+        "contracts",
+        "month_index",
+        "paths",
+        "p05_pnl",
+        "p50_pnl",
+        "p95_pnl",
+        "p50_net_cash",
+        "p95_drawdown",
+        "fail_month_rate",
+        "payout_month_rate",
+    ]
+    formatted = frame[[column for column in columns if column in frame.columns]].copy()
+    for column in ("p05_pnl", "p50_pnl", "p95_pnl", "p50_net_cash", "p95_drawdown"):
+        if column in formatted:
+            formatted[column] = formatted[column].map(money)
+    for column in ("fail_month_rate", "payout_month_rate"):
+        if column in formatted:
+            formatted[column] = formatted[column].map(pct)
+    return formatted
+
+
+def format_path_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    columns = [
+        "month_index",
+        "stage",
+        "attempt",
+        "starting_balance",
+        "ending_balance",
+        "pnl",
+        "max_drawdown",
+        "floor",
+        "payouts",
+        "fees",
+        "cumulative_payouts",
+        "cumulative_fees",
+        "net_cash",
+        "status",
+    ]
+    formatted = frame[[column for column in columns if column in frame.columns]].copy()
+    for column in (
+        "starting_balance",
+        "ending_balance",
+        "pnl",
+        "max_drawdown",
+        "floor",
+        "payouts",
+        "fees",
+        "cumulative_payouts",
+        "cumulative_fees",
+        "net_cash",
+    ):
+        if column in formatted:
+            formatted[column] = formatted[column].map(money)
+    return formatted
+
+
+def format_events(frame: pd.DataFrame) -> pd.DataFrame:
+    formatted = frame.copy()
+    for column in ("amount", "balance", "floor"):
+        if column in formatted:
+            formatted[column] = formatted[column].map(money)
+    return formatted
+
+
+def build_path_options(monthly: pd.DataFrame) -> list[tuple[int, str]]:
+    summary = (
+        monthly.groupby("path_id")
+        .agg(
+            plan=("plan_key", "first"),
+            net_cash=("net_cash", "last"),
+            payouts=("cumulative_payouts", "last"),
+            fees=("cumulative_fees", "last"),
+            failed=("status", lambda values: any("failed" in str(value) for value in values)),
+        )
+        .reset_index()
+        .sort_values(["net_cash", "payouts"], ascending=[False, False])
+    )
+    return [
+        (
+            int(row.path_id),
+            f"path {int(row.path_id)} | {row.plan} | net {money(float(row.net_cash))} | payouts {money(float(row.payouts))}",
+        )
+        for row in summary.itertuples()
+    ]
+
+
 def trade_span_label(trades: list[Any]) -> str:
     if not trades:
         return "-"
@@ -409,7 +641,62 @@ def trade_span_label(trades: list[Any]) -> str:
 
 
 def money(value: float) -> str:
+    if pd.isna(value):
+        return "-"
     return f"${value:,.0f}"
+
+
+def pct(value: float) -> str:
+    if pd.isna(value):
+        return "-"
+    return f"{value * 100:.1f}%"
+
+
+def month_or_dash(value: Any) -> str:
+    if value is None or pd.isna(value):
+        return "-"
+    return f"M{int(round(float(value)))}"
+
+
+def apply_matrix_theme() -> None:
+    st.markdown(
+        """
+        <style>
+        .stApp {
+            background: #020604;
+            color: #d7ffe4;
+        }
+        [data-testid="stSidebar"] {
+            background: #07100b;
+            border-right: 1px solid #123b26;
+        }
+        h1, h2, h3, .stMarkdown, label {
+            color: #dcffe8 !important;
+        }
+        div[data-testid="stMetric"] {
+            background: #050b08;
+            border: 1px solid #174c30;
+            border-radius: 6px;
+            padding: 10px 12px;
+        }
+        div[data-testid="stMetricValue"] {
+            color: #37ff8b;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        }
+        .stButton > button {
+            background: #00b25c;
+            color: #001b0d;
+            border: 1px solid #37ff8b;
+            font-weight: 800;
+        }
+        .stDataFrame, [data-testid="stDataFrame"] {
+            border: 1px solid #123b26;
+            border-radius: 6px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 if __name__ == "__main__":
