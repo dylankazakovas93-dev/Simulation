@@ -45,10 +45,23 @@ def main() -> None:
         resolve_conflicts = st.checkbox("Drop overlapping trades by priority", value=True)
 
         st.header("Simulation")
+        firm_options = sorted({profile.firm for profile in profiles.values()})
+        firm = st.selectbox(
+            "Firm",
+            firm_options,
+            index=firm_options.index("Apex Trader Funding")
+            if "Apex Trader Funding" in firm_options
+            else 0,
+        )
+        profile_options = [
+            key for key, profile in profiles.items()
+            if profile.firm == firm
+        ]
         selected_profiles = st.multiselect(
             "Account profiles",
-            list(profiles),
-            default=default_profile_selection(profiles),
+            profile_options,
+            default=default_profile_selection({key: profiles[key] for key in profile_options}),
+            key=f"account_profiles_{firm}",
         )
         min_contracts, max_contracts = st.slider("Micro contracts", 1, 50, (1, 8))
         paths = st.slider("Bootstrap paths", 25, 2000, 250, step=25)
