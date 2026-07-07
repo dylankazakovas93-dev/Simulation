@@ -332,6 +332,29 @@ def test_forward_loader_requires_raw_effective_stop_and_excursions_in_strict_mod
         load_ledger_frame(frame, strategy_id='s', default_dollars_per_point=2, require_forward_schema=True)
 
 
+def test_forward_loader_accepts_forward_source_pool_column_names():
+    frame = pd.DataFrame([
+        {
+            'level_id': '0_lower',
+            'session_date': '2026-01-02',
+            'entry_time': '2026-01-02T10:00:00Z',
+            'exit_time': '2026-01-02T11:00:00Z',
+            'raw_stop_pts': 180,
+            'effective_stop_pts': 180,
+            'pnl_pts_effective': 90,
+            'mae_pts': 45,
+            'mfe_pts': 180,
+        }
+    ])
+    trades = load_ledger_frame(frame, strategy_id='forward', default_dollars_per_point=2, require_forward_schema=True)
+    trade = trades[0]
+    assert trade.raw_stop_points == 180
+    assert trade.stop_points == 180
+    assert trade.pnl_points == 90
+    assert trade.mae_points == 45
+    assert trade.mfe_points == 180
+
+
 def test_raw_stop_scaling_preserves_r_shape_and_caps_effective_stop():
     trade = ft('x', '2026-01-02', pnl=100, raw=150, mae=30, mfe=300)
     scaled = trade.scaled_for_point_volatility(1.5)

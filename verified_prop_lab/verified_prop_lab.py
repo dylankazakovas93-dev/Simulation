@@ -1336,9 +1336,9 @@ def first_passage_threshold_frame(summary: pd.DataFrame, *, contracts: int, scen
 
 ENTRY_ALIASES = ('entry_time', 'entry_utc', 'entry_ts', 'entry', 'touched_at', 'open_time')
 EXIT_ALIASES = ('exit_time', 'exit_utc', 'exit_ts', 'exit', 'closed_at', 'close_time')
-PNL_ALIASES = ('pnl_points', 'pnl_pts', 'points', 'pnl', 'net_pts', 'pnl_raw')
+PNL_ALIASES = ('pnl_points', 'pnl_pts', 'points', 'pnl', 'net_pts', 'pnl_raw', 'pnl_pts_effective')
 RAW_STOP_ALIASES = ('raw_stop_points', 'raw_stop_pts', 'raw_cap_points', 'uncapped_stop_points', 'uncapped_cap_points', 'planned_raw_stop_points')
-STOP_ALIASES = ('stop_points', 'stop_pts', 'sl_points', 'sl_pts', 'cap')
+STOP_ALIASES = ('stop_points', 'stop_pts', 'sl_points', 'sl_pts', 'cap', 'effective_stop_pts')
 MAE_ALIASES = ('mae_points', 'mae_pts', 'mae')
 MFE_ALIASES = ('mfe_points', 'mfe_pts', 'mfe')
 SESSION_ALIASES = ('session_date', 'sess_date', 'trading_day')
