@@ -5,7 +5,8 @@ from verified_prop_lab import (
     LedgerTrade, PropRule, LifecyclePlan, LifecycleSettings,
     PropLabValidationError, SameCalendarMonthSampler,
     ForwardScenario, ForwardVolumeScenarioSampler,
-    load_ledger_frame, run_common_path_grid, run_forward_volume_grid,
+    first_passage_threshold_frame, label_summary_decisions, load_ledger_frame,
+    pareto_frontier_indexes, run_common_path_grid, run_forward_volume_grid,
     simulate_lifecycle_path,
 )
 
@@ -440,3 +441,262 @@ def test_forward_grid_contract_interface_caps_at_four_mnq():
             scenarios=[1.0],
             settings=LifecycleSettings(missing_excursion_policy='error'),
         )
+
+
+def decision_summary_frame() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                'plan': 'p', 'point_scale': 1.0, 'scenario_label': 'Base', 'contracts': 1, 'paths': 100,
+                'payout_before_failure_rate': .55, 'failure_before_payout_rate': .20, 'unresolved_rate': .25,
+                'mean_net_cash': 1_000, 'p50_first_payout_day_conditional': 8,
+                'payout_before_failure_by_day_10': .10, 'failure_before_payout_by_day_10': .05,
+            },
+            {
+                'plan': 'p', 'point_scale': 1.0, 'scenario_label': 'Base', 'contracts': 2, 'paths': 100,
+                'payout_before_failure_rate': .50, 'failure_before_payout_rate': .25, 'unresolved_rate': .25,
+                'mean_net_cash': 1_500, 'p50_first_payout_day_conditional': 20,
+                'payout_before_failure_by_day_10': .30, 'failure_before_payout_by_day_10': .10,
+            },
+            {
+                'plan': 'p', 'point_scale': 1.0, 'scenario_label': 'Base', 'contracts': 3, 'paths': 100,
+                'payout_before_failure_rate': .40, 'failure_before_payout_rate': .90, 'unresolved_rate': .10,
+                'mean_net_cash': 9_000, 'p50_first_payout_day_conditional': 5,
+                'payout_before_failure_by_day_10': .25, 'failure_before_payout_by_day_10': .50,
+            },
+        ]
+    )
+
+
+def test_forecast_clock_anchor_uses_forecast_start_not_first_trade_date():
+    rule = apex_rule(min_winning_days=1, winning_day_threshold=1, consistency_pct=None, payout_reserve=0)
+    trades = [
+        ft('first', '2026-07-15', 0, mae=0, mfe=0),
+        ft('payout', '2026-07-30', 300, mae=0, mfe=300),
+    ]
+    result = simulate_lifecycle_path(
+        trades,
+        funded_plan(rule),
+        contracts=1,
+        settings=LifecycleSettings(desired_gross_payout=500, missing_excursion_policy='error'),
+        clock_start_date=pd.Timestamp('2026-07-07'),
+    )
+    assert result.first_payout_day == 23
+    assert result.first_payout_day != 15
+
+
+def test_day_zero_five_day_qualification_is_recorded_from_clock_origin():
+    trade = ft('later', '2026-07-15', 0, mae=0, mfe=0)
+    result = simulate_lifecycle_path(
+        [trade],
+        funded_plan(),
+        contracts=1,
+        settings=LifecycleSettings(
+            current_balance=50_500,
+            current_floor=49_000,
+            current_winning_days=5,
+            current_highest_winning_day=250,
+            missing_excursion_policy='error',
+        ),
+        clock_start_date=pd.Timestamp('2026-07-07'),
+    )
+    assert result.first_five_qualifying_days_day == 0
+    assert result.balance_at_five_qualifying_days == 50_500
+
+
+def test_day_zero_payout_eligibility_is_recorded_even_without_payout():
+    trade = ft('later', '2026-07-15', 0, mae=0, mfe=0)
+    result = simulate_lifecycle_path(
+        [trade],
+        funded_plan(apex_rule(consistency_pct=None)),
+        contracts=1,
+        settings=LifecycleSettings(
+            current_balance=52_600,
+            current_floor=50_000,
+            current_winning_days=5,
+            current_highest_winning_day=500,
+            desired_gross_payout=1_500,
+            required_post_payout_cushion=3_000,
+            missing_excursion_policy='error',
+        ),
+        clock_start_date=pd.Timestamp('2026-07-07'),
+    )
+    assert result.first_payout_eligible_day == 0
+    assert result.first_payout_day is None
+    assert result.payouts_taken == 0
+
+
+def test_day_zero_payout_can_happen_before_future_trade():
+    trade = ft('later', '2026-07-15', 0, mae=0, mfe=0)
+    result = simulate_lifecycle_path(
+        [trade],
+        funded_plan(apex_rule(consistency_pct=None)),
+        contracts=1,
+        settings=LifecycleSettings(
+            current_balance=52_600,
+            current_floor=50_000,
+            current_winning_days=5,
+            current_highest_winning_day=500,
+            desired_gross_payout=500,
+            missing_excursion_policy='error',
+        ),
+        clock_start_date=pd.Timestamp('2026-07-07'),
+    )
+    assert result.first_payout_eligible_day == 0
+    assert result.first_payout_day == 0
+    assert result.payouts_taken == 1
+    assert result.events[0].event == 'payout'
+    assert result.events[0].session_date == '2026-07-07'
+
+
+def test_clock_origin_rejects_trades_before_forecast_start():
+    with pytest.raises(PropLabValidationError, match='before the supplied lifecycle clock origin'):
+        simulate_lifecycle_path(
+            [ft('early', '2026-07-06', 0)],
+            funded_plan(),
+            contracts=1,
+            settings=LifecycleSettings(missing_excursion_policy='error'),
+            clock_start_date=pd.Timestamp('2026-07-07'),
+        )
+
+
+def test_fastest_uses_unconditional_payout_by_target_day_probability():
+    labelled = label_summary_decisions(decision_summary_frame(), max_failure_rate=.50, fastest_target_day=10)
+    fastest_row = labelled[labelled['decision_label'].str.contains('Fastest', regex=False)].iloc[0]
+    assert fastest_row['contracts'] == 2
+
+
+def test_maximum_ev_ignores_risk_gate():
+    labelled = label_summary_decisions(decision_summary_frame(), max_failure_rate=.30, fastest_target_day=10)
+    max_ev = labelled[labelled['decision_label'].str.contains('Maximum EV', regex=False)].iloc[0]
+    assert max_ev['contracts'] == 3
+    assert max_ev['failure_before_payout_rate'] > .30
+
+
+def test_convex_respects_risk_gate_and_can_have_no_qualifier():
+    labelled = label_summary_decisions(decision_summary_frame(), max_failure_rate=.30, fastest_target_day=10)
+    convex = labelled[labelled['decision_label'].str.contains('Convex', regex=False)].iloc[0]
+    assert convex['contracts'] == 2
+
+    none = label_summary_decisions(decision_summary_frame(), max_failure_rate=.10, fastest_target_day=10)
+    assert not none['decision_label'].str.contains('Convex', regex=False).any()
+    assert 'No Convex configuration qualifies' in none['convex_note'].iloc[0]
+
+
+def test_no_arbitrary_convexity_penalty_column_remains():
+    labelled = label_summary_decisions(decision_summary_frame(), max_failure_rate=.30, fastest_target_day=10)
+    assert 'convexity_delta' not in labelled.columns
+    assert 'ev_uplift_vs_smaller' in labelled.columns
+    assert 'extra_failure_vs_smaller' in labelled.columns
+    assert 'payout_probability_uplift_vs_smaller' in labelled.columns
+    assert 'median_time_change_vs_smaller' in labelled.columns
+
+
+def test_pareto_frontier_includes_conditional_payout_time():
+    frame = pd.DataFrame(
+        [
+            {'payout_before_failure_rate': .6, 'mean_net_cash': 1000, 'failure_before_payout_rate': .2, 'p50_first_payout_day_conditional': 10},
+            {'payout_before_failure_rate': .6, 'mean_net_cash': 1000, 'failure_before_payout_rate': .2, 'p50_first_payout_day_conditional': 20},
+            {'payout_before_failure_rate': .7, 'mean_net_cash': 900, 'failure_before_payout_rate': .2, 'p50_first_payout_day_conditional': None},
+        ],
+        index=['fast', 'slow', 'missing'],
+    )
+    assert pareto_frontier_indexes(frame) == ['fast', 'missing']
+
+
+def test_first_passage_three_state_probabilities_sum_to_one():
+    summary = decision_summary_frame().copy()
+    summary['unresolved_by_day_10'] = 1 - summary['payout_before_failure_by_day_10'] - summary['failure_before_payout_by_day_10']
+    passage = first_passage_threshold_frame(summary, contracts=1, scenario_label='Base')
+    assert passage.iloc[0]['payout_before_failure'] + passage.iloc[0]['failure_before_payout'] + passage.iloc[0]['unresolved'] == pytest.approx(1)
+
+
+def test_raw_stop_scaling_cap_and_uncapped_cases():
+    capped = ft('capped', '2026-01-02', pnl=100, raw=300, mae=60, mfe=200)
+    capped_scaled = capped.scaled_for_point_volatility(.8)
+    assert capped_scaled.raw_stop_points == 240
+    assert capped_scaled.stop_points == 200
+
+    uncapped = ft('uncapped', '2026-01-02', pnl=90, raw=180, mae=45, mfe=180)
+    uncapped_scaled = uncapped.scaled_for_point_volatility(.8)
+    assert uncapped_scaled.raw_stop_points == 144
+    assert uncapped_scaled.stop_points == 144
+
+
+def test_positive_and_negative_pnl_scale_with_point_volatility_when_uncapped():
+    winner = ft('winner', '2026-01-02', pnl=90, raw=180, mae=20, mfe=180)
+    loser = ft('loser', '2026-01-03', pnl=-90, raw=180, mae=90, mfe=20)
+    low_winner = winner.scaled_for_point_volatility(.8)
+    low_loser = loser.scaled_for_point_volatility(.8)
+    high_winner = winner.scaled_for_point_volatility(1.2)
+    high_loser = loser.scaled_for_point_volatility(1.2)
+    assert 0 < low_winner.pnl_points < winner.pnl_points
+    assert winner.pnl_points < high_winner.pnl_points
+    assert loser.pnl_points < low_loser.pnl_points < 0
+    assert high_loser.pnl_points < loser.pnl_points
+
+
+def test_sampler_seed_reproducibility_difference_and_sequence_randomization():
+    trades = [ft(f't{i}', f'2024-01-{i + 2:02d}', i + 1) for i in range(5)]
+    sampler = ForwardVolumeScenarioSampler(
+        trades,
+        forecast_start='2026-07-01',
+        forecast_end='2026-07-31',
+        monthly_trade_counts={'2026-07': 5},
+    )
+    first = sampler.sample_paths(paths=1, master_seed=100)[0]
+    second = sampler.sample_paths(paths=1, master_seed=100)[0]
+    different = sampler.sample_paths(paths=1, master_seed=101)[0]
+    assert first.manifest == second.manifest
+    assert first.manifest != different.manifest
+    historical_order = [trade.trade_id for trade in trades]
+    sampled_source_order = [item[1].split(':')[-2] if ':' in item[1] else item[1] for item in first.manifest]
+    assert sampled_source_order != historical_order
+
+
+def test_source_ids_and_synthetic_dates_are_identical_across_scenarios():
+    trades = [ft('a', '2024-01-02', 100), ft('b', '2024-01-03', -50, mae=50)]
+    sampled = ForwardVolumeScenarioSampler(
+        trades,
+        forecast_start='2026-07-01',
+        forecast_end='2026-07-31',
+        monthly_trade_counts={'2026-07': 3},
+    ).sample_paths(paths=5, master_seed=7)
+    grid = run_forward_volume_grid(
+        sampled,
+        funded_plan(apex_rule(min_winning_days=99, consistency_pct=None)),
+        contract_values=[1, 2],
+        scenarios=[ForwardScenario(1.0, 'Base'), ForwardScenario(1.1, '+10%')],
+        settings=LifecycleSettings(missing_excursion_policy='error'),
+    )
+    base = grid.sampled_trades[grid.sampled_trades['scenario_label'] == 'Base'].sort_values(['path_id', 'trade_id'])
+    plus = grid.sampled_trades[grid.sampled_trades['scenario_label'] == '+10%'].sort_values(['path_id', 'trade_id'])
+    assert list(base['source_trade_id']) == list(plus['source_trade_id'])
+    assert list(base['session_date']) == list(plus['session_date'])
+    assert 'contracts' not in grid.sampled_trades.columns
+
+
+def test_forward_summary_contains_payout_day_and_ending_cushion_percentiles():
+    trades = [ft('win', '2024-01-02', 300, mae=0, mfe=300), ft('loss', '2024-01-03', -100, mae=100)]
+    sampled = ForwardVolumeScenarioSampler(
+        trades,
+        forecast_start='2026-07-01',
+        forecast_end='2026-07-31',
+        monthly_trade_counts={'2026-07': 2},
+    ).sample_paths(paths=10, master_seed=9)
+    grid = run_forward_volume_grid(
+        sampled,
+        funded_plan(apex_rule(min_winning_days=1, winning_day_threshold=1, consistency_pct=None, payout_reserve=0)),
+        contract_values=[1],
+        scenarios=[1.0],
+        settings=LifecycleSettings(desired_gross_payout=500, missing_excursion_policy='error'),
+    )
+    for column in [
+        'p05_first_payout_day_conditional',
+        'p50_first_payout_day_conditional',
+        'p95_first_payout_day_conditional',
+        'p05_ending_cushion',
+        'p50_ending_cushion',
+        'p95_ending_cushion',
+    ]:
+        assert column in grid.summary.columns

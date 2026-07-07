@@ -452,11 +452,19 @@ def simulate_lifecycle_path(
     contracts: int,
     settings: LifecycleSettings,
     path_id: int = 0,
+    clock_start_date: pd.Timestamp | None = None,
 ) -> PathResult:
     _validate_settings(plan, settings, contracts)
     ordered = sorted(trades, key=lambda t: (t.session_date, t.exit_time, t.entry_time, t.trade_id))
     if not ordered:
         raise PropLabValidationError('at least one trade is required')
+    clock_origin = (
+        ordered[0].session_date
+        if clock_start_date is None
+        else pd.Timestamp(clock_start_date).normalize().tz_localize(None)
+    )
+    if any(trade.session_date < clock_origin for trade in ordered):
+        raise PropLabValidationError('simulated trade occurs before the supplied lifecycle clock origin')
     rule = plan.evaluation_rule if settings.start_stage == 'evaluation' else plan.funded_rule
     assert rule is not None
     balance = rule.starting_balance if settings.current_balance is None else float(settings.current_balance)
@@ -473,7 +481,6 @@ def simulate_lifecycle_path(
         cycle_start_balance=rule.starting_balance,
         cycle_net_profit=max(0.0, balance - rule.starting_balance),
     )
-    first_date = ordered[0].session_date
     external_fees = plan.evaluation_fee if state.stage == 'evaluation' else 0.0
     gross_payouts = 0.0
     cash_payouts = 0.0
@@ -487,7 +494,7 @@ def simulate_lifecycle_path(
     rows: list[TradeAuditRow] = []
     events: list[LifecycleEvent] = []
     trading_nav = rule.starting_balance
-    dd = _DrawdownTracker(path_id=path_id, peak_nav=trading_nav, peak_date=first_date)
+    dd = _DrawdownTracker(path_id=path_id, peak_nav=trading_nav, peak_date=clock_origin)
     current_session: pd.Timestamp | None = None
     day_pnl = 0.0
     session_trades: list[LedgerTrade] = []
@@ -513,41 +520,12 @@ def simulate_lifecycle_path(
         dd = _DrawdownTracker(path_id=path_id, peak_nav=trading_nav, peak_date=current_session)
         day_pnl = 0.0
 
-    if state.stage == 'funded' and state.winning_days >= state.rule.min_winning_days and state.rule.min_winning_days > 0:
-        first_five_qualifying_days_day = 0
-        balance_at_five_qualifying_days = state.balance
+    def day_number(session_date: pd.Timestamp) -> int:
+        return int((pd.Timestamp(session_date).normalize().tz_localize(None) - clock_origin).days)
 
-    def finish_session(session_date: pd.Timestamp) -> None:
-        nonlocal day_pnl, gross_payouts, cash_payouts, first_payout_day, external_fees
-        nonlocal terminal_failed, pending_replacement, pending_funded_transition, last_payout_date
-        nonlocal first_five_qualifying_days_day, first_payout_eligible_day
-        nonlocal balance_at_five_qualifying_days, balance_at_payout_eligibility
-        if terminal_failed or pending_replacement:
-            return
-        if day_pnl > 0:
-            state.daily_profits.append(day_pnl)
-            if state.stage == 'funded' and day_pnl + 1e-9 >= state.rule.winning_day_threshold:
-                state.winning_days += 1
-        elif state.stage == 'funded':
-            state.daily_profits.append(day_pnl)
-        if (
-            state.stage == 'funded'
-            and state.rule.min_winning_days > 0
-            and state.winning_days >= state.rule.min_winning_days
-            and first_five_qualifying_days_day is None
-        ):
-            first_five_qualifying_days_day = int((session_date - first_date).days)
-            balance_at_five_qualifying_days = state.balance
-        if state.rule.drawdown_mode == 'eod_trailing':
-            state.eod_peak = max(state.eod_peak, state.balance)
-            state.floor = max(
-                state.floor,
-                min(state.rule.lock_balance, state.eod_peak - state.rule.max_loss),
-            )
-        if state.stage == 'evaluation' and state.balance - state.rule.starting_balance >= plan.evaluation_profit_target - 1e-9:
-            pending_funded_transition = True
-            events.append(LifecycleEvent(path_id, str(session_date.date()), 'evaluation_passed', state.stage, state.attempt, 0.0, state.balance, state.floor))
-            return
+    def try_take_payout(session_date: pd.Timestamp) -> None:
+        nonlocal gross_payouts, cash_payouts, first_payout_day, first_payout_eligible_day
+        nonlocal balance_at_payout_eligibility, last_payout_date
         if state.stage != 'funded' or not settings.auto_payout:
             return
         if state.rule.max_payouts is not None and state.payouts_taken >= state.rule.max_payouts:
@@ -557,7 +535,7 @@ def simulate_lifecycle_path(
         if not _eligible_for_payout(state):
             return
         if first_payout_eligible_day is None:
-            first_payout_eligible_day = int((session_date - first_date).days)
+            first_payout_eligible_day = day_number(session_date)
             balance_at_payout_eligibility = state.balance
         available = _gross_payout_available(state)
         desired = settings.desired_gross_payout
@@ -582,8 +560,47 @@ def simulate_lifecycle_path(
         state.cycle_net_profit = 0.0
         last_payout_date = session_date
         if first_payout_day is None:
-            first_payout_day = int((session_date - first_date).days)
+            first_payout_day = day_number(session_date)
         events.append(LifecycleEvent(path_id, str(session_date.date()), 'payout', state.stage, state.attempt, cash, state.balance, state.floor, f'gross account withdrawal={gross:.2f}'))
+
+    if state.stage == 'funded' and state.winning_days >= state.rule.min_winning_days and state.rule.min_winning_days > 0:
+        first_five_qualifying_days_day = 0
+        balance_at_five_qualifying_days = state.balance
+    if clock_start_date is not None:
+        try_take_payout(clock_origin)
+
+    def finish_session(session_date: pd.Timestamp) -> None:
+        nonlocal day_pnl, gross_payouts, cash_payouts, first_payout_day, external_fees
+        nonlocal terminal_failed, pending_replacement, pending_funded_transition, last_payout_date
+        nonlocal first_five_qualifying_days_day, first_payout_eligible_day
+        nonlocal balance_at_five_qualifying_days, balance_at_payout_eligibility
+        if terminal_failed or pending_replacement:
+            return
+        if day_pnl > 0:
+            state.daily_profits.append(day_pnl)
+            if state.stage == 'funded' and day_pnl + 1e-9 >= state.rule.winning_day_threshold:
+                state.winning_days += 1
+        elif state.stage == 'funded':
+            state.daily_profits.append(day_pnl)
+        if (
+            state.stage == 'funded'
+            and state.rule.min_winning_days > 0
+            and state.winning_days >= state.rule.min_winning_days
+            and first_five_qualifying_days_day is None
+        ):
+            first_five_qualifying_days_day = day_number(session_date)
+            balance_at_five_qualifying_days = state.balance
+        if state.rule.drawdown_mode == 'eod_trailing':
+            state.eod_peak = max(state.eod_peak, state.balance)
+            state.floor = max(
+                state.floor,
+                min(state.rule.lock_balance, state.eod_peak - state.rule.max_loss),
+            )
+        if state.stage == 'evaluation' and state.balance - state.rule.starting_balance >= plan.evaluation_profit_target - 1e-9:
+            pending_funded_transition = True
+            events.append(LifecycleEvent(path_id, str(session_date.date()), 'evaluation_passed', state.stage, state.attempt, 0.0, state.balance, state.floor))
+            return
+        try_take_payout(session_date)
 
     index = 0
     while index < len(ordered):
@@ -644,7 +661,7 @@ def simulate_lifecycle_path(
             if pending_replacement:
                 terminal_failed = False
             if first_failure_day is None:
-                first_failure_day = int((trade.session_date - first_date).days)
+                first_failure_day = day_number(trade.session_date)
             events.append(LifecycleEvent(path_id, str(trade.session_date.date()), f'{state.stage}_failed', state.stage, state.attempt, 0.0, state.balance, state.floor, 'drawdown barrier touched or crossed'))
             trading_nav += min(net, adverse)
         else:
@@ -656,7 +673,7 @@ def simulate_lifecycle_path(
                 if state.rule.daily_loss_hard:
                     terminal_failed = True
                     if first_failure_day is None:
-                        first_failure_day = int((trade.session_date - first_date).days)
+                        first_failure_day = day_number(trade.session_date)
                     events.append(LifecycleEvent(path_id, str(trade.session_date.date()), f'{state.stage}_failed', state.stage, state.attempt, 0.0, state.balance, state.floor, 'daily loss limit breached'))
                 # A soft daily guard simply causes later trades that session to be skipped.
         drawdown_after = dd.update(trade.trade_id, trade.session_date, trading_nav)
@@ -744,6 +761,7 @@ class SampledPath:
     path_id: int
     trades: tuple[LedgerTrade, ...]
     manifest: tuple[tuple[str, ...], ...]
+    clock_start_date: pd.Timestamp | None = None
 
 
 @dataclass(frozen=True)
@@ -758,6 +776,8 @@ class ForwardVolumeGridResult:
     summary: pd.DataFrame
     sampled_trades: pd.DataFrame
     events: pd.DataFrame
+    path_results: pd.DataFrame
+    forecast_start_date: pd.Timestamp | None = None
 
 
 def scenario_label_for_scale(point_scale: float) -> str:
@@ -856,7 +876,7 @@ class ForwardVolumeScenarioSampler:
                     sampled.append(shifted)
                     manifest.append((str(month), source.trade_id, str(target_session.date())))
                     sequence_number += 1
-            output.append(SampledPath(path_id, tuple(sampled), tuple(manifest)))
+            output.append(SampledPath(path_id, tuple(sampled), tuple(manifest), self.forecast_start))
         return output
 
 
@@ -987,6 +1007,10 @@ def run_forward_volume_grid(
     contracts_to_run = validate_contract_values(contract_values, max_contracts=max_contracts)
     if not sampled_paths:
         raise PropLabValidationError('at least one sampled path is required')
+    clock_start_dates = {path.clock_start_date for path in sampled_paths if path.clock_start_date is not None}
+    if len(clock_start_dates) > 1:
+        raise PropLabValidationError('sampled paths contain multiple lifecycle clock origins')
+    forecast_start_date = next(iter(clock_start_dates)) if clock_start_dates else None
     normalized_scenarios: tuple[ForwardScenario, ...] = tuple(
         scenario
         if isinstance(scenario, ForwardScenario)
@@ -1016,9 +1040,12 @@ def run_forward_volume_grid(
                         'path_id': sampled.path_id,
                         'point_scale': scenario.point_scale,
                         'scenario_label': scenario.scenario_label,
+                        'clock_start_date': str(sampled.clock_start_date.date()) if sampled.clock_start_date is not None else None,
                         'trade_id': trade.trade_id,
                         'source_trade_id': trade.trade_id.split('@', 1)[0],
                         'session_date': str(trade.session_date.date()),
+                        'entry_time': trade.entry_time.isoformat(),
+                        'exit_time': trade.exit_time.isoformat(),
                         'strategy_id': trade.strategy_id,
                         'raw_stop_points': trade.raw_stop_points,
                         'stop_points': trade.stop_points,
@@ -1037,6 +1064,7 @@ def run_forward_volume_grid(
                     contracts=contracts,
                     settings=settings,
                     path_id=sampled.path_id,
+                    clock_start_date=sampled.clock_start_date,
                 )
                 results.append(result)
                 row = {
@@ -1045,6 +1073,7 @@ def run_forward_volume_grid(
                     'contracts': result.contracts,
                     'point_scale': scenario.point_scale,
                     'scenario_label': scenario.scenario_label,
+                    'clock_start_date': str(sampled.clock_start_date.date()) if sampled.clock_start_date is not None else None,
                     'five_days_before_failure': result.five_days_before_failure,
                     'eligible_before_failure': result.eligible_before_failure,
                     'payout_before_failure': result.payout_before_failure,
@@ -1076,6 +1105,7 @@ def run_forward_volume_grid(
                             'contracts': result.contracts,
                             'point_scale': scenario.point_scale,
                             'scenario_label': scenario.scenario_label,
+                            'clock_start_date': str(sampled.clock_start_date.date()) if sampled.clock_start_date is not None else None,
                             'session_date': event.session_date,
                             'event': event.event,
                             'stage': event.stage,
@@ -1121,10 +1151,14 @@ def run_forward_volume_grid(
             'p95_net_cash': _percentile_or_nan(net, 95),
             'p50_first_five_qualifying_days': _percentile_or_nan(five_days, 50),
             'p50_first_eligible_day': _percentile_or_nan(eligibility_days, 50),
+            'p05_first_payout_day_conditional': _percentile_or_nan(payout_days, 5),
             'p50_first_payout_day_conditional': _percentile_or_nan(payout_days, 50),
+            'p95_first_payout_day_conditional': _percentile_or_nan(payout_days, 95),
             'p90_first_payout_day_conditional': _percentile_or_nan(payout_days, 90),
             'p95_max_drawdown': _percentile_or_nan(drawdown, 95),
+            'p05_ending_cushion': _percentile_or_nan(cushion, 5),
             'p50_ending_cushion': _percentile_or_nan(cushion, 50),
+            'p95_ending_cushion': _percentile_or_nan(cushion, 95),
         }
         for threshold in thresholds:
             row[f'payout_before_failure_by_day_{threshold}'] = float(
@@ -1146,7 +1180,148 @@ def run_forward_volume_grid(
         summary=pd.DataFrame(summary_rows),
         sampled_trades=pd.DataFrame(sampled_trade_rows),
         events=pd.DataFrame(event_rows),
+        path_results=frame,
+        forecast_start_date=forecast_start_date,
     )
+
+
+def enrich_summary_comparison(summary: pd.DataFrame) -> pd.DataFrame:
+    if summary.empty:
+        return summary.copy()
+    rows = summary.sort_values(['scenario_label', 'contracts']).copy()
+    for column in [
+        'ev_uplift_vs_smaller',
+        'extra_failure_vs_smaller',
+        'payout_probability_uplift_vs_smaller',
+        'median_time_change_vs_smaller',
+    ]:
+        rows[column] = np.nan
+    for (_, scenario), group in rows.groupby(['plan', 'scenario_label'], sort=False):
+        ordered = group.sort_values('contracts')
+        previous_index = None
+        for index, row in ordered.iterrows():
+            if previous_index is not None:
+                prev = rows.loc[previous_index]
+                rows.loc[index, 'ev_uplift_vs_smaller'] = row['mean_net_cash'] - prev['mean_net_cash']
+                rows.loc[index, 'extra_failure_vs_smaller'] = row['failure_before_payout_rate'] - prev['failure_before_payout_rate']
+                rows.loc[index, 'payout_probability_uplift_vs_smaller'] = row['payout_before_failure_rate'] - prev['payout_before_failure_rate']
+                rows.loc[index, 'median_time_change_vs_smaller'] = (
+                    row['p50_first_payout_day_conditional'] - prev['p50_first_payout_day_conditional']
+                )
+            previous_index = index
+    return rows
+
+
+def _append_decision_label(rows: pd.DataFrame, indexes: Sequence[Any], label: str) -> None:
+    for index in indexes:
+        existing = rows.loc[index, 'decision_label']
+        rows.loc[index, 'decision_label'] = f'{existing}, {label}'.strip(', ')
+
+
+def _payout_time_for_pareto(frame: pd.DataFrame) -> pd.Series:
+    return frame['p50_first_payout_day_conditional'].fillna(np.inf)
+
+
+def pareto_frontier_indexes(frame: pd.DataFrame) -> list[Any]:
+    if frame.empty:
+        return []
+    rows = frame.copy()
+    rows['_pareto_time'] = _payout_time_for_pareto(rows)
+    frontier: list[Any] = []
+    for index, row in rows.iterrows():
+        dominated = rows[
+            (rows['payout_before_failure_rate'] >= row['payout_before_failure_rate'])
+            & (rows['mean_net_cash'] >= row['mean_net_cash'])
+            & (rows['failure_before_payout_rate'] <= row['failure_before_payout_rate'])
+            & (rows['_pareto_time'] <= row['_pareto_time'])
+            & (
+                (rows['payout_before_failure_rate'] > row['payout_before_failure_rate'])
+                | (rows['mean_net_cash'] > row['mean_net_cash'])
+                | (rows['failure_before_payout_rate'] < row['failure_before_payout_rate'])
+                | (rows['_pareto_time'] < row['_pareto_time'])
+            )
+        ]
+        if dominated.empty:
+            frontier.append(index)
+    return frontier
+
+
+def label_summary_decisions(
+    summary: pd.DataFrame,
+    *,
+    max_failure_rate: float,
+    fastest_target_day: int,
+) -> pd.DataFrame:
+    rows = enrich_summary_comparison(summary)
+    if rows.empty:
+        return rows
+    rows = rows.copy()
+    rows['risk_gate'] = rows['failure_before_payout_rate'] <= float(max_failure_rate)
+    rows['decision_label'] = ''
+    rows['convex_qualified'] = rows['risk_gate']
+    payout_by_day = f'payout_before_failure_by_day_{int(fastest_target_day)}'
+    failure_by_day = f'failure_before_payout_by_day_{int(fastest_target_day)}'
+    if payout_by_day not in rows.columns or failure_by_day not in rows.columns:
+        raise PropLabValidationError(f'fastest target day {fastest_target_day} is not in the first-passage thresholds')
+
+    survival = rows.sort_values(
+        ['payout_before_failure_rate', 'failure_before_payout_rate', 'mean_net_cash'],
+        ascending=[False, True, False],
+    ).head(1).index
+    fastest = rows.sort_values(
+        [payout_by_day, failure_by_day, 'payout_before_failure_rate'],
+        ascending=[False, True, False],
+    ).head(1).index
+    maximum_ev = rows.sort_values('mean_net_cash', ascending=False).head(1).index
+    qualified = rows[rows['risk_gate']]
+    convex = qualified.sort_values(
+        ['mean_net_cash', 'payout_before_failure_rate', 'p50_first_payout_day_conditional'],
+        ascending=[False, False, True],
+        na_position='last',
+    ).head(1).index
+
+    _append_decision_label(rows, survival, 'Survival')
+    _append_decision_label(rows, fastest, f'Fastest D{int(fastest_target_day)}')
+    _append_decision_label(rows, maximum_ev, 'Maximum EV')
+    if len(convex):
+        _append_decision_label(rows, convex, 'Convex')
+    rows['convex_note'] = '' if len(convex) else 'No Convex configuration qualifies under the risk gate'
+
+    _append_decision_label(rows, pareto_frontier_indexes(rows), 'Pareto frontier')
+    rows.loc[~rows['risk_gate'], 'decision_label'] = rows.loc[~rows['risk_gate'], 'decision_label'].replace('', 'Above risk gate')
+    return rows
+
+
+def first_passage_threshold_frame(summary: pd.DataFrame, *, contracts: int, scenario_label: str) -> pd.DataFrame:
+    rows = summary[
+        (summary['contracts'] == int(contracts))
+        & (summary['scenario_label'] == scenario_label)
+    ]
+    if rows.empty:
+        return pd.DataFrame(columns=['day', 'payout_before_failure', 'failure_before_payout', 'unresolved'])
+    row = rows.iloc[0]
+    days = sorted(
+        int(column.rsplit('_', 1)[-1])
+        for column in summary.columns
+        if column.startswith('payout_before_failure_by_day_')
+    )
+    output = []
+    for day in days:
+        payout = float(row[f'payout_before_failure_by_day_{day}'])
+        failure = float(row[f'failure_before_payout_by_day_{day}'])
+        unresolved = float(row[f'unresolved_by_day_{day}'])
+        total = payout + failure + unresolved
+        if abs(total - 1.0) > 1e-9:
+            raise PropLabValidationError(f'first-passage probabilities for day {day} sum to {total:.12f}, not 1')
+        output.append(
+            {
+                'day': day,
+                'payout_before_failure': payout,
+                'failure_before_payout': failure,
+                'unresolved': unresolved,
+            }
+        )
+    return pd.DataFrame(output)
 
 ENTRY_ALIASES = ('entry_time', 'entry_utc', 'entry_ts', 'entry', 'touched_at', 'open_time')
 EXIT_ALIASES = ('exit_time', 'exit_utc', 'exit_ts', 'exit', 'closed_at', 'close_time')

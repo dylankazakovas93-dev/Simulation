@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import asdict
 from pathlib import Path
+from zoneinfo import ZoneInfo
 import sys
 
 import pandas as pd
@@ -18,10 +18,11 @@ from verified_prop_lab import (  # noqa: E402
     LifecycleSettings,
     PropLabValidationError,
     PropRule,
+    first_passage_threshold_frame,
     forecast_months,
+    label_summary_decisions,
     load_ledger_frame,
     run_forward_volume_grid,
-    simulate_lifecycle_path,
 )
 
 
@@ -86,74 +87,52 @@ def days(value: float | int | None) -> str:
     return f'D{int(round(float(value)))}'
 
 
-def enrich_summary(summary: pd.DataFrame) -> pd.DataFrame:
-    if summary.empty:
-        return summary
-    rows = summary.sort_values(['scenario_label', 'contracts']).copy()
-    rows['ev_uplift_vs_smaller'] = 0.0
-    rows['extra_blow_vs_smaller'] = 0.0
-    rows['convexity_delta'] = rows['mean_net_cash']
-    for (_, scenario), group in rows.groupby(['plan', 'scenario_label'], sort=False):
-        ordered = group.sort_values('contracts')
-        previous_index = None
-        for index, row in ordered.iterrows():
-            if previous_index is None:
-                rows.loc[index, 'convexity_delta'] = row['mean_net_cash']
-            else:
-                prev = rows.loc[previous_index]
-                ev_uplift = row['mean_net_cash'] - prev['mean_net_cash']
-                extra_blow = row['failure_before_payout_rate'] - prev['failure_before_payout_rate']
-                rows.loc[index, 'ev_uplift_vs_smaller'] = ev_uplift
-                rows.loc[index, 'extra_blow_vs_smaller'] = extra_blow
-                rows.loc[index, 'convexity_delta'] = ev_uplift - max(0.0, extra_blow) * 2_000
-            previous_index = index
-    return rows
+def default_forecast_dates() -> tuple[pd.Timestamp, pd.Timestamp]:
+    today = pd.Timestamp.now(tz=ZoneInfo('Europe/Vilnius')).normalize().tz_localize(None)
+    following_month = today.to_period('M') + 1
+    return today, following_month.end_time.normalize()
 
 
-def label_decisions(summary: pd.DataFrame, max_blow_rate: float) -> pd.DataFrame:
-    rows = enrich_summary(summary)
-    if rows.empty:
-        return rows
-    rows = rows.copy()
-    rows['risk_gate'] = rows['failure_before_payout_rate'] <= max_blow_rate
-    rows['decision_label'] = ''
-    candidate = rows[rows['risk_gate']].copy()
-    if candidate.empty:
-        candidate = rows.copy()
-    fastest = candidate.sort_values(
-        ['p50_first_payout_day_conditional', 'payout_before_failure_rate'],
-        ascending=[True, False],
-        na_position='last',
-    ).head(1).index
-    survival = candidate.sort_values(
-        ['payout_before_failure_rate', 'failure_before_payout_rate'],
-        ascending=[False, True],
-    ).head(1).index
-    ev = candidate.sort_values('mean_net_cash', ascending=False).head(1).index
-    convex = candidate.sort_values('convexity_delta', ascending=False).head(1).index
-    for label, indexes in [('Fastest', fastest), ('Survival', survival), ('Maximum EV', ev), ('Convex', convex)]:
-        for index in indexes:
-            existing = rows.loc[index, 'decision_label']
-            rows.loc[index, 'decision_label'] = f'{existing}, {label}'.strip(', ')
-    pareto = []
-    for index, row in candidate.iterrows():
-        dominated = candidate[
-            (candidate['payout_before_failure_rate'] >= row['payout_before_failure_rate'])
-            & (candidate['mean_net_cash'] >= row['mean_net_cash'])
-            & (candidate['failure_before_payout_rate'] <= row['failure_before_payout_rate'])
-            & (
-                (candidate['payout_before_failure_rate'] > row['payout_before_failure_rate'])
-                | (candidate['mean_net_cash'] > row['mean_net_cash'])
-                | (candidate['failure_before_payout_rate'] < row['failure_before_payout_rate'])
-            )
-        ]
-        if dominated.empty:
-            pareto.append(index)
-    for index in pareto:
-        existing = rows.loc[index, 'decision_label']
-        rows.loc[index, 'decision_label'] = f'{existing}, Pareto frontier'.strip(', ')
-    rows.loc[~rows['risk_gate'], 'decision_label'] = rows.loc[~rows['risk_gate'], 'decision_label'].replace('', 'Above risk gate')
-    return rows
+def source_audit_frame(trades, monthly_counts: dict[str, int] | None = None) -> pd.DataFrame:
+    pnl_r = pd.Series([trade.pnl_r for trade in trades], dtype=float)
+    winners = pnl_r[pnl_r > 0]
+    losers = pnl_r[pnl_r < 0]
+    raw_stops = pd.Series([trade.raw_stop_points for trade in trades], dtype=float)
+    stops = pd.Series([trade.stop_points for trade in trades], dtype=float)
+    mae_present = pd.Series([trade.mae_points is not None for trade in trades])
+    mfe_present = pd.Series([trade.mfe_points is not None for trade in trades])
+    mae_r = pd.Series([trade.mae_r for trade in trades if trade.mae_points is not None], dtype=float)
+    mfe_r = pd.Series([trade.mfe_r for trade in trades if trade.mfe_points is not None], dtype=float)
+    gross_positive = float(winners.sum()) if len(winners) else 0.0
+    gross_negative = float(abs(losers.sum())) if len(losers) else 0.0
+    metrics = [
+        ('trade count', len(trades)),
+        ('positive-trade rate', pct((pnl_r > 0).mean())),
+        ('negative-trade rate', pct((pnl_r < 0).mean())),
+        ('break-even rate', pct((pnl_r == 0).mean())),
+        ('average winner R', f'{winners.mean():.2f}' if len(winners) else '-'),
+        ('average absolute loser R', f'{abs(losers.mean()):.2f}' if len(losers) else '-'),
+        ('winner-to-loser payoff ratio', f'{(winners.mean() / abs(losers.mean())):.2f}' if len(winners) and len(losers) else '-'),
+        ('mean R per trade', f'{pnl_r.mean():.2f}'),
+        ('gross positive R', f'{gross_positive:.2f}'),
+        ('gross negative R', f'{gross_negative:.2f}'),
+        ('profit factor in R', f'{(gross_positive / gross_negative):.2f}' if gross_negative else '-'),
+        ('median raw stop', f'{raw_stops.median():.1f}'),
+        ('median effective stop', f'{stops.median():.1f}'),
+        ('percentage capped at 200', pct((stops >= 200 - 1e-9).mean())),
+        ('p10 effective stop', f'{stops.quantile(.10):.1f}'),
+        ('p25 effective stop', f'{stops.quantile(.25):.1f}'),
+        ('p50 effective stop', f'{stops.quantile(.50):.1f}'),
+        ('p75 effective stop', f'{stops.quantile(.75):.1f}'),
+        ('p90 effective stop', f'{stops.quantile(.90):.1f}'),
+        ('MAE completeness rate', pct(mae_present.mean())),
+        ('MFE completeness rate', pct(mfe_present.mean())),
+        ('mean MAE-R', f'{mae_r.mean():.2f}' if len(mae_r) else '-'),
+        ('mean MFE-R', f'{mfe_r.mean():.2f}' if len(mfe_r) else '-'),
+    ]
+    if monthly_counts:
+        metrics.extend((f'requested trades {month}', count) for month, count in monthly_counts.items())
+    return pd.DataFrame(metrics, columns=['metric', 'value'])
 
 
 def summary_display(summary: pd.DataFrame) -> pd.DataFrame:
@@ -172,7 +151,10 @@ def summary_display(summary: pd.DataFrame) -> pd.DataFrame:
             'avg_payout_count',
             'p95_max_drawdown',
             'p50_ending_cushion',
-            'convexity_delta',
+            'ev_uplift_vs_smaller',
+            'extra_failure_vs_smaller',
+            'payout_probability_uplift_vs_smaller',
+            'median_time_change_vs_smaller',
             'decision_label',
         ]
     ].copy()
@@ -190,14 +172,18 @@ def summary_display(summary: pd.DataFrame) -> pd.DataFrame:
         'avg payout count',
         'p95 drawdown',
         'median ending cushion',
-        'convexity delta',
+        'EV uplift vs smaller',
+        'extra failure vs smaller',
+        'payout uplift vs smaller',
+        'median time change',
         'label',
     ]
-    for column in ['paid before fail', 'failed before payout', 'unresolved']:
+    for column in ['paid before fail', 'failed before payout', 'unresolved', 'extra failure vs smaller', 'payout uplift vs smaller']:
         display[column] = display[column].map(pct)
-    for column in ['avg net cash', 'median net cash', 'avg withdrawn', 'p95 drawdown', 'median ending cushion', 'convexity delta']:
+    for column in ['avg net cash', 'median net cash', 'avg withdrawn', 'p95 drawdown', 'median ending cushion', 'EV uplift vs smaller']:
         display[column] = display[column].map(money)
     display['median payout day'] = display['median payout day'].map(days)
+    display['median time change'] = display['median time change'].map(days)
     display['avg payout count'] = display['avg payout count'].map(lambda value: f'{float(value):.2f}')
     return display
 
@@ -268,8 +254,9 @@ def main() -> None:
     left, right = st.columns([1.15, 0.85])
     with left:
         dates = st.columns(2)
-        forecast_start = dates[0].date_input('Forecast start', value=pd.Timestamp('2026-07-07').date())
-        forecast_end = dates[1].date_input('Forecast end', value=pd.Timestamp('2026-08-31').date())
+        default_start, default_end = default_forecast_dates()
+        forecast_start = dates[0].date_input('Forecast start', value=default_start.date())
+        forecast_end = dates[1].date_input('Forecast end', value=default_end.date())
         months = forecast_months(pd.Timestamp(forecast_start), pd.Timestamp(forecast_end))
         default_volume = pd.DataFrame({'month': [str(month) for month in months], 'expected_trades': [0 for _ in months]})
         volume = st.data_editor(
@@ -288,6 +275,8 @@ def main() -> None:
         paths = st.number_input('Bootstrapped paths', min_value=100, max_value=20_000, value=1_000, step=100)
         seed = st.number_input('Internal reproducibility seed', value=1729)
         thresholds_text = st.text_input('First-passage days', value='10,20,30,45,60')
+        parsed_thresholds = [int(part.strip()) for part in thresholds_text.split(',') if part.strip()]
+        fastest_target_day = st.selectbox('Fastest target day', parsed_thresholds or [10])
         max_blow_rate = st.slider('Risk gate: max failure before payout', 0, 100, 50) / 100
 
     rule = apex_50k_provisional()
@@ -314,7 +303,7 @@ def main() -> None:
         monthly_counts = {str(row['month']): int(row['expected_trades']) for _, row in volume.iterrows()}
         if sum(monthly_counts.values()) <= 0:
             raise PropLabValidationError('enter at least one expected trade in the forecast volume table')
-        thresholds = [int(part.strip()) for part in thresholds_text.split(',') if part.strip()]
+        thresholds = parsed_thresholds
         scenarios = [ForwardScenario(SCENARIO_OPTIONS[label], label) for label in selected_labels]
         settings = LifecycleSettings(
             start_stage='funded',
@@ -332,7 +321,6 @@ def main() -> None:
             forecast_end=pd.Timestamp(forecast_end),
             monthly_trade_counts=monthly_counts,
         ).sample_paths(paths=int(paths), master_seed=int(seed))
-        historical = simulate_lifecycle_path(trades, plan, contracts=1, settings=settings)
         grid = run_forward_volume_grid(
             sampled,
             plan,
@@ -345,13 +333,21 @@ def main() -> None:
         st.error(str(exc))
         return
 
-    summary = label_decisions(grid.summary, max_blow_rate=max_blow_rate)
+    summary = label_summary_decisions(
+        grid.summary,
+        max_failure_rate=max_blow_rate,
+        fastest_target_day=int(fastest_target_day),
+    )
     render_first_answer(summary)
 
     tabs = st.tabs(['Decision view', 'Heatmap', 'First-passage', 'Net cash', 'Path inspector', 'Validation audit'])
     with tabs[0]:
         st.dataframe(summary_display(summary), use_container_width=True, hide_index=True)
-        st.caption('Labels are transparent: Survival maximizes payout-before-failure, Fastest minimizes conditional payout day, Maximum EV maximizes average net cash, Convex rewards EV uplift versus smaller size after extra failure risk.')
+        convex_note = summary['convex_note'].dropna().astype(str)
+        convex_note = [note for note in convex_note.unique() if note]
+        if convex_note:
+            st.warning(convex_note[0])
+        st.caption('Labels are transparent: Survival maximizes payout-before-failure, Fastest maximizes payout by the selected target day, Maximum EV maximizes average net cash without a risk gate, and Convex maximizes average net cash inside the risk gate.')
 
     with tabs[1]:
         metric = st.selectbox(
@@ -367,58 +363,89 @@ def main() -> None:
             st.dataframe(heat.map(money), use_container_width=True)
 
     with tabs[2]:
-        threshold_cols = [column for column in summary.columns if column.startswith('payout_before_failure_by_day_')]
-        passage_rows = []
-        for _, row in summary.iterrows():
-            for column in threshold_cols:
-                passage_rows.append(
-                    {
-                        'scenario_contract': f"{row['scenario_label']} | {int(row['contracts'])} MNQ",
-                        'day': int(column.rsplit('_', 1)[-1]),
-                        'payout_before_failure': row[column],
-                    }
-                )
-        passage = pd.DataFrame(passage_rows)
+        passage_cols = st.columns(2)
+        passage_contract = passage_cols[0].selectbox('Contract size', sorted(summary['contracts'].unique()))
+        passage_scenario = passage_cols[1].selectbox('Point-volatility scenario', list(summary['scenario_label'].unique()))
+        passage = first_passage_threshold_frame(summary, contracts=int(passage_contract), scenario_label=passage_scenario)
         if not passage.empty:
-            chart = passage.pivot(index='day', columns='scenario_contract', values='payout_before_failure')
+            chart = passage.set_index('day')
             st.line_chart(chart)
+            formatted = passage.copy()
+            for column in ['payout_before_failure', 'failure_before_payout', 'unresolved']:
+                formatted[column] = formatted[column].map(pct)
+            st.dataframe(formatted, use_container_width=True, hide_index=True)
 
     with tabs[3]:
-        net = summary[['scenario_label', 'contracts', 'mean_net_cash', 'p05_net_cash', 'p50_net_cash', 'p95_net_cash', 'avg_payout_cash', 'avg_payout_count']].copy()
+        net = summary[
+            [
+                'scenario_label',
+                'contracts',
+                'mean_net_cash',
+                'p05_net_cash',
+                'p50_net_cash',
+                'p95_net_cash',
+                'p05_first_payout_day_conditional',
+                'p50_first_payout_day_conditional',
+                'p95_first_payout_day_conditional',
+                'p05_ending_cushion',
+                'p50_ending_cushion',
+                'p95_ending_cushion',
+                'avg_payout_cash',
+                'avg_payout_count',
+            ]
+        ].copy()
         for column in ['mean_net_cash', 'p05_net_cash', 'p50_net_cash', 'p95_net_cash', 'avg_payout_cash']:
             net[column] = net[column].map(money)
+        for column in ['p05_ending_cushion', 'p50_ending_cushion', 'p95_ending_cushion']:
+            net[column] = net[column].map(money)
+        for column in ['p05_first_payout_day_conditional', 'p50_first_payout_day_conditional', 'p95_first_payout_day_conditional']:
+            net[column] = net[column].map(days)
         st.dataframe(net, use_container_width=True, hide_index=True)
 
     with tabs[4]:
         path_id = st.number_input('Path ID', min_value=0, max_value=max(0, int(paths) - 1), value=0)
         scenario_label = st.selectbox('Scenario', selected_labels)
+        inspector_contract = st.selectbox('Contract size for events', sorted(summary['contracts'].unique()))
+        st.caption(f'Forecast clock origin: {grid.forecast_start_date.date() if grid.forecast_start_date is not None else "-"}')
         path_trades = grid.sampled_trades[
             (grid.sampled_trades['path_id'] == int(path_id))
             & (grid.sampled_trades['scenario_label'] == scenario_label)
-        ]
+        ].sort_values(['session_date', 'entry_time', 'exit_time'])
         st.dataframe(path_trades, use_container_width=True, hide_index=True)
         path_events = grid.events[
             (grid.events['path_id'] == int(path_id))
             & (grid.events['scenario_label'] == scenario_label)
+            & (grid.events['contracts'] == int(inspector_contract))
         ]
+        path_result = grid.path_results[
+            (grid.path_results['path_id'] == int(path_id))
+            & (grid.path_results['scenario_label'] == scenario_label)
+            & (grid.path_results['contracts'] == int(inspector_contract))
+        ]
+        if not path_result.empty:
+            selected = path_result.iloc[0]
+            st.json(
+                {
+                    'first_five_qualifying_days_day': selected['first_five_qualifying_days_day'],
+                    'first_payout_eligible_day': selected['first_payout_eligible_day'],
+                    'first_payout_day': selected['first_payout_day'],
+                    'first_failure_day': selected['first_failure_day'],
+                    'payout_before_failure': bool(selected['payout_before_failure']),
+                    'failure_before_payout': bool(selected['failure_before_payout']),
+                    'unresolved_at_horizon': bool(selected['unresolved_at_horizon']),
+                }
+            )
         st.dataframe(path_events, use_container_width=True, hide_index=True)
 
     with tabs[5]:
-        audit = pd.DataFrame([asdict(row) for row in historical.trade_rows])
-        source = pd.DataFrame(
-            {
-                'pnl_r': [trade.pnl_r for trade in trades],
-                'mae_r': [trade.mae_r for trade in trades],
-                'mfe_r': [trade.mfe_r for trade in trades],
-                'raw_stop_points': [trade.raw_stop_points for trade in trades],
-                'stop_points': [trade.stop_points for trade in trades],
-                'sample_weight': [trade.sample_weight for trade in trades],
-            }
+        st.write('Source distribution and forecast-volume audit')
+        st.dataframe(source_audit_frame(trades, monthly_counts), use_container_width=True, hide_index=True)
+        st.write('Generated forward path sample')
+        st.dataframe(
+            grid.sampled_trades.sort_values(['path_id', 'scenario_label', 'session_date', 'entry_time']).head(500),
+            use_container_width=True,
+            hide_index=True,
         )
-        st.write('Source shape summary')
-        st.dataframe(source.describe().T, use_container_width=True)
-        st.write('Historical one-contract audit on uploaded order')
-        st.dataframe(audit, use_container_width=True, hide_index=True)
         st.download_button('Download forward summary CSV', summary.to_csv(index=False), 'forward_summary.csv')
         st.download_button('Download sampled trades CSV', grid.sampled_trades.to_csv(index=False), 'sampled_forward_trades.csv')
 
