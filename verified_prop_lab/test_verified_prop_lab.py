@@ -4,7 +4,9 @@ import pytest
 from verified_prop_lab import (
     LedgerTrade, PropRule, LifecyclePlan, LifecycleSettings,
     PropLabValidationError, SameCalendarMonthSampler,
-    run_common_path_grid, simulate_lifecycle_path,
+    ForwardScenario, ForwardVolumeScenarioSampler,
+    load_ledger_frame, run_common_path_grid, run_forward_volume_grid,
+    simulate_lifecycle_path,
 )
 
 
@@ -21,6 +23,24 @@ def t(trade_id, session, pnl, *, mae=None, stop=None, entry='10:00', exit='11:00
         dollars_per_point=dpp,
         commission_round_turn=commission,
         slippage_points_round_turn=slippage,
+    )
+
+
+def ft(trade_id, session, pnl, *, raw=100, stop=None, mae=0, mfe=0, entry='10:00', exit='11:00', weight=1):
+    day = pd.Timestamp(session)
+    effective_stop = min(raw, 200) if stop is None else stop
+    return LedgerTrade(
+        trade_id=trade_id,
+        session_date=day,
+        entry_time=pd.Timestamp(f'{day.date()}T{entry}:00Z'),
+        exit_time=pd.Timestamp(f'{day.date()}T{exit}:00Z'),
+        pnl_points=pnl,
+        raw_stop_points=raw,
+        stop_points=effective_stop,
+        mae_points=mae,
+        mfe_points=mfe,
+        sample_weight=weight,
+        dollars_per_point=2,
     )
 
 
@@ -292,3 +312,131 @@ def test_loader_rejects_missing_authoritative_session_date():
     frame = pd.DataFrame([{'entry_time': '2026-01-01T10:00:00Z', 'exit_time': '2026-01-01T11:00:00Z', 'pnl': 1}])
     with pytest.raises(PropLabValidationError, match='session_date'):
         load_ledger_frame(frame, strategy_id='x', default_dollars_per_point=2)
+
+
+def test_forward_loader_requires_raw_effective_stop_and_excursions_in_strict_mode():
+    frame = pd.DataFrame([
+        {
+            'trade_id': 'a',
+            'session_date': '2026-01-02',
+            'entry_time': '2026-01-02T10:00:00Z',
+            'exit_time': '2026-01-02T11:00:00Z',
+            'pnl_points': 10,
+            'stop_points': 100,
+            'mae_points': 20,
+            'mfe_points': 40,
+        }
+    ])
+    with pytest.raises(PropLabValidationError, match='raw_stop_points'):
+        load_ledger_frame(frame, strategy_id='s', default_dollars_per_point=2, require_forward_schema=True)
+
+
+def test_raw_stop_scaling_preserves_r_shape_and_caps_effective_stop():
+    trade = ft('x', '2026-01-02', pnl=100, raw=150, mae=30, mfe=300)
+    scaled = trade.scaled_for_point_volatility(1.5)
+    assert scaled.raw_stop_points == 225
+    assert scaled.stop_points == 200
+    assert scaled.pnl_points == pytest.approx(100 / 150 * 200)
+    assert scaled.mae_points == pytest.approx(30 / 150 * 200)
+    assert scaled.mfe_points == pytest.approx(300 / 150 * 200)
+
+
+def test_forward_sampler_uses_requested_monthly_counts_weekdays_and_is_deterministic():
+    trades = [ft('a', '2024-01-02', 10), ft('b', '2024-01-03', -5, mae=20)]
+    sampler = ForwardVolumeScenarioSampler(
+        trades,
+        forecast_start='2026-07-01',
+        forecast_end='2026-08-31',
+        monthly_trade_counts={'2026-07': 3, '2026-08': 2},
+    )
+    first = sampler.sample_paths(paths=3, master_seed=11)
+    second = sampler.sample_paths(paths=3, master_seed=11)
+    assert [path.manifest for path in first] == [path.manifest for path in second]
+    assert all(len(path.trades) == 5 for path in first)
+    for path in first:
+        dates = [trade.session_date for trade in path.trades]
+        assert len(set(dates)) == 5
+        assert all(date.weekday() < 5 for date in dates)
+
+
+def test_forward_sampler_rejects_more_trades_than_available_sessions():
+    trades = [ft('a', '2024-01-02', 10)]
+    with pytest.raises(PropLabValidationError, match='weekday sessions'):
+        ForwardVolumeScenarioSampler(
+            trades,
+            forecast_start='2026-07-01',
+            forecast_end='2026-07-03',
+            monthly_trade_counts={'2026-07': 4},
+        )
+
+
+def test_forward_grid_reuses_same_paths_across_contracts_and_scenarios():
+    trades = [ft('win', '2024-01-02', 300, mae=0, mfe=300), ft('loss', '2024-01-03', -100, mae=100, mfe=0)]
+    sampled = ForwardVolumeScenarioSampler(
+        trades,
+        forecast_start='2026-07-01',
+        forecast_end='2026-07-31',
+        monthly_trade_counts={'2026-07': 3},
+    ).sample_paths(paths=12, master_seed=5)
+    rule = apex_rule(min_winning_days=99, consistency_pct=None)
+    grid = run_forward_volume_grid(
+        sampled,
+        funded_plan(rule),
+        contract_values=[1, 2],
+        scenarios=[ForwardScenario(1.0, 'Base'), ForwardScenario(1.1, '+10%')],
+        settings=LifecycleSettings(missing_excursion_policy='error'),
+        time_threshold_days=[10],
+    )
+    assert set(grid.summary['contracts']) == {1, 2}
+    assert set(grid.summary['scenario_label']) == {'Base', '+10%'}
+    assert all(grid.summary['paths'] == 12)
+    for _, group in grid.sampled_trades.groupby(['point_scale', 'path_id']):
+        assert len(group) == 3
+
+
+def test_forward_summary_outcome_buckets_are_mutually_exclusive():
+    trades = [
+        ft('big-win', '2024-01-02', 1300, mae=0, mfe=1300),
+        ft('big-loss', '2024-01-03', 0, mae=1200, mfe=0),
+    ]
+    sampled = ForwardVolumeScenarioSampler(
+        trades,
+        forecast_start='2026-07-01',
+        forecast_end='2026-07-31',
+        monthly_trade_counts={'2026-07': 2},
+    ).sample_paths(paths=100, master_seed=23)
+    rule = apex_rule(min_winning_days=1, winning_day_threshold=1, consistency_pct=None, payout_reserve=0)
+    grid = run_forward_volume_grid(
+        sampled,
+        funded_plan(rule),
+        contract_values=[1],
+        scenarios=[1.0],
+        settings=LifecycleSettings(desired_gross_payout=500, missing_excursion_policy='error'),
+    )
+    row = grid.summary.iloc[0]
+    total = (
+        row['payout_before_failure_rate']
+        + row['failure_before_payout_rate']
+        + row['unresolved_rate']
+    )
+    assert total == pytest.approx(1.0)
+    assert 0 <= row['payout_before_failure_rate'] <= 1
+    assert 0 <= row['failure_before_payout_rate'] <= 1
+
+
+def test_forward_grid_contract_interface_caps_at_four_mnq():
+    trades = [ft('a', '2024-01-02', 10)]
+    sampled = ForwardVolumeScenarioSampler(
+        trades,
+        forecast_start='2026-07-01',
+        forecast_end='2026-07-31',
+        monthly_trade_counts={'2026-07': 1},
+    ).sample_paths(paths=1, master_seed=1)
+    with pytest.raises(PropLabValidationError, match='between 1 and 4'):
+        run_forward_volume_grid(
+            sampled,
+            funded_plan(apex_rule(max_contracts=6)),
+            contract_values=[5],
+            scenarios=[1.0],
+            settings=LifecycleSettings(missing_excursion_policy='error'),
+        )

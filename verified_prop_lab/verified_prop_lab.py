@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Literal, Sequence
+from typing import Any, Literal, Sequence
 
 import numpy as np
 import pandas as pd
@@ -22,6 +22,7 @@ class LedgerTrade:
     entry_time: pd.Timestamp
     exit_time: pd.Timestamp
     pnl_points: float
+    raw_stop_points: float | None = None
     stop_points: float | None = None
     mae_points: float | None = None
     mfe_points: float | None = None
@@ -29,6 +30,8 @@ class LedgerTrade:
     commission_round_turn: float = 0.0
     slippage_points_round_turn: float = 0.0
     strategy_id: str = 'strategy'
+    sample_weight: float = 1.0
+    result_type: str | None = None
 
     def __post_init__(self) -> None:
         if not self.trade_id:
@@ -48,6 +51,22 @@ class LedgerTrade:
             raise PropLabValidationError(f'{self.trade_id}: dollars_per_point must be positive')
         if self.commission_round_turn < 0 or self.slippage_points_round_turn < 0:
             raise PropLabValidationError(f'{self.trade_id}: costs cannot be negative')
+        if self.sample_weight <= 0:
+            raise PropLabValidationError(f'{self.trade_id}: sample_weight must be positive')
+        if self.raw_stop_points is not None and self.raw_stop_points <= 0:
+            raise PropLabValidationError(f'{self.trade_id}: raw_stop_points must be positive')
+        if self.stop_points is not None and self.stop_points <= 0:
+            raise PropLabValidationError(f'{self.trade_id}: stop_points must be positive')
+        if self.raw_stop_points is not None and self.stop_points is not None:
+            expected_stop = min(float(self.raw_stop_points), 200.0)
+            if abs(float(self.stop_points) - expected_stop) > 1e-6:
+                raise PropLabValidationError(
+                    f'{self.trade_id}: stop_points must equal min(raw_stop_points, 200)'
+                )
+        if self.mae_points is not None and self.mae_points < 0:
+            raise PropLabValidationError(f'{self.trade_id}: mae_points must be non-negative')
+        if self.mfe_points is not None and self.mfe_points < 0:
+            raise PropLabValidationError(f'{self.trade_id}: mfe_points must be non-negative')
         object.__setattr__(self, 'session_date', session)
         object.__setattr__(self, 'entry_time', entry)
         object.__setattr__(self, 'exit_time', exit_)
@@ -55,6 +74,46 @@ class LedgerTrade:
     @property
     def source_month(self) -> pd.Period:
         return pd.Period(self.session_date, 'M')
+
+    @property
+    def effective_stop_points(self) -> float:
+        if self.stop_points is not None:
+            return float(self.stop_points)
+        if self.raw_stop_points is not None:
+            return min(float(self.raw_stop_points), 200.0)
+        raise PropLabValidationError(f'{self.trade_id}: stop_points are required for R-normalized scaling')
+
+    @property
+    def pnl_r(self) -> float:
+        return float(self.pnl_points) / self.effective_stop_points
+
+    @property
+    def mae_r(self) -> float:
+        if self.mae_points is None:
+            raise PropLabValidationError(f'{self.trade_id}: mae_points are required for MAE-R')
+        return float(self.mae_points) / self.effective_stop_points
+
+    @property
+    def mfe_r(self) -> float:
+        if self.mfe_points is None:
+            raise PropLabValidationError(f'{self.trade_id}: mfe_points are required for MFE-R')
+        return float(self.mfe_points) / self.effective_stop_points
+
+    def scaled_for_point_volatility(self, point_scale: float) -> 'LedgerTrade':
+        if point_scale <= 0:
+            raise PropLabValidationError('point_scale must be positive')
+        if self.raw_stop_points is None:
+            raise PropLabValidationError(f'{self.trade_id}: raw_stop_points are required for point-volatility scaling')
+        scaled_raw_stop = float(self.raw_stop_points) * float(point_scale)
+        scaled_stop = min(scaled_raw_stop, 200.0)
+        return replace(
+            self,
+            raw_stop_points=scaled_raw_stop,
+            stop_points=scaled_stop,
+            pnl_points=self.pnl_r * scaled_stop,
+            mae_points=self.mae_r * scaled_stop,
+            mfe_points=self.mfe_r * scaled_stop,
+        )
 
     def shifted_to_session_month(self, target_month: pd.Period) -> 'LedgerTrade':
         target_month = pd.Period(target_month, 'M')
@@ -224,6 +283,16 @@ class PathResult:
     trade_rows: tuple[TradeAuditRow, ...]
     events: tuple[LifecycleEvent, ...]
     drawdown_periods: tuple[DrawdownPeriod, ...]
+    first_five_qualifying_days_day: int | None = None
+    first_payout_eligible_day: int | None = None
+    five_days_before_failure: bool = False
+    eligible_before_failure: bool = False
+    payout_before_failure: bool = False
+    failure_before_payout: bool = False
+    unresolved_at_horizon: bool = False
+    ending_cushion: float = 0.0
+    balance_at_five_qualifying_days: float | None = None
+    balance_at_payout_eligibility: float | None = None
 
 
 @dataclass
@@ -410,6 +479,10 @@ def simulate_lifecycle_path(
     cash_payouts = 0.0
     first_payout_day: int | None = None
     first_failure_day: int | None = None
+    first_five_qualifying_days_day: int | None = None
+    first_payout_eligible_day: int | None = None
+    balance_at_five_qualifying_days: float | None = None
+    balance_at_payout_eligibility: float | None = None
     terminal_failed = False
     rows: list[TradeAuditRow] = []
     events: list[LifecycleEvent] = []
@@ -440,9 +513,15 @@ def simulate_lifecycle_path(
         dd = _DrawdownTracker(path_id=path_id, peak_nav=trading_nav, peak_date=current_session)
         day_pnl = 0.0
 
+    if state.stage == 'funded' and state.winning_days >= state.rule.min_winning_days and state.rule.min_winning_days > 0:
+        first_five_qualifying_days_day = 0
+        balance_at_five_qualifying_days = state.balance
+
     def finish_session(session_date: pd.Timestamp) -> None:
         nonlocal day_pnl, gross_payouts, cash_payouts, first_payout_day, external_fees
         nonlocal terminal_failed, pending_replacement, pending_funded_transition, last_payout_date
+        nonlocal first_five_qualifying_days_day, first_payout_eligible_day
+        nonlocal balance_at_five_qualifying_days, balance_at_payout_eligibility
         if terminal_failed or pending_replacement:
             return
         if day_pnl > 0:
@@ -451,6 +530,14 @@ def simulate_lifecycle_path(
                 state.winning_days += 1
         elif state.stage == 'funded':
             state.daily_profits.append(day_pnl)
+        if (
+            state.stage == 'funded'
+            and state.rule.min_winning_days > 0
+            and state.winning_days >= state.rule.min_winning_days
+            and first_five_qualifying_days_day is None
+        ):
+            first_five_qualifying_days_day = int((session_date - first_date).days)
+            balance_at_five_qualifying_days = state.balance
         if state.rule.drawdown_mode == 'eod_trailing':
             state.eod_peak = max(state.eod_peak, state.balance)
             state.floor = max(
@@ -469,6 +556,9 @@ def simulate_lifecycle_path(
             return
         if not _eligible_for_payout(state):
             return
+        if first_payout_eligible_day is None:
+            first_payout_eligible_day = int((session_date - first_date).days)
+            balance_at_payout_eligibility = state.balance
         available = _gross_payout_available(state)
         desired = settings.desired_gross_payout
         gross = available if desired <= 0 else min(available, desired)
@@ -624,6 +714,28 @@ def simulate_lifecycle_path(
         trade_rows=tuple(rows),
         events=tuple(events),
         drawdown_periods=tuple(dd.periods),
+        first_five_qualifying_days_day=first_five_qualifying_days_day,
+        first_payout_eligible_day=first_payout_eligible_day,
+        five_days_before_failure=(
+            first_five_qualifying_days_day is not None
+            and (first_failure_day is None or first_five_qualifying_days_day < first_failure_day)
+        ),
+        eligible_before_failure=(
+            first_payout_eligible_day is not None
+            and (first_failure_day is None or first_payout_eligible_day < first_failure_day)
+        ),
+        payout_before_failure=(
+            first_payout_day is not None
+            and (first_failure_day is None or first_payout_day < first_failure_day)
+        ),
+        failure_before_payout=(
+            first_failure_day is not None
+            and (first_payout_day is None or first_failure_day <= first_payout_day)
+        ),
+        unresolved_at_horizon=first_payout_day is None and first_failure_day is None,
+        ending_cushion=state.balance - state.floor,
+        balance_at_five_qualifying_days=balance_at_five_qualifying_days,
+        balance_at_payout_eligibility=balance_at_payout_eligibility,
     )
 
 
@@ -631,7 +743,133 @@ def simulate_lifecycle_path(
 class SampledPath:
     path_id: int
     trades: tuple[LedgerTrade, ...]
-    manifest: tuple[tuple[str, str], ...]
+    manifest: tuple[tuple[str, ...], ...]
+
+
+@dataclass(frozen=True)
+class ForwardScenario:
+    point_scale: float
+    scenario_label: str
+
+
+@dataclass(frozen=True)
+class ForwardVolumeGridResult:
+    results: tuple[PathResult, ...]
+    summary: pd.DataFrame
+    sampled_trades: pd.DataFrame
+    events: pd.DataFrame
+
+
+def scenario_label_for_scale(point_scale: float) -> str:
+    if abs(point_scale - 1.0) <= 1e-12:
+        return 'Base'
+    return f'{(point_scale - 1.0) * 100:+.0f}%'
+
+
+def forecast_months(start_date: pd.Timestamp, end_date: pd.Timestamp) -> list[pd.Period]:
+    start = pd.Timestamp(start_date).normalize().tz_localize(None)
+    end = pd.Timestamp(end_date).normalize().tz_localize(None)
+    if end < start:
+        raise PropLabValidationError('forecast end date must be on or after start date')
+    months = pd.period_range(start.to_period('M'), end.to_period('M'), freq='M')
+    return [pd.Period(month, 'M') for month in months]
+
+
+def valid_forecast_sessions(start_date: pd.Timestamp, end_date: pd.Timestamp, month: pd.Period) -> list[pd.Timestamp]:
+    start = pd.Timestamp(start_date).normalize().tz_localize(None)
+    end = pd.Timestamp(end_date).normalize().tz_localize(None)
+    month_start = max(start, month.start_time.normalize())
+    month_end = min(end, month.end_time.normalize())
+    if month_end < month_start:
+        return []
+    return [pd.Timestamp(day).normalize() for day in pd.bdate_range(month_start, month_end)]
+
+
+def validate_contract_values(contract_values: Sequence[int], *, max_contracts: int = 4) -> tuple[int, ...]:
+    values = tuple(int(value) for value in contract_values)
+    if not values:
+        raise PropLabValidationError('select at least one contract size')
+    if any(value < 1 or value > max_contracts for value in values):
+        raise PropLabValidationError(f'contract sizes for this strategy interface must be between 1 and {max_contracts}')
+    return values
+
+
+class ForwardVolumeScenarioSampler:
+    def __init__(
+        self,
+        trades: Sequence[LedgerTrade],
+        *,
+        forecast_start: str | pd.Timestamp,
+        forecast_end: str | pd.Timestamp,
+        monthly_trade_counts: dict[str | pd.Period, int],
+    ):
+        if not trades:
+            raise PropLabValidationError('at least one source trade is required')
+        self.trades = tuple(trades)
+        self.forecast_start = pd.Timestamp(forecast_start).normalize().tz_localize(None)
+        self.forecast_end = pd.Timestamp(forecast_end).normalize().tz_localize(None)
+        self.months = forecast_months(self.forecast_start, self.forecast_end)
+        self.monthly_trade_counts = {
+            str(pd.Period(month, 'M')): int(count)
+            for month, count in monthly_trade_counts.items()
+        }
+        self._validate_counts()
+
+    def _validate_counts(self) -> None:
+        for month in self.months:
+            key = str(month)
+            if key not in self.monthly_trade_counts:
+                raise PropLabValidationError(f'missing expected trade count for forecast month {key}')
+            count = self.monthly_trade_counts[key]
+            if count < 0:
+                raise PropLabValidationError(f'expected trade count for {key} cannot be negative')
+            sessions = valid_forecast_sessions(self.forecast_start, self.forecast_end, month)
+            if count > len(sessions):
+                raise PropLabValidationError(
+                    f'{key}: requested {count} trades but only {len(sessions)} weekday sessions are available'
+                )
+
+    def sample_paths(self, *, paths: int, master_seed: int) -> list[SampledPath]:
+        if paths <= 0:
+            raise PropLabValidationError('paths must be positive')
+        child_seeds = np.random.SeedSequence(master_seed).spawn(paths)
+        output: list[SampledPath] = []
+        weights = np.asarray([trade.sample_weight for trade in self.trades], dtype=float)
+        probabilities = weights / weights.sum()
+        for path_id, child in enumerate(child_seeds):
+            rng = np.random.default_rng(child)
+            sampled: list[LedgerTrade] = []
+            manifest: list[tuple[str, str, str]] = []
+            sequence_number = 0
+            for month in self.months:
+                count = self.monthly_trade_counts[str(month)]
+                if count == 0:
+                    continue
+                sessions = valid_forecast_sessions(self.forecast_start, self.forecast_end, month)
+                source_indices = rng.choice(len(self.trades), size=count, replace=True, p=probabilities)
+                session_indices = rng.choice(len(sessions), size=count, replace=False)
+                order = rng.permutation(count)
+                for order_position in order:
+                    source = self.trades[int(source_indices[order_position])]
+                    target_session = sessions[int(session_indices[order_position])]
+                    shifted = shift_trade_to_session(source, target_session, sequence_number)
+                    sampled.append(shifted)
+                    manifest.append((str(month), source.trade_id, str(target_session.date())))
+                    sequence_number += 1
+            output.append(SampledPath(path_id, tuple(sampled), tuple(manifest)))
+        return output
+
+
+def shift_trade_to_session(trade: LedgerTrade, target_session: pd.Timestamp, sequence_number: int) -> LedgerTrade:
+    target_session = pd.Timestamp(target_session).normalize().tz_localize(None)
+    delta = target_session - trade.session_date
+    return replace(
+        trade,
+        trade_id=f'{trade.trade_id}@{target_session.date()}#{sequence_number}',
+        session_date=target_session,
+        entry_time=trade.entry_time + delta,
+        exit_time=trade.exit_time + delta,
+    )
 
 
 class SameCalendarMonthSampler:
@@ -724,15 +962,205 @@ def run_common_path_grid(
         })
     return results, pd.DataFrame(rows)
 
+
+def _percentile_or_nan(values: Sequence[float], percentile: float) -> float:
+    cleaned = np.asarray([float(value) for value in values if pd.notna(value)], dtype=float)
+    if cleaned.size == 0:
+        return float('nan')
+    return float(np.percentile(cleaned, percentile))
+
+
+def _rate(values: pd.Series) -> float:
+    return float(values.astype(bool).mean()) if len(values) else 0.0
+
+
+def run_forward_volume_grid(
+    sampled_paths: Sequence[SampledPath],
+    plan: LifecyclePlan,
+    *,
+    contract_values: Sequence[int],
+    scenarios: Sequence[ForwardScenario | float],
+    settings: LifecycleSettings,
+    time_threshold_days: Sequence[int] = (10, 20, 30, 45, 60),
+    max_contracts: int = 4,
+) -> ForwardVolumeGridResult:
+    contracts_to_run = validate_contract_values(contract_values, max_contracts=max_contracts)
+    if not sampled_paths:
+        raise PropLabValidationError('at least one sampled path is required')
+    normalized_scenarios: tuple[ForwardScenario, ...] = tuple(
+        scenario
+        if isinstance(scenario, ForwardScenario)
+        else ForwardScenario(float(scenario), scenario_label_for_scale(float(scenario)))
+        for scenario in scenarios
+    )
+    if not normalized_scenarios:
+        raise PropLabValidationError('select at least one point-volatility scenario')
+    thresholds = tuple(sorted({int(value) for value in time_threshold_days if int(value) >= 0}))
+
+    results: list[PathResult] = []
+    result_rows: list[dict[str, Any]] = []
+    sampled_trade_rows: list[dict[str, Any]] = []
+    event_rows: list[dict[str, Any]] = []
+
+    for scenario in normalized_scenarios:
+        if scenario.point_scale <= 0:
+            raise PropLabValidationError('point-volatility scenarios must be positive')
+        for sampled in sampled_paths:
+            scaled_trades = tuple(
+                trade.scaled_for_point_volatility(scenario.point_scale)
+                for trade in sampled.trades
+            )
+            for trade in scaled_trades:
+                sampled_trade_rows.append(
+                    {
+                        'path_id': sampled.path_id,
+                        'point_scale': scenario.point_scale,
+                        'scenario_label': scenario.scenario_label,
+                        'trade_id': trade.trade_id,
+                        'source_trade_id': trade.trade_id.split('@', 1)[0],
+                        'session_date': str(trade.session_date.date()),
+                        'strategy_id': trade.strategy_id,
+                        'raw_stop_points': trade.raw_stop_points,
+                        'stop_points': trade.stop_points,
+                        'pnl_points': trade.pnl_points,
+                        'mae_points': trade.mae_points,
+                        'mfe_points': trade.mfe_points,
+                        'pnl_r': trade.pnl_r,
+                        'mae_r': trade.mae_r,
+                        'mfe_r': trade.mfe_r,
+                    }
+                )
+            for contracts in contracts_to_run:
+                result = simulate_lifecycle_path(
+                    scaled_trades,
+                    plan,
+                    contracts=contracts,
+                    settings=settings,
+                    path_id=sampled.path_id,
+                )
+                results.append(result)
+                row = {
+                    'path_id': result.path_id,
+                    'plan': result.plan_key,
+                    'contracts': result.contracts,
+                    'point_scale': scenario.point_scale,
+                    'scenario_label': scenario.scenario_label,
+                    'five_days_before_failure': result.five_days_before_failure,
+                    'eligible_before_failure': result.eligible_before_failure,
+                    'payout_before_failure': result.payout_before_failure,
+                    'failure_before_payout': result.failure_before_payout,
+                    'unresolved_at_horizon': result.unresolved_at_horizon,
+                    'any_payout': result.payouts_taken > 0,
+                    'payouts_taken': result.payouts_taken,
+                    'cash_payouts_after_split': result.cash_payouts_after_split,
+                    'gross_payouts': result.gross_payouts,
+                    'external_fees': result.external_fees,
+                    'net_external_cash': result.net_external_cash,
+                    'ending_balance': result.ending_balance,
+                    'ending_floor': result.ending_floor,
+                    'ending_cushion': result.ending_cushion,
+                    'max_trading_drawdown': result.max_trading_drawdown,
+                    'first_five_qualifying_days_day': result.first_five_qualifying_days_day,
+                    'first_payout_eligible_day': result.first_payout_eligible_day,
+                    'first_payout_day': result.first_payout_day,
+                    'first_failure_day': result.first_failure_day,
+                    'balance_at_five_qualifying_days': result.balance_at_five_qualifying_days,
+                    'balance_at_payout_eligibility': result.balance_at_payout_eligibility,
+                }
+                result_rows.append(row)
+                for event in result.events:
+                    event_rows.append(
+                        {
+                            'path_id': result.path_id,
+                            'plan': result.plan_key,
+                            'contracts': result.contracts,
+                            'point_scale': scenario.point_scale,
+                            'scenario_label': scenario.scenario_label,
+                            'session_date': event.session_date,
+                            'event': event.event,
+                            'stage': event.stage,
+                            'attempt': event.attempt,
+                            'amount': event.amount,
+                            'balance': event.balance,
+                            'floor': event.floor,
+                            'note': event.note,
+                        }
+                    )
+
+    frame = pd.DataFrame(result_rows)
+    summary_rows: list[dict[str, Any]] = []
+    group_cols = ['plan', 'point_scale', 'scenario_label', 'contracts']
+    for (plan_key, point_scale, label, contracts), group in frame.groupby(group_cols, sort=False):
+        payout_days = group.loc[group['payout_before_failure'], 'first_payout_day'].dropna().astype(float)
+        eligibility_days = group.loc[group['eligible_before_failure'], 'first_payout_eligible_day'].dropna().astype(float)
+        five_days = group.loc[group['five_days_before_failure'], 'first_five_qualifying_days_day'].dropna().astype(float)
+        net = group['net_external_cash'].astype(float).to_numpy()
+        payout_cash = group['cash_payouts_after_split'].astype(float).to_numpy()
+        gross_payout = group['gross_payouts'].astype(float).to_numpy()
+        drawdown = group['max_trading_drawdown'].astype(float).to_numpy()
+        cushion = group['ending_cushion'].astype(float).to_numpy()
+        row = {
+            'plan': plan_key,
+            'point_scale': float(point_scale),
+            'scenario_label': label,
+            'contracts': int(contracts),
+            'paths': int(len(group)),
+            'five_days_before_failure_rate': _rate(group['five_days_before_failure']),
+            'eligible_before_failure_rate': _rate(group['eligible_before_failure']),
+            'payout_before_failure_rate': _rate(group['payout_before_failure']),
+            'failure_before_payout_rate': _rate(group['failure_before_payout']),
+            'unresolved_rate': _rate(group['unresolved_at_horizon']),
+            'any_payout_rate': _rate(group['any_payout']),
+            'avg_payout_count': float(group['payouts_taken'].astype(float).mean()),
+            'avg_payout_cash': float(payout_cash.mean()),
+            'p50_payout_cash': _percentile_or_nan(payout_cash, 50),
+            'avg_gross_payout': float(gross_payout.mean()),
+            'mean_net_cash': float(net.mean()),
+            'p05_net_cash': _percentile_or_nan(net, 5),
+            'p50_net_cash': _percentile_or_nan(net, 50),
+            'p95_net_cash': _percentile_or_nan(net, 95),
+            'p50_first_five_qualifying_days': _percentile_or_nan(five_days, 50),
+            'p50_first_eligible_day': _percentile_or_nan(eligibility_days, 50),
+            'p50_first_payout_day_conditional': _percentile_or_nan(payout_days, 50),
+            'p90_first_payout_day_conditional': _percentile_or_nan(payout_days, 90),
+            'p95_max_drawdown': _percentile_or_nan(drawdown, 95),
+            'p50_ending_cushion': _percentile_or_nan(cushion, 50),
+        }
+        for threshold in thresholds:
+            row[f'payout_before_failure_by_day_{threshold}'] = float(
+                ((group['payout_before_failure']) & (group['first_payout_day'].fillna(np.inf) <= threshold)).mean()
+            )
+            row[f'failure_before_payout_by_day_{threshold}'] = float(
+                ((group['failure_before_payout']) & (group['first_failure_day'].fillna(np.inf) <= threshold)).mean()
+            )
+            row[f'unresolved_by_day_{threshold}'] = float(
+                (
+                    (group['first_payout_day'].fillna(np.inf) > threshold)
+                    & (group['first_failure_day'].fillna(np.inf) > threshold)
+                ).mean()
+            )
+        summary_rows.append(row)
+
+    return ForwardVolumeGridResult(
+        results=tuple(results),
+        summary=pd.DataFrame(summary_rows),
+        sampled_trades=pd.DataFrame(sampled_trade_rows),
+        events=pd.DataFrame(event_rows),
+    )
+
 ENTRY_ALIASES = ('entry_time', 'entry_utc', 'entry_ts', 'entry', 'touched_at', 'open_time')
 EXIT_ALIASES = ('exit_time', 'exit_utc', 'exit_ts', 'exit', 'closed_at', 'close_time')
 PNL_ALIASES = ('pnl_points', 'pnl_pts', 'points', 'pnl', 'net_pts', 'pnl_raw')
+RAW_STOP_ALIASES = ('raw_stop_points', 'raw_stop_pts', 'raw_cap_points', 'uncapped_stop_points', 'uncapped_cap_points', 'planned_raw_stop_points')
 STOP_ALIASES = ('stop_points', 'stop_pts', 'sl_points', 'sl_pts', 'cap')
 MAE_ALIASES = ('mae_points', 'mae_pts', 'mae')
 MFE_ALIASES = ('mfe_points', 'mfe_pts', 'mfe')
 SESSION_ALIASES = ('session_date', 'sess_date', 'trading_day')
 DPP_ALIASES = ('dollars_per_point', 'dpp')
 COMMISSION_ALIASES = ('commission_round_turn', 'commission_rt', 'commission')
+SLIPPAGE_ALIASES = ('slippage_points_round_turn', 'slippage_points', 'slippage_pts', 'slippage')
+SAMPLE_WEIGHT_ALIASES = ('sample_weight', 'weight', 'bootstrap_weight')
+RESULT_TYPE_ALIASES = ('result_type', 'outcome', 'trade_result')
 
 
 def _normalized_columns(frame: pd.DataFrame) -> dict[str, str]:
@@ -756,6 +1184,7 @@ def load_ledger_frame(
     default_dollars_per_point: float,
     default_commission_round_turn: float = 0.0,
     default_slippage_points_round_turn: float = 0.0,
+    require_forward_schema: bool = False,
 ) -> list[LedgerTrade]:
     columns = _normalized_columns(frame)
     entry_col = _first_column(columns, ENTRY_ALIASES)
@@ -766,13 +1195,21 @@ def load_ledger_frame(
         raise PropLabValidationError(
             'ledger requires explicit session_date, entry_time, exit_time, and point PnL columns'
         )
+    raw_stop_col = _first_column(columns, RAW_STOP_ALIASES)
     stop_col = _first_column(columns, STOP_ALIASES)
     mae_col = _first_column(columns, MAE_ALIASES)
     mfe_col = _first_column(columns, MFE_ALIASES)
     dpp_col = _first_column(columns, DPP_ALIASES)
     commission_col = _first_column(columns, COMMISSION_ALIASES)
+    slippage_col = _first_column(columns, SLIPPAGE_ALIASES)
+    sample_weight_col = _first_column(columns, SAMPLE_WEIGHT_ALIASES)
+    result_type_col = _first_column(columns, RESULT_TYPE_ALIASES)
     id_col = columns.get('trade_id') or columns.get('source_row_id') or columns.get('level_id') or columns.get('id')
     strategy_col = columns.get('strategy_id') or columns.get('strategy')
+    if require_forward_schema and (raw_stop_col is None or stop_col is None or mae_col is None or mfe_col is None):
+        raise PropLabValidationError(
+            'forward simulator requires raw_stop_points, stop_points, mae_points, and mfe_points columns'
+        )
     trades: list[LedgerTrade] = []
     seen: set[str] = set()
     for position, (_, row) in enumerate(frame.iterrows(), start=2):
@@ -788,6 +1225,21 @@ def load_ledger_frame(
             if commission_col is not None and pd.notna(row[commission_col])
             else float(default_commission_round_turn)
         )
+        slippage = (
+            float(row[slippage_col])
+            if slippage_col is not None and pd.notna(row[slippage_col])
+            else float(default_slippage_points_round_turn)
+        )
+        sample_weight = (
+            float(row[sample_weight_col])
+            if sample_weight_col is not None and pd.notna(row[sample_weight_col])
+            else 1.0
+        )
+        result_type = (
+            str(row[result_type_col]).strip()
+            if result_type_col is not None and pd.notna(row[result_type_col])
+            else None
+        )
         trades.append(
             LedgerTrade(
                 trade_id=unique_id,
@@ -796,12 +1248,15 @@ def load_ledger_frame(
                 entry_time=pd.Timestamp(row[entry_col]),
                 exit_time=pd.Timestamp(row[exit_col]),
                 pnl_points=float(row[pnl_col]),
+                raw_stop_points=(float(row[raw_stop_col]) if raw_stop_col is not None and pd.notna(row[raw_stop_col]) else None),
                 stop_points=(float(row[stop_col]) if stop_col is not None and pd.notna(row[stop_col]) else None),
                 mae_points=(float(row[mae_col]) if mae_col is not None and pd.notna(row[mae_col]) else None),
                 mfe_points=(float(row[mfe_col]) if mfe_col is not None and pd.notna(row[mfe_col]) else None),
                 dollars_per_point=dpp,
                 commission_round_turn=commission,
-                slippage_points_round_turn=float(default_slippage_points_round_turn),
+                slippage_points_round_turn=slippage,
+                sample_weight=sample_weight,
+                result_type=result_type,
             )
         )
     trades.sort(key=lambda trade: (trade.session_date, trade.exit_time, trade.entry_time, trade.trade_id))
