@@ -1188,7 +1188,10 @@ def run_forward_volume_grid(
 def enrich_summary_comparison(summary: pd.DataFrame) -> pd.DataFrame:
     if summary.empty:
         return summary.copy()
-    rows = summary.sort_values(['scenario_label', 'contracts']).copy()
+    group_columns = ['plan', 'scenario_label']
+    if 'source_pool_id' in summary.columns:
+        group_columns.insert(1, 'source_pool_id')
+    rows = summary.sort_values([*group_columns, 'contracts']).copy()
     for column in [
         'ev_uplift_vs_smaller',
         'extra_failure_vs_smaller',
@@ -1196,7 +1199,7 @@ def enrich_summary_comparison(summary: pd.DataFrame) -> pd.DataFrame:
         'median_time_change_vs_smaller',
     ]:
         rows[column] = np.nan
-    for (_, scenario), group in rows.groupby(['plan', 'scenario_label'], sort=False):
+    for _, group in rows.groupby(group_columns, sort=False, dropna=False):
         ordered = group.sort_values('contracts')
         previous_index = None
         for index, row in ordered.iterrows():
@@ -1259,35 +1262,43 @@ def label_summary_decisions(
     rows['risk_gate'] = rows['failure_before_payout_rate'] <= float(max_failure_rate)
     rows['decision_label'] = ''
     rows['convex_qualified'] = rows['risk_gate']
+    rows['convex_note'] = ''
     payout_by_day = f'payout_before_failure_by_day_{int(fastest_target_day)}'
     failure_by_day = f'failure_before_payout_by_day_{int(fastest_target_day)}'
     if payout_by_day not in rows.columns or failure_by_day not in rows.columns:
         raise PropLabValidationError(f'fastest target day {fastest_target_day} is not in the first-passage thresholds')
 
-    survival = rows.sort_values(
-        ['payout_before_failure_rate', 'failure_before_payout_rate', 'mean_net_cash'],
-        ascending=[False, True, False],
-    ).head(1).index
-    fastest = rows.sort_values(
-        [payout_by_day, failure_by_day, 'payout_before_failure_rate'],
-        ascending=[False, True, False],
-    ).head(1).index
-    maximum_ev = rows.sort_values('mean_net_cash', ascending=False).head(1).index
-    qualified = rows[rows['risk_gate']]
-    convex = qualified.sort_values(
-        ['mean_net_cash', 'payout_before_failure_rate', 'p50_first_payout_day_conditional'],
-        ascending=[False, False, True],
-        na_position='last',
-    ).head(1).index
+    group_columns = ['plan', 'scenario_label']
+    if 'source_pool_id' in rows.columns:
+        group_columns.insert(1, 'source_pool_id')
 
-    _append_decision_label(rows, survival, 'Survival')
-    _append_decision_label(rows, fastest, f'Fastest D{int(fastest_target_day)}')
-    _append_decision_label(rows, maximum_ev, 'Maximum EV')
-    if len(convex):
-        _append_decision_label(rows, convex, 'Convex')
-    rows['convex_note'] = '' if len(convex) else 'No Convex configuration qualifies under the risk gate'
+    for _, group in rows.groupby(group_columns, sort=False, dropna=False):
+        survival = group.sort_values(
+            ['payout_before_failure_rate', 'failure_before_payout_rate', 'mean_net_cash'],
+            ascending=[False, True, False],
+        ).head(1).index
+        fastest = group.sort_values(
+            [payout_by_day, failure_by_day, 'payout_before_failure_rate'],
+            ascending=[False, True, False],
+        ).head(1).index
+        maximum_ev = group.sort_values('mean_net_cash', ascending=False).head(1).index
+        qualified = group[group['risk_gate']]
+        convex = qualified.sort_values(
+            ['mean_net_cash', 'payout_before_failure_rate', 'p50_first_payout_day_conditional'],
+            ascending=[False, False, True],
+            na_position='last',
+        ).head(1).index
 
-    _append_decision_label(rows, pareto_frontier_indexes(rows), 'Pareto frontier')
+        _append_decision_label(rows, survival, 'Survival')
+        _append_decision_label(rows, fastest, f'Fastest D{int(fastest_target_day)}')
+        _append_decision_label(rows, maximum_ev, 'Maximum EV')
+        if len(convex):
+            _append_decision_label(rows, convex, 'Convex')
+        else:
+            rows.loc[group.index, 'convex_note'] = 'No Convex configuration qualifies under the risk gate'
+
+        _append_decision_label(rows, pareto_frontier_indexes(group), 'Pareto frontier')
+
     rows.loc[~rows['risk_gate'], 'decision_label'] = rows.loc[~rows['risk_gate'], 'decision_label'].replace('', 'Above risk gate')
     return rows
 
