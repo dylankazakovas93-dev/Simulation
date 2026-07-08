@@ -292,6 +292,27 @@ def test_per_trade_ledger_reconciles_after_prefix_basis_and_current_state():
     assert ledger.iloc[-1]["balance_after"] == monthly.iloc[-1]["ending_balance"]
 
 
+def test_lifecycle_summary_exposes_strict_unknown_and_realized_only_rates():
+    plan = default_lifecycle_plans()["Apex Trader Funding - EOD PA 50K - Funded only"]
+    scenario = ForwardScenario(rr_config_id="1rr", path_count=2, july_candidate_count=0, august_candidate_count=0)
+    settings = {plan.key: LifecycleSettings(start_mode="funded")}
+
+    summary, _monthly, _events, ledger = run_forward_lifecycle_grid(
+        build_monte_carlo_paths(scenario),
+        [plan],
+        contract_values=[1],
+        settings_by_plan=settings,
+        prefix_application_basis="ACCOUNT_STATE_BEFORE_PREFIX",
+    )
+
+    row = summary.iloc[0]
+    assert row["strict_unknown_trades"] == 4
+    assert row["realized_only_trades"] == 4
+    assert row["strict_unknown_rate"] == 1
+    assert row["realized_only_failure_rate"] == 0
+    assert (ledger["strict_account_result"] == "UNKNOWN").sum() == 4
+
+
 def test_non_apex_lifecycle_payouts_use_profit_split_as_trader_cash():
     plan = default_lifecycle_plans()["TakeProfitTrader - PRO 50K - Funded only"]
     settings = {

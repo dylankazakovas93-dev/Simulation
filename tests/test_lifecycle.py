@@ -807,3 +807,32 @@ def test_final_day_eod_floor_and_winning_day_state_are_finalized_in_trace():
     assert result.ending_floor == 48_250
     assert ledger[-1]["floor_after"] == 48_250
     assert ledger[-1]["winning_days_after"] == 1
+
+
+def test_eval_pass_and_activation_fee_have_authoritative_trace_rows():
+    trades = _trades(
+        [
+            {
+                "entry_time": "2026-01-02T10:00:00Z",
+                "exit_time": "2026-01-02T11:00:00Z",
+                "pnl_points": 1500,
+                "source_row_id": "eval-pass",
+            }
+        ]
+    )
+    plan = default_lifecycle_plans()["Apex Trader Funding - EOD 50K - Eval to funded"]
+    settings = LifecycleSettings(start_mode="new_eval", activation_fee=100)
+
+    result, _months, events, ledger = simulate_lifecycle_path(
+        trades, plan, contracts=1, settings=settings, return_trade_ledger=True
+    )
+
+    assert result.terminal_stage == "funded"
+    assert result.ending_balance == 50_000
+    assert result.total_fees == 100
+    assert [event.event for event in events] == ["eval_passed", "activation_fee"]
+    assert [row["record_type"] for row in ledger] == ["TRADE", "LIFECYCLE_EVENT", "FEE"]
+    assert ledger[-1]["lifecycle_event"] == "activation_fee"
+    assert ledger[-1]["balance_after"] == result.ending_balance
+    assert ledger[-1]["floor_after"] == result.ending_floor
+    assert ledger[-1]["total_fees"] == result.total_fees

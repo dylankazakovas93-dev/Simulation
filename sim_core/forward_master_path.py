@@ -432,6 +432,39 @@ def summarize_lifecycle_results_from_dicts(rows: list[dict[str, Any]]) -> pd.Dat
     if not summary.empty and "prefix_application_basis" not in summary:
         basis = extras.groupby(["plan_key", "contracts"], sort=False)["prefix_application_basis"].first().reset_index()
         summary = summary.merge(basis, left_on=["plan", "contracts"], right_on=["plan_key", "contracts"], how="left").drop(columns=["plan_key"])
+    strict_columns = {
+        "strict_exact_known_trades",
+        "strict_unknown_trades",
+        "realized_only_trades",
+        "strict_exact_failure_trades",
+        "realized_only_failure_trades",
+    }
+    if strict_columns <= set(extras.columns):
+        strict = (
+            extras.groupby(["plan_key", "contracts"], sort=False)[sorted(strict_columns)]
+            .sum()
+            .reset_index()
+        )
+        strict["strict_exact_failure_rate"] = strict.apply(
+            lambda row: row["strict_exact_failure_trades"] / row["strict_exact_known_trades"]
+            if row["strict_exact_known_trades"]
+            else None,
+            axis=1,
+        )
+        strict["strict_unknown_rate"] = strict.apply(
+            lambda row: row["strict_unknown_trades"] / row["realized_only_trades"]
+            if row["realized_only_trades"]
+            else None,
+            axis=1,
+        )
+        strict["realized_only_failure_rate"] = strict.apply(
+            lambda row: row["realized_only_failure_trades"] / row["realized_only_trades"]
+            if row["realized_only_trades"]
+            else None,
+            axis=1,
+        )
+        summary = summary.merge(strict, left_on=["plan", "contracts"], right_on=["plan_key", "contracts"], how="left")
+        summary = summary.drop(columns=["plan_key"])
     return summary
 
 
@@ -872,6 +905,8 @@ def _strict_trace_rates(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "strict_exact_known_trades": len(exact),
         "strict_unknown_trades": len(unknown),
         "realized_only_trades": len(trade_rows),
+        "strict_exact_failure_trades": len(exact_failures),
+        "realized_only_failure_trades": len(realized_only_failures),
         "strict_exact_failure_rate": (len(exact_failures) / len(exact)) if exact else None,
         "strict_unknown_rate": (len(unknown) / len(trade_rows)) if trade_rows else None,
         "realized_only_failure_rate": (len(realized_only_failures) / len(trade_rows)) if trade_rows else None,

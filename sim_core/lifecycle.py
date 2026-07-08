@@ -384,11 +384,12 @@ def simulate_lifecycle_path(
         if amount <= 0:
             return
         total_fees += amount
+        event_order_for_fee = next_event_order()
         events.append(
             LifecycleEvent(
                 path_id=path_id,
                 plan_key=plan.key,
-                event_order=next_event_order(),
+                event_order=event_order_for_fee,
                 month_index=month_index,
                 date=str(date.date()),
                 stage=state.stage,
@@ -400,6 +401,35 @@ def simulate_lifecycle_path(
                 note=note,
             )
         )
+        if return_trade_ledger:
+            row = trace_base(current_day=date, record_type="FEE", sequence_number=None)
+            row.update(
+                {
+                    "candidate": False,
+                    "executed": False,
+                    "account_taken": False,
+                    "threshold_touched": False,
+                    "strict_account_result": "FEE",
+                    "realized_pnl_only_result": "FEE",
+                    "source_row_id": None,
+                    "trade_id": None,
+                    "entry_time": None,
+                    "exit_time": None,
+                    "pnl_points": 0.0,
+                    "gross_pnl_dollars": 0.0,
+                    "mae_points": None,
+                    "mfe_points": None,
+                    "estimated_intratrade_low": state.balance,
+                    "estimated_intratrade_high": state.balance,
+                    "fee_amount": amount,
+                    "fee_event_order": event_order_for_fee,
+                    "lifecycle_event": event,
+                    "total_payouts": total_payouts,
+                    "total_fees": total_fees,
+                    "net_cash": total_payouts - total_fees,
+                }
+            )
+            trade_ledger.append(row)
 
     def reset_state(stage: LifecycleStage) -> _AccountState:
         profile = plan.eval_profile if stage == "evaluation" and plan.eval_profile is not None else plan.funded_profile
@@ -819,11 +849,12 @@ def simulate_lifecycle_path(
         if state.stage == "evaluation" and state.balance - state.profile.starting_balance >= plan.eval_profit_target:
             eval_passes += 1
             month_status = "eval_passed"
+            eval_event_order = next_event_order()
             events.append(
                 LifecycleEvent(
                     path_id=path_id,
                     plan_key=plan.key,
-                    event_order=next_event_order(),
+                    event_order=eval_event_order,
                     month_index=month_index,
                     date=str(current_day.date()),
                     stage="evaluation",
@@ -835,6 +866,31 @@ def simulate_lifecycle_path(
                     note="Evaluation target reached; switching to funded account",
                 )
             )
+            if return_trade_ledger:
+                row = trace_base(current_day=current_day, record_type="LIFECYCLE_EVENT", sequence_number=None)
+                row.update(
+                    {
+                        "candidate": False,
+                        "executed": False,
+                        "account_taken": False,
+                        "threshold_touched": False,
+                        "strict_account_result": "EVAL_PASSED",
+                        "realized_pnl_only_result": "EVAL_PASSED",
+                        "source_row_id": None,
+                        "trade_id": None,
+                        "entry_time": None,
+                        "exit_time": None,
+                        "pnl_points": 0.0,
+                        "gross_pnl_dollars": 0.0,
+                        "mae_points": None,
+                        "mfe_points": None,
+                        "estimated_intratrade_low": state.balance,
+                        "estimated_intratrade_high": state.balance,
+                        "lifecycle_event": "eval_passed",
+                        "lifecycle_event_order": eval_event_order,
+                    }
+                )
+                trade_ledger.append(row)
             state = reset_state("funded")
             add_fee(settings.activation_fee, month_index, current_day, "activation_fee", "Funded activation after eval pass")
             month_start_balance = state.balance
