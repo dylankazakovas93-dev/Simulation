@@ -23,8 +23,11 @@ class PropRuleProfile:
     profit_split: float
     min_payout: float = 0.0
     max_payout: float | None = None
+    payout_cap_schedule: tuple[float, ...] = ()
+    payout_count_cap: int | None = None
     payout_profit_fraction: float = 1.0
     payout_reserve: float = 0.0
+    payout_cadence: str = ""
     min_winning_days: int = 0
     winning_day_threshold: float = 0.0
     consistency_pct: float | None = None
@@ -123,6 +126,7 @@ def default_prop_rule_profiles() -> dict[str, PropRuleProfile]:
         "min_winning_days": 5,
         "winning_day_threshold": 200.0,
         "payout_profit_fraction": 0.50,
+        "payout_cadence": "Up to 4 requests per month after every 5 qualifying winning days.",
         "activation_fee": 149.0,
         "source": "Alpha Rules PDF, account overview + Maximum Loss Limit pages",
         "notes": (
@@ -147,6 +151,7 @@ def default_prop_rule_profiles() -> dict[str, PropRuleProfile]:
                 min_payout=min_payout,
                 max_payout=max_payout,
                 consistency_pct=None,
+                payout_count_cap=None,
                 **alpha_common,
             )
         )
@@ -169,6 +174,7 @@ def default_prop_rule_profiles() -> dict[str, PropRuleProfile]:
                 max_payout=max_payout,
                 consistency_pct=0.40,
                 daily_loss_limit=dll,
+                payout_count_cap=None,
                 **alpha_common,
             )
         )
@@ -178,7 +184,10 @@ def default_prop_rule_profiles() -> dict[str, PropRuleProfile]:
         "firm": "FundedNext Futures",
         "drawdown_mode": "eod_trailing",
         "profit_split": 0.80,
+        "payout_profit_fraction": 0.80,
         "consistency_pct": 0.40,
+        "payout_cadence": "Performance Reward can be requested as early as 3 days after meeting consistency; no benchmark days modeled.",
+        "payout_count_cap": None,
         "source": fundednext_source,
         "notes": (
             "MLL trails from highest end-of-day balance, locks at initial balance.",
@@ -186,29 +195,39 @@ def default_prop_rule_profiles() -> dict[str, PropRuleProfile]:
             "Futures reward share shown as 80% standard in the supplied rules.",
         ),
     }
-    for name, size, target, max_loss, daily_loss in (
-        ("Rapid 25K", 25_000, 1_500, 1_000, None),
-        ("Rapid 50K", 50_000, 3_000, 2_000, None),
-        ("Rapid 100K", 100_000, 5_000, 2_500, None),
-        ("Legacy 25K", 25_000, 1_250, 1_000, None),
-        ("Legacy 50K", 50_000, 3_000, 2_000, None),
-        ("Legacy 100K", 100_000, 6_000, 3_000, None),
-        ("Flex 50K", 50_000, 2_500, 1_500, None),
-        ("Flex 100K", 100_000, 5_000, 2_500, None),
-        ("Flex 150K", 150_000, 8_000, 4_000, None),
-        ("Bolt 50K", 50_000, 3_000, 2_000, 1_000),
+    for name, size, target, max_loss, daily_loss, min_payout, max_payout in (
+        ("Rapid 25K", 25_000, 1_500, 1_000, None, 250, 800),
+        ("Rapid 50K", 50_000, 3_000, 2_000, None, 250, 1_500),
+        ("Rapid 100K", 100_000, 5_000, 2_500, None, 500, 2_500),
+        ("Legacy 25K", 25_000, 1_250, 1_000, None, 0, None),
+        ("Legacy 50K", 50_000, 3_000, 2_000, None, 0, None),
+        ("Legacy 100K", 100_000, 6_000, 3_000, None, 0, None),
+        ("Flex 50K", 50_000, 2_500, 1_500, None, 0, None),
+        ("Flex 100K", 100_000, 5_000, 2_500, None, 0, None),
+        ("Flex 150K", 150_000, 8_000, 4_000, None, 0, None),
+        ("Bolt 50K", 50_000, 3_000, 2_000, 1_000, 0, None),
     ):
+        cap_note = (
+            "Rapid account max reward caps are modeled through the first five requests; cap removal "
+            "after five rewards is not dynamically modeled."
+            if name.startswith("Rapid")
+            else "Performance Reward min/max caps for this challenge variant need source-level confirmation."
+        )
         profiles.append(
             PropRuleProfile(
                 account_name=name,
                 account_size=size,
                 max_loss=max_loss,
                 max_micro_contracts=999,
-                min_payout=0.0,
-                max_payout=None,
+                min_payout=min_payout,
+                max_payout=max_payout,
                 withdrawal_buffer=0.0,
                 daily_loss_limit=daily_loss,
-                notes=(*fundednext_common["notes"], f"Challenge profit target: ${target:,.0f}."),
+                notes=(
+                    *fundednext_common["notes"],
+                    f"Challenge profit target: ${target:,.0f}.",
+                    cap_note,
+                ),
                 **{k: v for k, v in fundednext_common.items() if k != "notes"},
             )
         )
@@ -217,6 +236,8 @@ def default_prop_rule_profiles() -> dict[str, PropRuleProfile]:
         "firm": "TakeProfitTrader",
         "drawdown_mode": "intraday_trailing",
         "profit_split": 0.80,
+        "payout_profit_fraction": 0.80,
+        "payout_cadence": "Withdrawals can start day one after building the max-drawdown buffer.",
         "source": "TPT Rules PDF, PRO Account Rules + Profit Split & Withdrawal Rules",
         "notes": (
             "PRO drawdown is intraday and includes unrealized gains; MAE/MFE columns improve approximation.",
@@ -247,20 +268,24 @@ def default_prop_rule_profiles() -> dict[str, PropRuleProfile]:
         "profit_split": 1.00,
         "min_payout": 500.0,
         "payout_profit_fraction": 1.0,
+        "payout_cadence": "Up to weekly after 5 qualifying trading days.",
+        "payout_count_cap": 6,
         "consistency_pct": 0.50,
         "min_winning_days": 5,
         "source": "Apex pasted rules, EOD Evaluations + EOD Payouts + 50% Consistency",
         "notes": (
             "EOD threshold is calculated once per day at market close and enforced next session.",
             "Safety net is drawdown limit plus $100; only profit above that reserve is withdrawable.",
-            "Payout profile uses the first payout cap; later payout caps vary by payout number.",
+            "Payout cap ladder is modeled by sequential approved payout number.",
+            "Max contracts are stored as micro-equivalent contracts because this simulator sizes MNQ-style micro contracts.",
+            "Apex PA scaling tiers are approximated with the maximum tier cap; current-tier enforcement is not modeled yet.",
         ),
     }
-    for name, size, max_loss, daily_loss, max_contracts, min_day_profit, first_payout_cap in (
-        ("EOD PA 25K", 25_000, 1_000, 500, 4, 100, 1_000),
-        ("EOD PA 50K", 50_000, 2_000, 1_000, 6, 250, 1_500),
-        ("EOD PA 100K", 100_000, 3_000, 1_500, 8, 300, 2_000),
-        ("EOD PA 150K", 150_000, 4_000, 2_000, 12, 350, 2_500),
+    for name, size, max_loss, daily_loss, max_contracts, min_day_profit, payout_caps in (
+        ("EOD PA 25K", 25_000, 1_000, 500, 20, 100, (1_000, 1_000, 1_000, 1_000, 1_000, 1_000)),
+        ("EOD PA 50K", 50_000, 2_000, 1_000, 40, 250, (1_500, 1_500, 2_000, 2_500, 2_500, 3_000)),
+        ("EOD PA 100K", 100_000, 3_000, 1_500, 60, 300, (2_000, 2_500, 2_500, 3_000, 4_000, 4_000)),
+        ("EOD PA 150K", 150_000, 4_000, 2_000, 100, 350, (2_500, 3_000, 3_000, 3_000, 4_000, 5_000)),
     ):
         profiles.append(
             PropRuleProfile(
@@ -268,7 +293,8 @@ def default_prop_rule_profiles() -> dict[str, PropRuleProfile]:
                 account_size=size,
                 max_loss=max_loss,
                 max_micro_contracts=max_contracts,
-                max_payout=first_payout_cap,
+                max_payout=payout_caps[0],
+                payout_cap_schedule=payout_caps,
                 payout_reserve=max_loss + 100,
                 winning_day_threshold=min_day_profit,
                 daily_loss_limit=daily_loss,
@@ -636,11 +662,17 @@ def _is_payout_eligible(
     return max(positive_days) <= profile.consistency_pct * net_profit
 
 
-def _gross_cash_available(balance: float, profile: PropRuleProfile) -> float:
+def _gross_cash_available(
+    balance: float,
+    profile: PropRuleProfile,
+    *,
+    max_payout: float | None = None,
+) -> float:
     profit = max(0.0, balance - profile.starting_balance)
     gross = max(0.0, profit - profile.payout_reserve) * profile.payout_profit_fraction
-    if profile.max_payout is not None:
-        gross = min(gross, profile.max_payout)
+    cap = profile.max_payout if max_payout is None else max_payout
+    if cap is not None:
+        gross = min(gross, cap)
     if gross < profile.min_payout:
         return 0.0
     return gross

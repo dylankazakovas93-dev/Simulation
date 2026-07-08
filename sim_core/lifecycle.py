@@ -85,8 +85,10 @@ class LifecyclePathResult:
     payouts_taken: int
     first_payout_month: int | None
     first_payout_day: int | None
+    first_payout_order: int | None
     first_failure_month: int | None
     first_failure_day: int | None
+    first_failure_order: int | None
     total_payouts: float
     total_fees: float
     net_cash: float
@@ -105,6 +107,7 @@ class LifecyclePathResult:
 class LifecycleEvent:
     path_id: int
     plan_key: str
+    event_order: int
     month_index: int
     date: str
     stage: LifecycleStage
@@ -171,10 +174,10 @@ def default_lifecycle_plans() -> dict[str, LifecyclePlan]:
     plans: list[LifecyclePlan] = []
 
     apex_eval_specs = {
-        "25K": (25_000, 1_500, 1_000, 500, 4),
-        "50K": (50_000, 3_000, 2_000, 1_000, 6),
-        "100K": (100_000, 6_000, 3_000, 1_500, 8),
-        "150K": (150_000, 9_000, 4_000, 2_000, 12),
+        "25K": (25_000, 1_500, 1_000, 500, 40),
+        "50K": (50_000, 3_000, 2_000, 1_000, 60),
+        "100K": (100_000, 6_000, 3_000, 1_500, 80),
+        "150K": (150_000, 9_000, 4_000, 2_000, 120),
     }
     for size_label, (size, target, max_loss, daily_loss, max_contracts) in apex_eval_specs.items():
         funded = profiles[f"Apex Trader Funding - EOD PA {size_label}"]
@@ -194,6 +197,7 @@ def default_lifecycle_plans() -> dict[str, LifecyclePlan]:
             notes=(
                 "Evaluation target only; no consistency requirement modeled.",
                 "Passing switches the path into the matching EOD PA after activation fee.",
+                "Max contracts are stored as micro-equivalent contracts because this simulator sizes MNQ-style micro contracts.",
             ),
         )
         plans.append(
@@ -253,8 +257,10 @@ def simulate_lifecycle_path(
             payouts_taken=0,
             first_payout_month=None,
             first_payout_day=None,
+            first_payout_order=None,
             first_failure_month=None,
             first_failure_day=None,
+            first_failure_order=None,
             total_payouts=0.0,
             total_fees=0.0,
             net_cash=0.0,
@@ -277,13 +283,21 @@ def simulate_lifecycle_path(
     payouts_taken = 0
     first_payout_month: int | None = None
     first_payout_day: int | None = None
+    first_payout_order: int | None = None
     first_failure_month: int | None = None
     first_failure_day: int | None = None
+    first_failure_order: int | None = None
+    event_order = 0
     failed_terminal = False
     terminal_reason = ""
     max_drawdown_seen = 0.0
     cushion_ok_after_payout = False
     first_day = _trade_day(ordered[0].entry_time, timezone) if ordered else None
+
+    def next_event_order() -> int:
+        nonlocal event_order
+        event_order += 1
+        return event_order
 
     def add_fee(amount: float, month_index: int, date: pd.Timestamp, event: str, note: str) -> None:
         nonlocal total_fees
@@ -294,6 +308,7 @@ def simulate_lifecycle_path(
             LifecycleEvent(
                 path_id=path_id,
                 plan_key=plan.key,
+                event_order=next_event_order(),
                 month_index=month_index,
                 date=str(date.date()),
                 stage=state.stage,
@@ -329,6 +344,7 @@ def simulate_lifecycle_path(
         state.balance = float(settings.current_balance)
         state.running_peak = max(state.running_peak, state.balance)
         state.eod_peak = max(state.eod_peak, state.balance)
+        state.minimum_balance = state.balance
     if settings.current_floor is not None and settings.start_mode in {"existing_eval", "funded"}:
         state.floor = float(settings.current_floor)
     state.winning_days = max(0, int(settings.current_winning_days)) if state.stage == "funded" else 0
@@ -402,8 +418,11 @@ def simulate_lifecycle_path(
 
     def maybe_take_payout(current_day: pd.Timestamp, month_index: int) -> None:
         nonlocal total_payouts, payouts_taken, first_payout_month, first_payout_day
+        nonlocal first_payout_order
         nonlocal month_payouts, cushion_ok_after_payout
         if state.stage != "funded" or not settings.auto_payout:
+            return
+        if state.profile.payout_count_cap is not None and payouts_taken >= state.profile.payout_count_cap:
             return
         if not _is_payout_eligible(
             balance=state.balance,
@@ -412,13 +431,16 @@ def simulate_lifecycle_path(
             daily_profits=state.daily_profits,
         ):
             return
-        available = _gross_cash_available(state.balance, state.profile)
+        available = _gross_cash_available(
+            state.balance,
+            state.profile,
+            max_payout=_payout_cap_for_request(state.profile, payouts_taken + 1),
+        )
         desired = float(settings.desired_payout)
         payout = available if desired <= 0 else min(available, desired)
         min_balance_after = state.profile.starting_balance + max(
             settings.required_cushion,
             state.profile.payout_reserve,
-            state.profile.withdrawal_buffer,
         )
         if payout <= 0 or (desired > 0 and payout < desired):
             return
@@ -430,15 +452,18 @@ def simulate_lifecycle_path(
         month_payouts += payout
         payouts_taken += 1
         cushion_ok_after_payout = True
+        payout_order = next_event_order()
         if first_payout_month is None:
             first_payout_month = month_index
             first_payout_day = int((current_day - first_day).days) if first_day is not None else None
+            first_payout_order = payout_order
         state.winning_days = 0
         state.daily_profits = []
         events.append(
             LifecycleEvent(
                 path_id=path_id,
                 plan_key=plan.key,
+                event_order=payout_order,
                 month_index=month_index,
                 date=str(current_day.date()),
                 stage="funded",
@@ -466,6 +491,9 @@ def simulate_lifecycle_path(
             active_month_label = month_label
             month_start_balance = state.balance
             month_start_minimum = state.balance
+            state.day = None
+            state.day_pnl = 0.0
+            state.daily_paused = False
 
         if state.day is None:
             state.day = current_day
@@ -476,7 +504,10 @@ def simulate_lifecycle_path(
             state.day_pnl = 0.0
             state.daily_paused = False
 
-        if failed_terminal or state.daily_paused:
+        if failed_terminal:
+            month_status = "terminal"
+            continue
+        if state.daily_paused:
             continue
 
         pnl = _trade_pnl_dollars(trade, contracts, dollars_per_point)
@@ -505,14 +536,17 @@ def simulate_lifecycle_path(
         max_drawdown_seen = max(max_drawdown_seen, state.running_peak - state.minimum_balance)
 
         if breached:
+            failure_order = next_event_order()
             if first_failure_month is None:
                 first_failure_month = month_index
                 first_failure_day = int((current_day - first_day).days) if first_day is not None else None
+                first_failure_order = failure_order
             month_status = f"{state.stage}_failed"
             events.append(
                 LifecycleEvent(
                     path_id=path_id,
                     plan_key=plan.key,
+                    event_order=failure_order,
                     month_index=month_index,
                     date=str(current_day.date()),
                     stage=state.stage,
@@ -526,15 +560,25 @@ def simulate_lifecycle_path(
             )
             if state.stage == "funded":
                 funded_failures += 1
+            next_attempt_fee = (
+                settings.eval_fee
+                if state.stage == "funded"
+                else settings.reset_fee if settings.reset_fee > 0 else settings.eval_fee
+            )
+            next_attempt_note = (
+                "New evaluation after funded failure"
+                if state.stage == "funded"
+                else "Evaluation reset after failure"
+            )
             can_rebuy = (
                 settings.allow_rebuys
                 and plan.eval_profile is not None
-                and total_fees + settings.eval_fee + settings.reset_fee <= settings.max_rebuy_capital
+                and total_fees + next_attempt_fee <= settings.max_rebuy_capital
             )
             if can_rebuy:
                 state = reset_state("evaluation")
                 attempts += 1
-                add_fee(settings.eval_fee + settings.reset_fee, month_index, current_day, "eval_fee", "Rebuy/reset after failure")
+                add_fee(next_attempt_fee, month_index, current_day, "eval_fee", next_attempt_note)
                 month_start_balance = state.balance
                 month_start_minimum = state.balance
                 continue
@@ -557,6 +601,7 @@ def simulate_lifecycle_path(
                 LifecycleEvent(
                     path_id=path_id,
                     plan_key=plan.key,
+                    event_order=next_event_order(),
                     month_index=month_index,
                     date=str(current_day.date()),
                     stage="evaluation",
@@ -595,8 +640,10 @@ def simulate_lifecycle_path(
         payouts_taken=payouts_taken,
         first_payout_month=first_payout_month,
         first_payout_day=first_payout_day,
+        first_payout_order=first_payout_order,
         first_failure_month=first_failure_month,
         first_failure_day=first_failure_day,
+        first_failure_order=first_failure_order,
         total_payouts=total_payouts,
         total_fees=total_fees,
         net_cash=net_cash,
@@ -612,6 +659,7 @@ def simulate_lifecycle_path(
             LifecycleEvent(
                 path_id=path_id,
                 plan_key=plan.key,
+                event_order=next_event_order(),
                 month_index=active_month_index,
                 date=str((state.day or first_trade_date).date()),
                 stage=state.stage,
@@ -678,55 +726,113 @@ def summarize_lifecycle_results(results: list[LifecyclePathResult]) -> pd.DataFr
         fees = group["total_fees"].astype(float)
         net = group["net_cash"].astype(float)
         payouts = group["total_payouts"].astype(float)
+        payout_counts = group["payouts_taken"].astype(float)
         failed = group["failed"].astype(bool)
         target = group["target_hit"].astype(bool)
         has_payout = group["first_payout_month"].notna()
         has_failure = group["first_failure_month"].notna()
-        first_payout_day = group["first_payout_day"].astype(float)
-        first_failure_day = group["first_failure_day"].astype(float)
-        paid_before_first_fail = has_payout & (
-            ~has_failure | (first_payout_day <= first_failure_day)
+        first_payout_order = group["first_payout_order"].astype(float)
+        first_failure_order = group["first_failure_order"].astype(float)
+        paid_before_first_blow = has_payout & (
+            ~has_failure | (first_payout_order < first_failure_order)
         )
-        blew_before_first_payout = has_failure & (
-            ~has_payout | (first_failure_day < first_payout_day)
+        first_blow_before_payout = has_failure & (
+            ~has_payout | (first_failure_order < first_payout_order)
         )
-        payout_after_rebuy = has_payout & has_failure & (first_failure_day < first_payout_day)
+        payout_after_rebuy = has_payout & has_failure & (first_failure_order < first_payout_order)
+        blew_before_payout = ~has_payout & (has_failure | failed)
+        no_resolution = ~(paid_before_first_blow | payout_after_rebuy | blew_before_payout)
+        paid_before_count = int(paid_before_first_blow.sum())
+        blew_before_count = int(blew_before_payout.sum())
+        paid_after_rebuy_count = int(payout_after_rebuy.sum())
+        no_resolution_count = int(no_resolution.sum())
         row = {
             "plan": plan_key,
             "firm": group["firm"].iloc[0],
             "account": group["account_name"].iloc[0],
             "contracts": contracts,
             "paths": len(group),
-            "capital_exhausted_rate": float(failed.mean()),
-            "current_account_paid_first_rate": float(paid_before_first_fail.mean()),
-            "current_account_blew_first_rate": float(blew_before_first_payout.mean()),
+            "paid_before_first_blow_count": paid_before_count,
+            "blew_before_payout_count": blew_before_count,
+            "paid_after_rebuy_count": paid_after_rebuy_count,
+            "no_resolution_count": no_resolution_count,
+            "paid_before_first_blow_rate": float(paid_before_first_blow.mean()),
+            "first_blow_before_payout_rate": float(first_blow_before_payout.mean()),
+            "blew_before_payout_rate": float(blew_before_payout.mean()),
             "payout_after_rebuy_rate": float(payout_after_rebuy.mean()),
+            "no_resolution_rate": float(no_resolution.mean()),
+            "capital_exhausted_rate": float((failed & ~has_payout).mean()),
             "any_payout_rate": float(has_payout.mean()),
-            "target_before_first_fail_rate": float((target & paid_before_first_fail).mean()),
+            "target_before_first_fail_rate": float((target & paid_before_first_blow).mean()),
             "p05_net_cash": float(np.percentile(net, 5)),
             "p50_net_cash": float(np.percentile(net, 50)),
             "p95_net_cash": float(np.percentile(net, 95)),
             "mean_net_cash": float(net.mean()),
+            "avg_net_cash": float(net.mean()),
             "p50_payouts": float(np.percentile(payouts, 50)),
+            "avg_withdrawal": float(payouts.mean()),
+            "p50_withdrawal": float(np.percentile(payouts, 50)),
+            "p95_withdrawal": float(np.percentile(payouts, 95)),
+            "avg_payout_count": float(payout_counts.mean()),
+            "p50_payout_count": float(np.percentile(payout_counts, 50)),
             "mean_fees": float(fees.mean()),
+            "avg_fees": float(fees.mean()),
             "p50_fees": float(np.percentile(fees, 50)),
             "p50_month_to_first_payout": _nanpercentile(first_months.to_numpy(), 50),
             "p50_days_to_first_payout": _nanpercentile(first_days.to_numpy(), 50),
             "p95_max_drawdown": float(np.percentile(group["max_drawdown"].astype(float), 95)),
             "avg_attempts": float(group["attempts"].astype(float).mean()),
         }
-        downside = abs(row["p05_net_cash"])
-        speed_factor = 1.0 / max(1.0, float(row["p50_month_to_first_payout"] or 12.0))
-        row["risk_adjusted_roi_score"] = (
-            (row["mean_net_cash"] + 0.25 * max(0.0, row["p95_net_cash"] - row["p50_net_cash"]))
-            / (1.0 + downside)
-            * row["current_account_paid_first_rate"]
-            * max(0.0, 1.0 - row["current_account_blew_first_rate"])
-            * (1.0 + speed_factor)
+        row["current_account_paid_first_rate"] = row["paid_before_first_blow_rate"]
+        row["current_account_blew_first_rate"] = row["first_blow_before_payout_rate"]
+        row["paid_before_first_blow_paths"] = f"{paid_before_count} / {len(group)}"
+        payout_month = row["p50_month_to_first_payout"]
+        row["survival_score"] = 100.0 * row["paid_before_first_blow_rate"] * max(
+            0.0, 1.0 - row["blew_before_payout_rate"]
+        )
+        row["speed_score"] = (
+            100.0 * row["paid_before_first_blow_rate"] / max(1.0, float(payout_month))
+            if payout_month is not None
+            else 0.0
         )
         rows.append(row)
-    return pd.DataFrame(rows).sort_values(
-        ["target_before_first_fail_rate", "risk_adjusted_roi_score", "mean_net_cash"],
+    summary = pd.DataFrame(rows)
+    score_frames: list[pd.DataFrame] = []
+    for _plan, group in summary.groupby("plan", sort=False):
+        group = group.sort_values("contracts").copy()
+        mean_cash = group["mean_net_cash"].astype(float)
+        cash_min = float(mean_cash.min())
+        cash_max = float(mean_cash.max())
+        if cash_max > cash_min:
+            group["ev_score"] = ((mean_cash - cash_min) / (cash_max - cash_min) * 100.0).clip(0.0, 100.0)
+        else:
+            group["ev_score"] = 100.0 if cash_max > 0 else 0.0
+        convexity_raw: list[float] = []
+        previous: pd.Series | None = None
+        for row in group.itertuples(index=False):
+            if previous is None:
+                convexity_raw.append(0.0)
+            else:
+                incremental_ev = float(row.mean_net_cash) - float(previous["mean_net_cash"])
+                extra_blow = max(0.0, float(row.blew_before_payout_rate) - float(previous["blew_before_payout_rate"]))
+                extra_fees = max(0.0, float(row.mean_fees) - float(previous["mean_fees"]))
+                convexity_raw.append(max(0.0, incremental_ev) / (1.0 + extra_fees + 1000.0 * extra_blow))
+            previous = pd.Series(row._asdict())
+        convexity = np.asarray(convexity_raw, dtype=float)
+        convexity_max = float(convexity.max()) if len(convexity) else 0.0
+        group["convexity_score"] = (
+            convexity / convexity_max * 100.0 if convexity_max > 0 else np.zeros(len(group))
+        )
+        group["composite_score"] = (
+            0.40 * group["survival_score"]
+            + 0.30 * group["ev_score"]
+            + 0.15 * group["speed_score"]
+            + 0.15 * group["convexity_score"]
+        )
+        group["risk_adjusted_roi_score"] = group["composite_score"]
+        score_frames.append(group)
+    return pd.concat(score_frames, ignore_index=True).sort_values(
+        ["composite_score", "paid_before_first_blow_rate", "mean_net_cash"],
         ascending=[False, False, False],
     )
 
@@ -737,6 +843,10 @@ def summarize_monthly_paths(monthly: pd.DataFrame) -> pd.DataFrame:
     grouped = monthly.groupby(["plan_key", "contracts", "month_index"], sort=True)
     rows: list[dict[str, Any]] = []
     for (plan_key, contracts, month_index), group in grouped:
+        status = group["status"].astype(str)
+        terminal = status.str.contains("failed|terminal")
+        active = ~terminal
+        active_pnl = group.loc[active, "pnl"].astype(float)
         rows.append(
             {
                 "plan": plan_key,
@@ -746,9 +856,15 @@ def summarize_monthly_paths(monthly: pd.DataFrame) -> pd.DataFrame:
                 "p05_pnl": float(np.percentile(group["pnl"], 5)),
                 "p50_pnl": float(np.percentile(group["pnl"], 50)),
                 "p95_pnl": float(np.percentile(group["pnl"], 95)),
+                "active_paths": int(active.sum()),
+                "active_path_rate": float(active.mean()),
+                "terminal_path_rate": float(terminal.mean()),
+                "p05_active_pnl": _nanpercentile(active_pnl.to_numpy(), 5),
+                "p50_active_pnl": _nanpercentile(active_pnl.to_numpy(), 50),
+                "p95_active_pnl": _nanpercentile(active_pnl.to_numpy(), 95),
                 "p50_net_cash": float(np.percentile(group["net_cash"], 50)),
                 "p95_drawdown": float(np.percentile(group["max_drawdown"], 95)),
-                "fail_month_rate": float(group["status"].astype(str).str.contains("failed").mean()),
+                "fail_month_rate": float(status.str.contains("failed").mean()),
                 "payout_month_rate": float((group["payouts"] > 0).mean()),
             }
         )
@@ -760,6 +876,13 @@ def _nanpercentile(values: np.ndarray, percentile: float) -> float | None:
     if not len(finite):
         return None
     return float(np.percentile(finite, percentile))
+
+
+def _payout_cap_for_request(profile: PropRuleProfile, payout_number: int) -> float | None:
+    if not profile.payout_cap_schedule:
+        return profile.max_payout
+    index = max(0, min(int(payout_number) - 1, len(profile.payout_cap_schedule) - 1))
+    return float(profile.payout_cap_schedule[index])
 
 
 def plan_with_costs(plan: LifecyclePlan, *, eval_fee: float, activation_fee: float, reset_fee: float) -> LifecyclePlan:

@@ -145,3 +145,20 @@ def test_apex_50k_eod_pa_safety_net_and_minimum_payout_are_separate():
     assert result.eligible is True
     assert result.gross_cash_available == 500
     assert result.payout_after_split == 500
+
+
+def test_apex_eod_caps_are_micro_equivalent_for_mnq_sizing():
+    profiles = default_prop_rule_profiles()
+
+    assert profiles["Apex Trader Funding - EOD PA 25K"].max_micro_contracts == 20
+    assert profiles["Apex Trader Funding - EOD PA 50K"].max_micro_contracts == 40
+    assert profiles["Apex Trader Funding - EOD PA 100K"].max_micro_contracts == 60
+    assert profiles["Apex Trader Funding - EOD PA 150K"].max_micro_contracts == 100
+
+
+def test_apex_eod_50k_stores_confirmed_six_payout_cap_ladder():
+    profile = default_prop_rule_profiles()["Apex Trader Funding - EOD PA 50K"]
+
+    assert profile.payout_count_cap == 6
+    assert profile.max_payout == 1_500
+    assert profile.payout_cap_schedule == (1_500, 1_500, 2_000, 2_500, 2_500, 3_000)
