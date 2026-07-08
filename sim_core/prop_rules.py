@@ -186,7 +186,7 @@ def default_prop_rule_profiles() -> dict[str, PropRuleProfile]:
         "firm": "FundedNext Futures",
         "drawdown_mode": "eod_trailing",
         "profit_split": 0.80,
-        "payout_profit_fraction": 0.80,
+        "payout_profit_fraction": 1.00,
         "consistency_pct": 0.40,
         "payout_cadence": "Performance Reward can be requested as early as 3 days after meeting consistency; no benchmark days modeled.",
         "payout_count_cap": None,
@@ -194,7 +194,7 @@ def default_prop_rule_profiles() -> dict[str, PropRuleProfile]:
         "notes": (
             "MLL trails from highest end-of-day balance, locks at initial balance.",
             "Consistency uses largest single trading day <= 40% of total profit.",
-            "Futures reward share shown as 80% standard in the supplied rules.",
+            "Futures reward share shown as 80% standard in the supplied rules; modeled as trader split, not a second 80% withdrawal haircut.",
         ),
     }
     for name, size, target, max_loss, daily_loss, min_payout, max_payout in (
@@ -238,12 +238,12 @@ def default_prop_rule_profiles() -> dict[str, PropRuleProfile]:
         "firm": "TakeProfitTrader",
         "drawdown_mode": "intraday_trailing",
         "profit_split": 0.80,
-        "payout_profit_fraction": 0.80,
+        "payout_profit_fraction": 1.00,
         "payout_cadence": "Withdrawals can start day one after building the max-drawdown buffer.",
         "source": "TPT Rules PDF, PRO Account Rules + Profit Split & Withdrawal Rules",
         "notes": (
             "PRO drawdown is intraday and includes unrealized gains; MAE/MFE columns improve approximation.",
-            "Normal withdrawal at 80% starts after reaching the buffer zone equal to max drawdown.",
+            "Normal withdrawal uses the 80% profit split after reaching the buffer zone equal to max drawdown.",
         ),
     }
     for name, size, max_loss in (

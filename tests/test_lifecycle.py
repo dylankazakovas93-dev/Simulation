@@ -230,8 +230,8 @@ def test_tpt_buffer_allows_withdrawal_after_threshold_without_preserving_full_bu
     result, _months, events = simulate_lifecycle_path(trades, plan, contracts=1, settings=settings)
 
     assert result.payouts_taken == 1
-    assert result.total_payouts == 1_280
-    assert result.ending_balance == 50_400
+    assert result.total_payouts == 1_600
+    assert result.ending_balance == 50_000
     assert [event.event for event in events if event.event == "payout"] == ["payout"]
 
 
@@ -534,3 +534,276 @@ def test_monthly_summary_separates_terminal_paths_from_active_pnl():
     assert summary["active_path_rate"] == 0.5
     assert summary["terminal_path_rate"] == 0.5
     assert summary["p50_active_pnl"] == 800
+
+
+def test_current_daily_history_changes_consistency_eligibility():
+    trades = _trades(
+        [
+            {
+                "entry_time": "2026-01-02T10:00:00Z",
+                "exit_time": "2026-01-02T11:00:00Z",
+                "pnl_points": 0,
+                "mae_points": 0,
+                "mfe_points": 0,
+                "source_row_id": "status-check",
+            }
+        ]
+    )
+    plan = default_lifecycle_plans()["FundedNext Futures - Rapid 50K - Funded only"]
+    blocked = LifecycleSettings(
+        start_mode="funded",
+        current_balance=53_000,
+        current_daily_profits=(2_000,),
+        auto_payout=True,
+    )
+    allowed = LifecycleSettings(
+        start_mode="funded",
+        current_balance=53_000,
+        current_daily_profits=(1_000, 1_000, 1_000),
+        auto_payout=True,
+    )
+
+    blocked_result, _months, blocked_events = simulate_lifecycle_path(trades, plan, contracts=1, settings=blocked)
+    allowed_result, _months, allowed_events = simulate_lifecycle_path(trades, plan, contracts=1, settings=allowed)
+
+    assert blocked_result.payouts_taken == 0
+    assert [event.event for event in blocked_events] == []
+    assert allowed_result.payouts_taken == 1
+    assert [event.event for event in allowed_events] == ["payout"]
+
+
+def test_prior_payout_count_changes_apex_payout_cap_selection():
+    trades = _trades(
+        [
+            {
+                "entry_time": "2026-01-02T10:00:00Z",
+                "exit_time": "2026-01-02T11:00:00Z",
+                "pnl_points": 0,
+                "mae_points": 0,
+                "mfe_points": 0,
+                "source_row_id": "status-check",
+            }
+        ]
+    )
+    plan = default_lifecycle_plans()["Apex Trader Funding - EOD PA 50K - Funded only"]
+    base = LifecycleSettings(
+        start_mode="funded",
+        current_balance=56_000,
+        current_winning_days=5,
+        current_daily_profits=(500, 500, 500, 500, 500),
+        auto_payout=True,
+    )
+    first_result, _months, _events = simulate_lifecycle_path(trades, plan, contracts=1, settings=base)
+    third_result, _months, _events = simulate_lifecycle_path(
+        trades,
+        plan,
+        contracts=1,
+        settings=LifecycleSettings(**{**base.__dict__, "payouts_already_taken": 2}),
+    )
+
+    assert first_result.total_payouts == 1_500
+    assert third_result.total_payouts == 2_000
+    assert third_result.payouts_taken == 3
+
+
+def test_prior_fees_are_included_in_net_cash():
+    trades = _trades(
+        [
+            {
+                "entry_time": "2026-01-02T10:00:00Z",
+                "exit_time": "2026-01-02T11:00:00Z",
+                "pnl_points": 0,
+                "mae_points": 0,
+                "mfe_points": 0,
+                "source_row_id": "status-check",
+            }
+        ]
+    )
+    plan = default_lifecycle_plans()["TakeProfitTrader - PRO 50K - Funded only"]
+    settings = LifecycleSettings(start_mode="funded", current_balance=52_000, prior_fees=100, auto_payout=True)
+
+    result, _months, _events = simulate_lifecycle_path(trades, plan, contracts=1, settings=settings)
+
+    assert result.total_payouts == 1_600
+    assert result.total_fees == 100
+    assert result.net_cash == 1_500
+
+
+def test_authoritative_trade_ledger_reconciles_and_payout_row_matches_event():
+    trades = _trades(
+        [
+            {
+                "entry_time": "2026-01-02T10:00:00Z",
+                "exit_time": "2026-01-02T11:00:00Z",
+                "pnl_points": 0,
+                "mae_points": 0,
+                "mfe_points": 0,
+                "source_row_id": "status-check",
+            }
+        ]
+    )
+    plan = default_lifecycle_plans()["TakeProfitTrader - PRO 50K - Funded only"]
+    settings = LifecycleSettings(start_mode="funded", current_balance=52_000, auto_payout=True)
+
+    result, _months, events, ledger = simulate_lifecycle_path(
+        trades, plan, contracts=1, settings=settings, return_trade_ledger=True
+    )
+    payout_event = [event for event in events if event.event == "payout"][0]
+    payout_row = [row for row in ledger if row["record_type"] == "PAYOUT"][0]
+
+    assert ledger[-1]["balance_after"] == result.ending_balance
+    assert ledger[-1]["floor_after"] == result.ending_floor
+    assert ledger[-1]["total_payouts"] == result.total_payouts
+    assert payout_row["trader_cash"] == payout_event.amount
+    assert payout_row["balance_after"] == payout_event.balance
+    assert payout_row["payout_event_order"] == payout_event.event_order
+
+
+def test_guaranteed_mae_failure_cannot_pay_afterward():
+    trades = _trades(
+        [
+            {
+                "entry_time": "2026-01-02T10:00:00Z",
+                "exit_time": "2026-01-02T11:00:00Z",
+                "pnl_points": 500,
+                "mae_points": 2_000,
+                "mfe_points": 500,
+                "source_row_id": "mae-fail",
+            }
+        ]
+    )
+    plan = default_lifecycle_plans()["Apex Trader Funding - EOD PA 50K - Funded only"]
+    settings = LifecycleSettings(
+        start_mode="funded",
+        current_balance=53_600,
+        current_floor=50_100,
+        current_winning_days=5,
+        current_daily_profits=(500, 500, 500, 500, 500),
+        auto_payout=True,
+    )
+
+    result, _months, events, ledger = simulate_lifecycle_path(
+        trades, plan, contracts=1, settings=settings, return_trade_ledger=True
+    )
+
+    assert result.failed is True
+    assert result.total_payouts == 0
+    assert "payout" not in [event.event for event in events]
+    assert ledger[-1]["strict_account_result"] == "FAILED"
+
+
+def test_apex_50100_fails_and_5010001_survives():
+    trades = _trades(
+        [
+            {
+                "entry_time": "2026-01-02T10:00:00Z",
+                "exit_time": "2026-01-02T11:00:00Z",
+                "pnl_points": 0,
+                "mae_points": 0,
+                "mfe_points": 0,
+                "source_row_id": "boundary",
+            }
+        ]
+    )
+    plan = default_lifecycle_plans()["Apex Trader Funding - EOD PA 50K - Funded only"]
+
+    failed, _months, _events = simulate_lifecycle_path(
+        trades,
+        plan,
+        contracts=1,
+        settings=LifecycleSettings(start_mode="funded", current_balance=50_100.00, current_floor=50_100.00),
+    )
+    survived, _months, _events = simulate_lifecycle_path(
+        trades,
+        plan,
+        contracts=1,
+        settings=LifecycleSettings(start_mode="funded", current_balance=50_100.01, current_floor=50_100.00),
+    )
+
+    assert failed.failed is True
+    assert survived.failed is False
+
+
+def test_exact_cash_calculations_for_apex_alpha_fundednext_and_tpt():
+    trades = _trades(
+        [
+            {
+                "entry_time": "2026-01-02T10:00:00Z",
+                "exit_time": "2026-01-02T11:00:00Z",
+                "pnl_points": 0,
+                "mae_points": 0,
+                "mfe_points": 0,
+                "source_row_id": "status-check",
+            }
+        ]
+    )
+    cases = [
+        (
+            "Apex Trader Funding - EOD PA 50K - Funded only",
+            LifecycleSettings(
+                start_mode="funded",
+                current_balance=53_600,
+                current_winning_days=5,
+                current_daily_profits=(500, 500, 500, 500, 500),
+            ),
+            1_500,
+            52_100,
+        ),
+        (
+            "Alpha Futures - Advanced 50K - Funded only",
+            LifecycleSettings(
+                start_mode="funded",
+                current_balance=54_000,
+                current_winning_days=5,
+                current_daily_profits=(500, 500, 500, 500, 500),
+            ),
+            1_800,
+            52_000,
+        ),
+        (
+            "FundedNext Futures - Rapid 50K - Funded only",
+            LifecycleSettings(start_mode="funded", current_balance=53_000, current_daily_profits=(1_000, 1_000, 1_000)),
+            1_200,
+            51_500,
+        ),
+        (
+            "TakeProfitTrader - PRO 50K - Funded only",
+            LifecycleSettings(start_mode="funded", current_balance=52_000),
+            1_600,
+            50_000,
+        ),
+    ]
+
+    for key, settings, expected_cash, expected_balance in cases:
+        plan = default_lifecycle_plans()[key]
+        result, _months, events = simulate_lifecycle_path(trades, plan, contracts=1, settings=settings)
+        payout = [event for event in events if event.event == "payout"][0]
+        assert result.total_payouts == expected_cash
+        assert payout.amount == expected_cash
+        assert result.ending_balance == expected_balance
+
+
+def test_final_day_eod_floor_and_winning_day_state_are_finalized_in_trace():
+    trades = _trades(
+        [
+            {
+                "entry_time": "2026-01-02T10:00:00Z",
+                "exit_time": "2026-01-02T11:00:00Z",
+                "pnl_points": 125,
+                "mae_points": 0,
+                "mfe_points": 125,
+                "source_row_id": "final-day-win",
+            }
+        ]
+    )
+    plan = default_lifecycle_plans()["Apex Trader Funding - EOD PA 50K - Funded only"]
+    settings = LifecycleSettings(start_mode="funded", current_balance=50_000, current_floor=48_000, auto_payout=False)
+
+    result, _months, _events, ledger = simulate_lifecycle_path(
+        trades, plan, contracts=1, settings=settings, return_trade_ledger=True
+    )
+
+    assert result.ending_balance == 50_250
+    assert result.ending_floor == 48_250
+    assert ledger[-1]["floor_after"] == 48_250
+    assert ledger[-1]["winning_days_after"] == 1

@@ -31,7 +31,7 @@ The workflow samples complete historical packet rows. It does not fabricate synt
 
 Historical `FLAT` rows are excluded from the executable sampling pool because causal forward rolling-PF gating is not fully replayed here. The exported rows label gate state as `GATING_DISABLED_FLAT_ROWS_EXCLUDED`.
 
-Each synthetic trade is assigned to a unique business day after July 8, 2026 through August 31, 2026. Dates do not wrap; requesting more trades than available forecast trading days raises a validation error. Source entry time-of-day and holding duration are shifted onto the assigned forecast date and labeled `SYNTHETIC_SHIFTED_SOURCE_TIME_OF_DAY`.
+Each synthetic trade is assigned to a unique business day after July 8, 2026 through August 31, 2026. Dates do not wrap; requesting more trades than available forecast trading days raises a validation error. Source entry/exit offsets are aligned from `source_session_date` to the assigned `session_date`, and the lifecycle trade day must equal that assigned session. Hard assertions reject duplicate lifecycle days, sequence/order drift, and overlapping synthetic positions.
 
 The fixed prefix is never resampled, shuffled, duplicated, dropped, weighted, or outcome-adjusted. Synthetic sequence numbers start at `3`.
 
@@ -50,7 +50,9 @@ The default smoke export writes:
 - `artifacts/forward_master_path/monte_carlo_strategy_path_manifest.csv`
 - `artifacts/forward_master_path/path_level_point_results.csv`
 - `artifacts/forward_master_path/lifecycle_account_results.csv`
+- `artifacts/forward_master_path/lifecycle_monthly.csv`
 - `artifacts/forward_master_path/lifecycle_events.csv`
+- `artifacts/forward_master_path/per_trade_account_ledger.csv`
 - `artifacts/forward_master_path/summary.csv`
 - `artifacts/forward_master_path/validation_report.csv`
 - `artifacts/forward_master_path/all_strategy_paths.csv`
@@ -61,10 +63,12 @@ PF, regime, and point-scale controls are recorded in scenario metadata in this i
 
 Scenario controls are active:
 
-- PF scenarios alter packet sampling probabilities by outcome sign.
+- Expectancy scenarios alter packet sampling probabilities by outcome sign and are labeled `LOWER_EXPECTANCY`, `BASE_EXPECTANCY`, and `HIGHER_EXPECTANCY`. Numeric PF labels are not shown unless calibrated. Exports include `expected_weighted_source_pf`, the weighted expected PF of the reusable source pool under the selected weighting scheme.
 - Regime scenarios alter packet sampling probabilities by source year/regime/outcome mix.
 - Point-scale scenarios rescale P&L, stops, targets, MAE, and MFE together while preserving the sampled packet and exit identity; stop/target caps are enforced.
 
 Rolling-PF disagreement diagnostics are not used to delete confirmed realized trades. Full causal rolling-PF forward gating is not enabled in this implementation; historical FLAT rows are excluded instead.
 
-The per-trade Path Inspector ledger is a forward-workflow ledger for funded-stage account state. The historical lifecycle bootstrap remains unchanged and remains the authoritative legacy mode for uploaded historical ledgers.
+The per-trade Path Inspector ledger is emitted by the authoritative lifecycle state machine itself. It is not a second account simulator. Payout rows, failure rows, monthly rows, events, and final result values reconcile to that same state pass.
+
+Live current account state can be applied only to a single selected lifecycle plan. Multi-plan comparisons use fresh profile state so a 50K balance/floor cannot accidentally be applied to 100K or 150K accounts.

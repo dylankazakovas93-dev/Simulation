@@ -5,7 +5,6 @@ import pytest
 
 from sim_core.forward_master_path import (
     ForwardScenario,
-    build_forward_account_trade_ledger,
     build_master_path,
     build_monte_carlo_paths,
     executable_packet_pool,
@@ -98,7 +97,7 @@ def test_same_strategy_paths_are_reused_across_contracts_firms_and_plans():
     settings = {plan.key: LifecycleSettings(start_mode="funded") for plan in plans}
     scenario = ForwardScenario(rr_config_id="1rr", path_count=4, july_candidate_count=1, august_candidate_count=1)
     paths = build_monte_carlo_paths(scenario)
-    summary, _monthly, _events = run_forward_lifecycle_grid(
+    summary, _monthly, _events, ledger = run_forward_lifecycle_grid(
         paths,
         plans,
         contract_values=[1, 4],
@@ -110,6 +109,9 @@ def test_same_strategy_paths_are_reused_across_contracts_firms_and_plans():
     assert set(summary["firm"]) == {"Apex Trader Funding", "Alpha Futures"}
     assert summary["paths"].nunique() == 1
     assert int(summary["paths"].iloc[0]) == 4
+    trade_ledger = ledger[ledger["record_type"] == "TRADE"]
+    hashes = trade_ledger.groupby(["firm", "contracts", "account_path_id"])["source_trade_packet_id"].apply(lambda col: "|".join(col.fillna("").astype(str)))
+    assert hashes.nunique() <= len(paths)
 
 
 def test_prefix_application_basis_before_applies_and_after_does_not_double_count():
@@ -132,10 +134,10 @@ def test_prefix_application_basis_before_applies_and_after_does_not_double_count
         )
     )
 
-    before, _m1, _e1 = run_forward_lifecycle_grid(
+    before, _m1, _e1, _l1 = run_forward_lifecycle_grid(
         [before_path], [plan], contract_values=[1], settings_by_plan=settings, prefix_application_basis="ACCOUNT_STATE_BEFORE_PREFIX"
     )
-    after, _m2, _e2 = run_forward_lifecycle_grid(
+    after, _m2, _e2, _l2 = run_forward_lifecycle_grid(
         [after_path], [plan], contract_values=[1], settings_by_plan=settings, prefix_application_basis="ACCOUNT_STATE_AFTER_PREFIX"
     )
 
@@ -168,7 +170,7 @@ def test_no_payout_is_counted_after_failure_regression():
     plan = default_lifecycle_plans()["Apex Trader Funding - EOD PA 50K - Funded only"]
     settings = {plan.key: LifecycleSettings(start_mode="funded", desired_payout=1500)}
     scenario = ForwardScenario(rr_config_id="1_5rr", path_count=2, july_candidate_count=0, august_candidate_count=0)
-    summary, _monthly, events = run_forward_lifecycle_grid(
+    summary, _monthly, events, _ledger = run_forward_lifecycle_grid(
         build_monte_carlo_paths(scenario),
         [plan],
         contract_values=[4],
@@ -221,7 +223,7 @@ def test_historical_flat_rows_are_not_executable_packets():
 def test_enabled_scenario_controls_materially_change_outputs_and_point_scale_caps():
     base = build_master_path(ForwardScenario(rr_config_id="1_5rr", master_seed=42, july_candidate_count=6, august_candidate_count=6))
     pf = build_master_path(
-        ForwardScenario(rr_config_id="1_5rr", master_seed=42, july_candidate_count=6, august_candidate_count=6, pf_scenario="PF_1_65")
+        ForwardScenario(rr_config_id="1_5rr", master_seed=42, july_candidate_count=6, august_candidate_count=6, pf_scenario="HIGHER_EXPECTANCY")
     )
     regime = build_master_path(
         ForwardScenario(rr_config_id="1_5rr", master_seed=42, july_candidate_count=6, august_candidate_count=6, regime_scenario="abrupt_tail")
@@ -245,6 +247,17 @@ def test_strategy_sequence_hash_is_identical_for_account_variants():
     assert strategy_sequence_hash(path) == strategy_sequence_hash(path.copy())
 
 
+def test_expectancy_manifest_exports_weighted_source_pool_pf_not_path_pf():
+    scenario = ForwardScenario(rr_config_id="1rr", path_count=3, july_candidate_count=2, august_candidate_count=2)
+    paths = build_monte_carlo_paths(scenario)
+    manifest = strategy_path_manifest(paths, scenario)
+    results = path_summary(paths, scenario)
+
+    assert manifest["expected_weighted_source_pf"].notna().all()
+    assert manifest["expected_weighted_source_pf"].nunique() == 1
+    assert results["expected_weighted_source_pf"].nunique() == 1
+
+
 def test_per_trade_ledger_reconciles_after_prefix_basis_and_current_state():
     plan = default_lifecycle_plans()["Apex Trader Funding - EOD PA 50K - Funded only"]
     scenario = ForwardScenario(
@@ -265,18 +278,18 @@ def test_per_trade_ledger_reconciles_after_prefix_basis_and_current_state():
         )
     }
 
-    ledger = build_forward_account_trade_ledger(
+    _summary, monthly, _events, ledger = run_forward_lifecycle_grid(
         [path],
         [plan],
         contract_values=[1],
         settings_by_plan=settings,
         prefix_application_basis="ACCOUNT_STATE_BEFORE_PREFIX",
-        scenario=scenario,
     )
 
     assert ledger.iloc[0]["balance_before"] == 50_500
     assert ledger.iloc[-1]["balance_after"] == 50_400
     assert ledger.iloc[-1]["floor_after"] == 48_800
+    assert ledger.iloc[-1]["balance_after"] == monthly.iloc[-1]["ending_balance"]
 
 
 def test_non_apex_lifecycle_payouts_use_profit_split_as_trader_cash():
@@ -291,7 +304,7 @@ def test_non_apex_lifecycle_payouts_use_profit_split_as_trader_cash():
     }
     path = build_master_path(ForwardScenario(rr_config_id="1rr", july_candidate_count=0, august_candidate_count=0))
     # Use AFTER so the zero-continuation path is just account-status evaluation.
-    summary, _monthly, events = run_forward_lifecycle_grid(
+    summary, _monthly, events, _ledger = run_forward_lifecycle_grid(
         [path],
         [plan],
         contract_values=[1],

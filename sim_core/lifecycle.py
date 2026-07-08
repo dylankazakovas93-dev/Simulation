@@ -60,6 +60,9 @@ class LifecycleSettings:
     current_floor: float | None = None
     current_winning_days: int = 0
     current_highest_winning_day: float = 0.0
+    current_daily_profits: tuple[float, ...] = ()
+    payouts_already_taken: int = 0
+    prior_fees: float = 0.0
     desired_payout: float = 0.0
     required_cushion: float = 0.0
     allow_rebuys: bool = True
@@ -240,7 +243,10 @@ def simulate_lifecycle_path(
     seed: int = 0,
     dollars_per_point: float = 2.0,
     timezone: str = "America/New_York",
-) -> tuple[LifecyclePathResult, list[LifecycleMonth], list[LifecycleEvent]]:
+    return_trade_ledger: bool = False,
+) -> tuple[LifecyclePathResult, list[LifecycleMonth], list[LifecycleEvent]] | tuple[
+    LifecyclePathResult, list[LifecycleMonth], list[LifecycleEvent], list[dict[str, Any]]
+]:
     ordered = sorted(trades, key=lambda trade: (trade.exit_time, trade.entry_time, trade.source_row_id))
     if contracts > plan.funded_profile.max_micro_contracts:
         result = LifecyclePathResult(
@@ -272,16 +278,19 @@ def simulate_lifecycle_path(
             target_hit=False,
             cushion_ok_after_payout=False,
         )
+        if return_trade_ledger:
+            return result, [], [], []
         return result, [], []
 
     months: list[LifecycleMonth] = []
     events: list[LifecycleEvent] = []
+    trade_ledger: list[dict[str, Any]] = []
     total_payouts = 0.0
-    total_fees = 0.0
+    total_fees = max(0.0, float(settings.prior_fees))
     attempts = 0
     eval_passes = 0
     funded_failures = 0
-    payouts_taken = 0
+    payouts_taken = max(0, int(settings.payouts_already_taken))
     first_payout_month: int | None = None
     first_payout_day: int | None = None
     first_payout_order: int | None = None
@@ -299,6 +308,76 @@ def simulate_lifecycle_path(
         nonlocal event_order
         event_order += 1
         return event_order
+
+    def consistency_ratio() -> float | None:
+        if state.stage != "funded":
+            return None
+        profit = state.balance - state.profile.starting_balance
+        positive = [value for value in (state.daily_profits or []) if value > 0]
+        if profit <= 0 or not positive:
+            return None
+        return max(positive) / profit
+
+    def trace_base(*, current_day: pd.Timestamp, record_type: str, sequence_number: int | None) -> dict[str, Any]:
+        return {
+            "path_id": path_id,
+            "plan_key": plan.key,
+            "firm": plan.firm,
+            "account": plan.account_name,
+            "contracts": contracts,
+            "sequence_number": sequence_number,
+            "record_type": record_type,
+            "session_date": str(current_day.date()),
+            "stage": state.stage,
+            "attempt": max(1, attempts),
+            "balance_before": state.balance,
+            "floor_before": state.floor,
+            "running_peak_before": state.running_peak,
+            "eod_peak_before": state.eod_peak,
+            "day_pnl_before": state.day_pnl,
+            "winning_days_before": state.winning_days,
+            "consistency_before": consistency_ratio(),
+            "balance_after": state.balance,
+            "floor_after": state.floor,
+            "running_peak_after": state.running_peak,
+            "eod_peak_after": state.eod_peak,
+            "day_pnl_after": state.day_pnl,
+            "winning_days_after": state.winning_days,
+            "consistency_after": consistency_ratio(),
+            "payout_eligibility": False,
+            "gross_account_debit": 0.0,
+            "trader_cash": 0.0,
+            "payout_number": payouts_taken,
+            "fees": total_fees,
+            "total_payouts": total_payouts,
+            "total_fees": total_fees,
+            "net_cash": total_payouts - total_fees,
+            "failure": failed_terminal,
+            "failure_reason": terminal_reason,
+        }
+
+    def refresh_terminal_trace() -> None:
+        if not trade_ledger:
+            return
+        last = trade_ledger[-1]
+        last.update(
+            {
+                "balance_after": state.balance,
+                "floor_after": state.floor,
+                "running_peak_after": state.running_peak,
+                "eod_peak_after": state.eod_peak,
+                "day_pnl_after": state.day_pnl,
+                "winning_days_after": state.winning_days,
+                "consistency_after": consistency_ratio(),
+                "payout_number": payouts_taken,
+                "fees": total_fees,
+                "total_payouts": total_payouts,
+                "total_fees": total_fees,
+                "net_cash": total_payouts - total_fees,
+                "failure": failed_terminal,
+                "failure_reason": terminal_reason,
+            }
+        )
 
     def add_fee(amount: float, month_index: int, date: pd.Timestamp, event: str, note: str) -> None:
         nonlocal total_fees
@@ -349,8 +428,10 @@ def simulate_lifecycle_path(
     if settings.current_floor is not None and settings.start_mode in {"existing_eval", "funded"}:
         state.floor = float(settings.current_floor)
     state.winning_days = max(0, int(settings.current_winning_days)) if state.stage == "funded" else 0
-    if state.stage == "funded" and settings.current_highest_winning_day > 0:
-        state.daily_profits = [float(settings.current_highest_winning_day)]
+    if state.stage == "funded":
+        state.daily_profits = [float(value) for value in settings.current_daily_profits]
+        if settings.current_highest_winning_day > 0:
+            state.daily_profits.append(float(settings.current_highest_winning_day))
 
     first_trade_date = _trade_day(ordered[0].exit_time, timezone) if ordered else pd.Timestamp("1970-01-01")
     if state.stage == "evaluation":
@@ -483,6 +564,39 @@ def simulate_lifecycle_path(
                 ),
             )
         )
+        if return_trade_ledger:
+            row = trace_base(current_day=current_day, record_type="PAYOUT", sequence_number=None)
+            row.update(
+                {
+                    "candidate": False,
+                    "executed": False,
+                    "account_taken": False,
+                    "threshold_touched": False,
+                    "strict_account_result": "PAYOUT",
+                    "realized_pnl_only_result": "PAYOUT",
+                    "source_row_id": None,
+                    "trade_id": None,
+                    "entry_time": None,
+                    "exit_time": None,
+                    "pnl_points": 0.0,
+                    "gross_pnl_dollars": 0.0,
+                    "mae_points": None,
+                    "mfe_points": None,
+                    "estimated_intratrade_low": state.balance,
+                    "estimated_intratrade_high": state.balance,
+                    "balance_before": state.balance + payout,
+                    "balance_after": state.balance,
+                    "gross_account_debit": payout,
+                    "trader_cash": trader_cash,
+                    "payout_number": payouts_taken,
+                    "payout_event_order": payout_order,
+                    "payout_eligibility": True,
+                    "total_payouts": total_payouts,
+                    "total_fees": total_fees,
+                    "net_cash": total_payouts - total_fees,
+                }
+            )
+            trade_ledger.append(row)
 
     for trade in ordered:
         current_day = _trade_day(trade.exit_time, timezone)
@@ -514,13 +628,54 @@ def simulate_lifecycle_path(
 
         if failed_terminal:
             month_status = "terminal"
+            if return_trade_ledger:
+                row = trace_base(current_day=current_day, record_type="TRADE", sequence_number=_metadata_int(trade, "sequence_number"))
+                row.update(_trade_trace_identity(trade))
+                row.update(
+                    {
+                        "candidate": True,
+                        "executed": False,
+                        "account_taken": False,
+                        "threshold_touched": False,
+                        "strict_account_result": "NOT_TAKEN_AFTER_FAILURE",
+                        "realized_pnl_only_result": "NOT_TAKEN_AFTER_FAILURE",
+                    }
+                )
+                trade_ledger.append(row)
             continue
         if state.daily_paused:
+            if return_trade_ledger:
+                row = trace_base(current_day=current_day, record_type="TRADE", sequence_number=_metadata_int(trade, "sequence_number"))
+                row.update(_trade_trace_identity(trade))
+                row.update(
+                    {
+                        "candidate": True,
+                        "executed": False,
+                        "account_taken": False,
+                        "threshold_touched": False,
+                        "strict_account_result": "NOT_TAKEN_DAILY_PAUSE",
+                        "realized_pnl_only_result": "NOT_TAKEN_DAILY_PAUSE",
+                    }
+                )
+                trade_ledger.append(row)
             continue
 
+        if return_trade_ledger:
+            trace_row = trace_base(current_day=current_day, record_type="TRADE", sequence_number=_metadata_int(trade, "sequence_number"))
+            trace_row.update(_trade_trace_identity(trade))
+            trace_row.update({"candidate": True, "executed": True, "account_taken": True})
+        else:
+            trace_row = {}
         pnl = _trade_pnl_dollars(trade, contracts, dollars_per_point)
+        mae_missing = trade.mae_points is None
         mae = _trade_mae_dollars(trade, contracts, dollars_per_point)
         mfe = _trade_mfe_dollars(trade, contracts, dollars_per_point)
+        unknown_excursion = bool(
+            mae_missing
+            and str(trade.metadata.get("excursion_confidence", "")).upper().startswith("UNKNOWN")
+        )
+        estimated_low = state.balance + mae
+        estimated_high = state.balance + max(0.0, mfe)
         if state.profile.drawdown_mode == "intraday_trailing":
             state.running_peak = max(state.running_peak, state.balance + max(0.0, mfe))
             state.floor = max(
@@ -528,7 +683,7 @@ def simulate_lifecycle_path(
                 min(_floor_ceiling(state.profile), state.running_peak - state.profile.max_loss),
             )
 
-        breached = state.balance + mae <= state.floor
+        breached = (not unknown_excursion) and state.balance + mae <= state.floor
         if not breached:
             state.balance += pnl
             state.day_pnl += pnl
@@ -583,6 +738,30 @@ def simulate_lifecycle_path(
                 and plan.eval_profile is not None
                 and total_fees + next_attempt_fee <= settings.max_rebuy_capital
             )
+            if return_trade_ledger:
+                trace_row.update(
+                    {
+                        "gross_pnl_dollars": 0.0,
+                        "mae_points": trade.mae_points,
+                        "mfe_points": trade.mfe_points,
+                        "estimated_intratrade_low": estimated_low,
+                        "estimated_intratrade_high": estimated_high,
+                        "threshold_touched": True,
+                        "strict_account_result": "FAILED",
+                        "realized_pnl_only_result": "FAILED",
+                        "balance_after": state.balance,
+                        "floor_after": state.floor,
+                        "running_peak_after": state.running_peak,
+                        "eod_peak_after": state.eod_peak,
+                        "day_pnl_after": state.day_pnl,
+                        "winning_days_after": state.winning_days,
+                        "consistency_after": consistency_ratio(),
+                        "payout_eligibility": False,
+                        "failure": True,
+                        "failure_reason": "Drawdown breached",
+                    }
+                )
+                trade_ledger.append(trace_row)
             if can_rebuy:
                 state = reset_state("evaluation")
                 attempts += 1
@@ -592,7 +771,42 @@ def simulate_lifecycle_path(
                 continue
             failed_terminal = True
             terminal_reason = "capital budget exhausted or rebuys disabled"
+            refresh_terminal_trace()
             continue
+
+        if return_trade_ledger:
+            eligible_after = (
+                not failed_terminal
+                and _is_payout_eligible(
+                    balance=state.balance,
+                    profile=state.profile,
+                    winning_days=state.winning_days,
+                    daily_profits=state.daily_profits,
+                )
+            )
+            trace_row.update(
+                {
+                    "gross_pnl_dollars": pnl,
+                    "mae_points": trade.mae_points,
+                    "mfe_points": trade.mfe_points,
+                    "estimated_intratrade_low": None if unknown_excursion else estimated_low,
+                    "estimated_intratrade_high": estimated_high,
+                    "threshold_touched": "UNKNOWN" if unknown_excursion else False,
+                    "strict_account_result": "UNKNOWN" if unknown_excursion else "SURVIVED",
+                    "realized_pnl_only_result": "SURVIVED",
+                    "balance_after": state.balance,
+                    "floor_after": state.floor,
+                    "running_peak_after": state.running_peak,
+                    "eod_peak_after": state.eod_peak,
+                    "day_pnl_after": state.day_pnl,
+                    "winning_days_after": state.winning_days,
+                    "consistency_after": consistency_ratio(),
+                    "payout_eligibility": eligible_after,
+                    "failure": failed_terminal,
+                    "failure_reason": terminal_reason,
+                }
+            )
+            trade_ledger.append(trace_row)
 
         if state.profile.daily_loss_limit is not None and state.day_pnl <= -abs(state.profile.daily_loss_limit):
             if state.profile.daily_loss_hard:
@@ -629,6 +843,7 @@ def simulate_lifecycle_path(
     finish_day()
     maybe_take_payout(state.day or first_trade_date, active_month_index)
     finish_month()
+    refresh_terminal_trace()
 
     net_cash = total_payouts - total_fees
     roi = net_cash / total_fees if total_fees > 0 else None
@@ -678,6 +893,9 @@ def simulate_lifecycle_path(
                 note=terminal_reason,
             )
         )
+    if return_trade_ledger:
+        refresh_terminal_trace()
+        return result, months, events, trade_ledger
     return result, months, events
 
 
@@ -721,6 +939,33 @@ def run_lifecycle_grid(
         pd.DataFrame([month.to_dict() for month in months]),
         pd.DataFrame([event.to_dict() for event in events]),
     )
+
+
+def _metadata_int(trade: Trade, key: str) -> int | None:
+    value = trade.metadata.get(key)
+    if value is None or pd.isna(value):
+        return None
+    return int(value)
+
+
+def _trade_trace_identity(trade: Trade) -> dict[str, Any]:
+    return {
+        "source_row_id": trade.source_row_id,
+        "trade_id": trade.trade_id,
+        "entry_time": trade.entry_time.isoformat(),
+        "exit_time": trade.exit_time.isoformat(),
+        "pnl_points": trade.pnl_points,
+        "result_type": trade.result_type,
+        "mae_points": trade.mae_points,
+        "mfe_points": trade.mfe_points,
+        "status": trade.metadata.get("status"),
+        "source_trade_packet_id": trade.metadata.get("source_trade_packet_id"),
+        "evidence_status": trade.metadata.get("evidence_status"),
+        "excursion_confidence": trade.metadata.get("excursion_confidence"),
+        "strict_barrier_status": trade.metadata.get("strict_barrier_status"),
+        "candidate_flag": trade.metadata.get("candidate", True),
+        "executed_flag": trade.metadata.get("was_executed", True),
+    }
 
 
 def summarize_lifecycle_results(results: list[LifecyclePathResult]) -> pd.DataFrame:

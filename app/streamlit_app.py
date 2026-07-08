@@ -9,7 +9,6 @@ import streamlit as st
 
 from sim_core.forward_master_path import (
     ForwardScenario,
-    build_forward_account_trade_ledger,
     build_master_path,
     build_monte_carlo_paths,
     export_forward_artifacts,
@@ -218,7 +217,7 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
         path_count = int(st.slider("Monte Carlo paths", 10, 1000, 100, step=10))
         july_count = int(st.number_input("Remaining July candidate/trade count", min_value=0, value=8, step=1))
         august_count = int(st.number_input("August candidate/trade count", min_value=0, value=12, step=1))
-        pf_scenario = st.selectbox("PF scenario", ["PF_1_35", "PF_1_50", "PF_1_65"])
+        pf_scenario = st.selectbox("Expectancy scenario", ["LOWER_EXPECTANCY", "BASE_EXPECTANCY", "HIGHER_EXPECTANCY"])
         regime_scenario = st.selectbox("Regime scenario", ["stable", "gradual_degradation", "favourable_persistence", "abrupt_tail"])
         point_scale_scenario = st.selectbox("Point-scale scenario", ["current", "low", "high"])
 
@@ -234,6 +233,11 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
         contract_values = st.multiselect("MNQ sizes", [1, 2, 3, 4], default=[1, 4])
         desired_payout = st.number_input("Desired payout, 0 = max allowed", min_value=0.0, value=0.0, step=100.0)
         required_cushion = st.number_input("Required cushion after payout", min_value=0.0, value=0.0, step=100.0)
+        account_state_mode = st.radio(
+            "Account state mode",
+            ["Fresh profile comparison", "Single live account state"],
+            help="Fresh comparison starts every selected plan from its own rule profile. Live state applies one edited balance/floor to exactly one selected plan.",
+        )
         st.caption("Current account state")
         current_balance = st.number_input("Current balance", min_value=0.0, value=50_000.0, step=100.0)
         current_floor = st.number_input("Current floor / threshold", min_value=0.0, value=48_000.0, step=100.0)
@@ -263,15 +267,33 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
         prior_fees=float(prior_fees),
     )
     selected_plans = [lifecycle_plans[key] for key in selected_plan_keys]
+    live_state_requested = account_state_mode == "Single live account state"
+    live_state_error = None
+    if live_state_requested and len(selected_plans) != 1:
+        live_state_error = "Single live account state requires exactly one selected lifecycle plan."
+    if live_state_requested and selected_plans:
+        profile = selected_plans[0].funded_profile
+        if float(current_balance) < profile.starting_balance - profile.max_loss:
+            live_state_error = (
+                f"Current balance {current_balance:,.2f} is impossible for {selected_plans[0].account_name}; "
+                f"it is below the account's max-loss boundary."
+            )
+        if float(current_floor) > float(current_balance):
+            live_state_error = "Current floor / threshold cannot be above current balance."
+    if live_state_error:
+        st.error(live_state_error)
     settings_by_plan = {
         plan.key: LifecycleSettings(
             start_mode="funded",
             desired_payout=float(desired_payout),
             required_cushion=float(required_cushion),
-            current_balance=float(current_balance),
-            current_floor=float(current_floor),
-            current_winning_days=int(current_winning_days),
-            current_highest_winning_day=float(current_high_day),
+            current_balance=float(current_balance) if live_state_requested else None,
+            current_floor=float(current_floor) if live_state_requested else None,
+            current_winning_days=int(current_winning_days) if live_state_requested else 0,
+            current_highest_winning_day=float(current_high_day) if live_state_requested else 0.0,
+            current_daily_profits=tuple(parse_float_list(current_daily_history)) if live_state_requested else (),
+            payouts_already_taken=int(payouts_already_taken) if live_state_requested else 0,
+            prior_fees=float(prior_fees) if live_state_requested else 0.0,
         )
         for plan in selected_plans
     }
@@ -333,27 +355,18 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
     st.subheader("Synthetic Continuation")
     st.dataframe(synthetic[display_columns], width="stretch", hide_index=True)
 
-    if st.button("Run forward Monte Carlo", type="primary", use_container_width=True):
+    if st.button("Run forward Monte Carlo", type="primary", use_container_width=True, disabled=bool(live_state_error)):
         with st.spinner(f"Running {path_count:,} paths with shared strategy paths across selected accounts..."):
             mc_paths = build_monte_carlo_paths(scenario)
             point_results = path_summary(mc_paths, scenario)
             if selected_plans and contract_values:
-                lifecycle_summary, lifecycle_monthly, lifecycle_events = run_forward_lifecycle_grid(
+                lifecycle_summary, lifecycle_monthly, lifecycle_events, per_trade_ledger = run_forward_lifecycle_grid(
                     mc_paths,
                     selected_plans,
                     contract_values=[int(value) for value in contract_values],
                     settings_by_plan=settings_by_plan,
                     dollars_per_point=float(default_dpp),
                     prefix_application_basis=prefix_basis,
-                )
-                per_trade_ledger = build_forward_account_trade_ledger(
-                    mc_paths,
-                    selected_plans,
-                    contract_values=[int(value) for value in contract_values],
-                    settings_by_plan=settings_by_plan,
-                    dollars_per_point=float(default_dpp),
-                    prefix_application_basis=prefix_basis,
-                    scenario=scenario,
                 )
             else:
                 lifecycle_summary, lifecycle_monthly, lifecycle_events = pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
@@ -363,6 +376,7 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
                 master_path,
                 mc_paths,
                 lifecycle_summary,
+                lifecycle_monthly,
                 lifecycle_events,
                 per_trade_ledger,
             )

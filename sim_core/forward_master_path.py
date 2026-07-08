@@ -15,7 +15,7 @@ from sim_core.lifecycle import (
     summarize_lifecycle_results,
 )
 from sim_core.models import Trade
-from sim_core.prop_rules import _floor_ceiling, _gross_cash_available, _is_payout_eligible
+from sim_core.prop_rules import _trade_day
 
 RRConfig = Literal["1rr", "1_5rr"]
 PrefixApplicationBasis = Literal["ACCOUNT_STATE_BEFORE_PREFIX", "ACCOUNT_STATE_AFTER_PREFIX"]
@@ -61,7 +61,7 @@ class ForwardScenario:
     master_seed: int = 1729
     mc_seed: int = 1730
     path_count: int = 100
-    pf_scenario: str = "PF_1_35"
+    pf_scenario: str = "BASE_EXPECTANCY"
     regime_scenario: str = "stable"
     point_scale_scenario: str = "current"
     prefix_application_basis: PrefixApplicationBasis = "ACCOUNT_STATE_BEFORE_PREFIX"
@@ -180,6 +180,7 @@ def build_master_path(
     )
     realized = select_realized_prefix(load_realized_master_path(Path(data_dir) / "realized_master_path.csv" if data_dir else None), scenario.rr_config_id)
     source = load_source_library(scenario.rr_config_id, data_dir)
+    weighted_source_pf = expected_weighted_pf(source, scenario.pf_scenario, scenario.regime_scenario)
     continuation = sample_scenario_continuation(
         source,
         scenario,
@@ -191,6 +192,7 @@ def build_master_path(
     master["pf_scenario"] = scenario.pf_scenario
     master["regime_scenario"] = scenario.regime_scenario
     master["point_scale_scenario"] = scenario.point_scale_scenario
+    master["expected_weighted_source_pf"] = weighted_source_pf
     master["master_seed"] = scenario.master_seed
     master["mc_seed"] = scenario.mc_seed
     return add_path_totals(master)
@@ -285,7 +287,9 @@ def sample_scenario_continuation(
                 point_scale_scenario=scenario.point_scale_scenario,
             )
         )
-    return pd.DataFrame(rows)
+    out = pd.DataFrame(rows)
+    _assert_synthetic_calendar(out)
+    return out
 
 
 def add_path_totals(path: pd.DataFrame) -> pd.DataFrame:
@@ -313,6 +317,7 @@ def path_summary(paths: list[pd.DataFrame], scenario: ForwardScenario) -> pd.Dat
                 "mc_seed": scenario.mc_seed,
                 "prefix_application_basis": scenario.prefix_application_basis,
                 "pf_scenario": scenario.pf_scenario,
+                "expected_weighted_source_pf": _path_expected_source_pf(path),
                 "regime_scenario": scenario.regime_scenario,
                 "point_scale_scenario": scenario.point_scale_scenario,
                 "realized_prefix_net_points": float(path["realized_prefix_net_points"].iloc[-1]),
@@ -341,6 +346,10 @@ def strategy_path_manifest(paths: list[pd.DataFrame], scenario: ForwardScenario)
                 "prefix_application_basis": scenario.prefix_application_basis,
                 "july_candidate_count": scenario.july_candidate_count,
                 "august_candidate_count": scenario.august_candidate_count,
+                "pf_scenario": scenario.pf_scenario,
+                "expected_weighted_source_pf": _path_expected_source_pf(path),
+                "regime_scenario": scenario.regime_scenario,
+                "point_scale_scenario": scenario.point_scale_scenario,
             }
         )
     return pd.DataFrame(rows)
@@ -354,10 +363,12 @@ def run_forward_lifecycle_grid(
     settings_by_plan: dict[str, LifecycleSettings],
     dollars_per_point: float = 2.0,
     prefix_application_basis: PrefixApplicationBasis = "ACCOUNT_STATE_BEFORE_PREFIX",
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     results = []
     months = []
     events = []
+    ledger = []
+    account_path_id = 0
     for path in paths:
         strategy_path_id = int(path["path_id"].iloc[0])
         lifecycle_frame = path if prefix_application_basis == "ACCOUNT_STATE_BEFORE_PREFIX" else path[path["status"].eq("SYNTHETIC")]
@@ -365,213 +376,48 @@ def run_forward_lifecycle_grid(
         for plan in plans:
             settings = settings_by_plan[plan.key]
             for contracts in contract_values:
-                result, path_months, path_events = simulate_lifecycle_path(
+                result, path_months, path_events, path_ledger = simulate_lifecycle_path(
                     trades,
                     plan,
                     contracts=contracts,
                     settings=settings,
-                    path_id=strategy_path_id,
+                    path_id=account_path_id,
                     seed=strategy_path_id,
                     dollars_per_point=dollars_per_point,
+                    return_trade_ledger=True,
                 )
                 result_dict = result.to_dict()
                 result_dict["strategy_path_id"] = strategy_path_id
+                result_dict["account_path_id"] = account_path_id
                 result_dict["prefix_application_basis"] = prefix_application_basis
                 result_dict["realized_prefix_net_points"] = float(path["realized_prefix_net_points"].iloc[-1])
                 result_dict["forward_only_net_points"] = float(path["forward_only_net_points"].iloc[-1])
                 result_dict["combined_net_points"] = float(path["combined_net_points"].iloc[-1])
+                result_dict.update(_strict_trace_rates(path_ledger))
                 results.append(result_dict)
                 for month in path_months:
                     item = month.to_dict()
                     item["strategy_path_id"] = strategy_path_id
+                    item["account_path_id"] = account_path_id
                     item["prefix_application_basis"] = prefix_application_basis
                     months.append(item)
                 for event in path_events:
                     item = event.to_dict()
                     item["strategy_path_id"] = strategy_path_id
+                    item["account_path_id"] = account_path_id
                     item["prefix_application_basis"] = prefix_application_basis
                     events.append(item)
-    return summarize_lifecycle_results_from_dicts(results), pd.DataFrame(months), pd.DataFrame(events)
-
-
-def build_forward_account_trade_ledger(
-    paths: list[pd.DataFrame],
-    plans: list[LifecyclePlan],
-    *,
-    contract_values: list[int],
-    settings_by_plan: dict[str, LifecycleSettings],
-    dollars_per_point: float = 2.0,
-    prefix_application_basis: PrefixApplicationBasis = "ACCOUNT_STATE_BEFORE_PREFIX",
-    scenario: ForwardScenario | None = None,
-) -> pd.DataFrame:
-    rows: list[dict[str, Any]] = []
-    account_path_id = 0
-    for path in paths:
-        strategy_path_id = int(path["path_id"].iloc[0])
-        account_frame = path if prefix_application_basis == "ACCOUNT_STATE_BEFORE_PREFIX" else path[path["status"].eq("SYNTHETIC")]
-        for plan in plans:
-            settings = settings_by_plan[plan.key]
-            for contracts in contract_values:
-                rows.extend(
-                    _simulate_trade_ledger_for_account(
-                        account_frame,
-                        full_path=path,
-                        plan=plan,
-                        settings=settings,
-                        contracts=int(contracts),
-                        dollars_per_point=dollars_per_point,
-                        strategy_path_id=strategy_path_id,
-                        account_path_id=account_path_id,
-                        prefix_application_basis=prefix_application_basis,
-                        scenario=scenario,
-                    )
-                )
+                for row in path_ledger:
+                    item = dict(row)
+                    item["strategy_path_id"] = strategy_path_id
+                    item["account_path_id"] = account_path_id
+                    item["prefix_application_basis"] = prefix_application_basis
+                    item["realized_prefix_net_points"] = float(path["realized_prefix_net_points"].iloc[-1])
+                    item["forward_only_net_points"] = float(path["forward_only_net_points"].iloc[-1])
+                    item["combined_net_points"] = float(path["combined_net_points"].iloc[-1])
+                    ledger.append(item)
                 account_path_id += 1
-    return pd.DataFrame(rows)
-
-
-def _simulate_trade_ledger_for_account(
-    path: pd.DataFrame,
-    *,
-    full_path: pd.DataFrame,
-    plan: LifecyclePlan,
-    settings: LifecycleSettings,
-    contracts: int,
-    dollars_per_point: float,
-    strategy_path_id: int,
-    account_path_id: int,
-    prefix_application_basis: PrefixApplicationBasis,
-    scenario: ForwardScenario | None,
-) -> list[dict[str, Any]]:
-    profile = plan.funded_profile
-    balance = float(settings.current_balance if settings.current_balance is not None else profile.starting_balance)
-    floor = float(settings.current_floor if settings.current_floor is not None else profile.starting_floor)
-    running_peak = max(balance, profile.starting_balance)
-    eod_peak = running_peak
-    day_pnl = 0.0
-    current_day: str | None = None
-    winning_days = int(settings.current_winning_days)
-    daily_profits = list(getattr(settings, "current_daily_profits", []) or [])
-    if settings.current_highest_winning_day > 0:
-        daily_profits.append(float(settings.current_highest_winning_day))
-    payouts_taken = int(scenario.payouts_already_taken if scenario else 0)
-    total_payouts = 0.0
-    total_fees = float(scenario.prior_fees if scenario else 0.0)
-    failed = False
-    failure_reason = ""
-    rows: list[dict[str, Any]] = []
-    for row in path.sort_values("sequence_number").itertuples(index=False):
-        session_date = str(row.session_date)
-        if current_day is not None and session_date != current_day:
-            if day_pnl >= profile.winning_day_threshold and day_pnl > 0:
-                winning_days += 1
-            daily_profits.append(day_pnl)
-            eod_peak = max(eod_peak, balance)
-            if profile.drawdown_mode == "eod_trailing":
-                floor = max(floor, min(_floor_ceiling(profile), eod_peak - profile.max_loss))
-            day_pnl = 0.0
-        current_day = session_date
-
-        balance_before = balance
-        floor_before = floor
-        running_peak_before = running_peak
-        eod_peak_before = eod_peak
-        gross = 0.0
-        commission = 0.0
-        net = 0.0
-        payout_amount = 0.0
-        threshold_touched = False
-        estimated_low = pd.NA
-        estimated_high = pd.NA
-
-        if not failed and bool(row.was_executed):
-            pnl_points = float(row.pnl_points)
-            gross = pnl_points * dollars_per_point * contracts
-            net = gross - commission
-            mae = _optional_float(row.mae_points)
-            mfe = _optional_float(row.mfe_points)
-            if mae is not None:
-                estimated_low = balance + min(0.0, -abs(mae) * dollars_per_point * contracts)
-            if mfe is not None:
-                estimated_high = balance + max(0.0, abs(mfe) * dollars_per_point * contracts)
-            if profile.drawdown_mode == "intraday_trailing" and mfe is not None:
-                running_peak = max(running_peak, float(estimated_high))
-                floor = max(floor, min(_floor_ceiling(profile), running_peak - profile.max_loss))
-            if mae is not None and float(estimated_low) <= floor:
-                threshold_touched = True
-                failed = True
-                failure_reason = "threshold touched by MAE"
-            else:
-                balance += net
-                day_pnl += net
-                running_peak = max(running_peak, balance)
-                if balance <= floor:
-                    threshold_touched = True
-                    failed = True
-                    failure_reason = "threshold touched by closing balance"
-
-        consistency_ratio = _consistency_ratio(daily_profits, balance, profile.starting_balance)
-        payout_eligible = (
-            not failed
-            and _is_payout_eligible(
-                balance=balance,
-                profile=profile,
-                winning_days=winning_days,
-                daily_profits=daily_profits,
-            )
-        )
-        rows.append(
-            {
-                "strategy_path_id": strategy_path_id,
-                "account_path_id": account_path_id,
-                "plan_key": plan.key,
-                "firm": plan.firm,
-                "account": plan.account_name,
-                "contracts": contracts,
-                "sequence_number": int(row.sequence_number),
-                "record_type": row.record_type,
-                "was_executed": bool(row.was_executed),
-                "status": row.status,
-                "session_date": session_date,
-                "entry_time": row.entry_time,
-                "exit_time": row.exit_time,
-                "source_packet_id": row.source_trade_packet_id,
-                "result_type": _result_type(float(row.pnl_points)),
-                "pnl_points": float(row.pnl_points),
-                "gross_pnl_dollars": gross,
-                "commissions": commission,
-                "net_pnl_dollars": net,
-                "balance_before": balance_before,
-                "floor_before": floor_before,
-                "running_peak_before": running_peak_before,
-                "eod_peak_before": eod_peak_before,
-                "estimated_intratrade_low": estimated_low,
-                "estimated_intratrade_high": estimated_high,
-                "threshold_touched": threshold_touched,
-                "balance_after": balance,
-                "floor_after": floor,
-                "running_peak_after": running_peak,
-                "eod_peak_after": eod_peak,
-                "day_pnl_after": day_pnl,
-                "winning_days_after": winning_days,
-                "highest_winning_day": max([0.0, *daily_profits]),
-                "consistency_ratio": consistency_ratio,
-                "payout_eligibility": payout_eligible,
-                "payout_amount": payout_amount,
-                "account_stage": "funded",
-                "account_attempt": 1,
-                "failed": failed,
-                "failure_reason": failure_reason,
-                "excursion_confidence": row.excursion_confidence,
-                "prefix_application_basis": prefix_application_basis,
-                "realized_prefix_net_points": float(full_path["realized_prefix_net_points"].iloc[-1]),
-                "forward_only_net_points": float(full_path["forward_only_net_points"].iloc[-1]),
-                "combined_net_points": float(full_path["combined_net_points"].iloc[-1]),
-                "total_payouts": total_payouts,
-                "total_fees": total_fees,
-            }
-        )
-    return rows
+    return summarize_lifecycle_results_from_dicts(results), pd.DataFrame(months), pd.DataFrame(events), pd.DataFrame(ledger)
 
 
 def summarize_lifecycle_results_from_dicts(rows: list[dict[str, Any]]) -> pd.DataFrame:
@@ -593,6 +439,11 @@ def path_to_trades(path: pd.DataFrame, *, dollars_per_point: float = 2.0) -> lis
     trades = []
     for row in path.sort_values("sequence_number").itertuples(index=False):
         entry, exit_ = _accounting_times(row)
+        if _trade_day(exit_, "America/New_York").date().isoformat() != str(row.session_date):
+            raise ValueError(
+                f"lifecycle trade day {str(_trade_day(exit_, 'America/New_York').date())} "
+                f"does not match assigned session_date {row.session_date}"
+            )
         pnl_points = float(row.pnl_points)
         trades.append(
             Trade(
@@ -620,9 +471,14 @@ def path_to_trades(path: pd.DataFrame, *, dollars_per_point: float = 2.0) -> lis
                     "excursion_confidence": row.excursion_confidence,
                     "strict_barrier_status": row.strict_barrier_status,
                     "source_trade_packet_id": None if pd.isna(row.source_trade_packet_id) else row.source_trade_packet_id,
+                    "sequence_number": int(row.sequence_number),
+                    "candidate": True,
+                    "was_executed": bool(row.was_executed),
+                    "session_date": str(row.session_date),
                 },
             )
         )
+    _assert_trade_order_and_overlap(trades)
     return trades
 
 
@@ -631,6 +487,7 @@ def export_forward_artifacts(
     master_path: pd.DataFrame,
     mc_paths: list[pd.DataFrame],
     lifecycle_summary: pd.DataFrame,
+    lifecycle_monthly: pd.DataFrame,
     lifecycle_events: pd.DataFrame,
     per_trade_account_ledger: pd.DataFrame | None = None,
     *,
@@ -646,6 +503,7 @@ def export_forward_artifacts(
         "monte_carlo_strategy_path_manifest": root / "monte_carlo_strategy_path_manifest.csv",
         "path_level_point_results": root / "path_level_point_results.csv",
         "lifecycle_account_results": root / "lifecycle_account_results.csv",
+        "lifecycle_monthly": root / "lifecycle_monthly.csv",
         "lifecycle_events": root / "lifecycle_events.csv",
         "per_trade_account_ledger": root / "per_trade_account_ledger.csv",
         "summary": root / "summary.csv",
@@ -656,6 +514,7 @@ def export_forward_artifacts(
     strategy_path_manifest(mc_paths, scenario).to_csv(outputs["monte_carlo_strategy_path_manifest"], index=False)
     path_summary(mc_paths, scenario).to_csv(outputs["path_level_point_results"], index=False)
     lifecycle_summary.to_csv(outputs["lifecycle_account_results"], index=False)
+    lifecycle_monthly.to_csv(outputs["lifecycle_monthly"], index=False)
     lifecycle_events.to_csv(outputs["lifecycle_events"], index=False)
     (per_trade_account_ledger if per_trade_account_ledger is not None else pd.DataFrame()).to_csv(
         outputs["per_trade_account_ledger"], index=False
@@ -855,11 +714,16 @@ def _scenario_weights(
         return None
     weights = np.ones(len(candidates), dtype=float)
     pnl = pd.to_numeric(candidates["pnl_points"], errors="coerce").fillna(0.0).to_numpy()
-    if pf_scenario == "PF_1_35":
+    scenario_key = {
+        "PF_1_35": "LOWER_EXPECTANCY",
+        "PF_1_50": "BASE_EXPECTANCY",
+        "PF_1_65": "HIGHER_EXPECTANCY",
+    }.get(str(pf_scenario), str(pf_scenario))
+    if scenario_key == "LOWER_EXPECTANCY":
         weights *= np.where(pnl > 0, 0.85, np.where(pnl < 0, 1.15, 1.05))
-    elif pf_scenario == "PF_1_50":
+    elif scenario_key == "BASE_EXPECTANCY":
         weights *= np.where(pnl > 0, 1.0, 1.0)
-    elif pf_scenario == "PF_1_65":
+    elif scenario_key == "HIGHER_EXPECTANCY":
         weights *= np.where(pnl > 0, 1.15, np.where(pnl < 0, 0.85, 0.95))
 
     if regime_scenario == "gradual_degradation":
@@ -908,12 +772,20 @@ def _shift_packet_times(row: pd.Series, event_date: str) -> tuple[pd.Timestamp, 
         source_entry = source_entry.tz_localize("UTC")
     if source_exit.tzinfo is None:
         source_exit = source_exit.tz_localize("UTC")
+    source_session = pd.Timestamp(row.get("source_session_date"))
+    if source_session.tzinfo is None:
+        source_session = source_session.tz_localize(source_exit.tz)
+    else:
+        source_session = source_session.tz_convert(source_exit.tz)
     duration = source_exit - source_entry
     if duration <= pd.Timedelta(0):
         duration = pd.Timedelta(hours=1)
-    event_midnight = pd.Timestamp(event_date, tz=source_entry.tz)
-    shifted_entry = event_midnight + (source_entry - source_entry.normalize())
-    shifted_exit = shifted_entry + duration
+    event_midnight = pd.Timestamp(event_date, tz=source_exit.tz)
+    exit_offset = source_exit - source_session.normalize()
+    shifted_exit = event_midnight + exit_offset
+    if _trade_day(shifted_exit, "America/New_York").date().isoformat() != str(event_date):
+        shifted_exit = pd.Timestamp(f"{event_date} 09:00", tz="America/New_York").tz_convert(source_exit.tz)
+    shifted_entry = shifted_exit - duration
     return shifted_entry.tz_convert("UTC"), shifted_exit.tz_convert("UTC"), duration.total_seconds() / 60.0
 
 
@@ -927,3 +799,80 @@ def strategy_sequence_hash(path: pd.DataFrame) -> str:
         .agg(":".join, axis=1)
     )
     return sha256(material.encode("utf-8")).hexdigest()
+
+
+def expected_weighted_pf(frame: pd.DataFrame, pf_scenario: str | None, regime_scenario: str | None) -> float | None:
+    synthetic = frame[frame["status"].eq("SYNTHETIC")] if "status" in frame else frame
+    if synthetic.empty:
+        return None
+    weights = _scenario_weights(synthetic, pf_scenario=pf_scenario, regime_scenario=regime_scenario)
+    pnl = pd.to_numeric(synthetic["pnl_points"], errors="coerce").fillna(0.0).to_numpy()
+    if weights is None:
+        weights = np.ones(len(synthetic), dtype=float) / len(synthetic)
+    gross_profit = float((np.where(pnl > 0, pnl, 0.0) * weights).sum())
+    gross_loss = float((np.where(pnl < 0, -pnl, 0.0) * weights).sum())
+    if gross_loss == 0:
+        return None
+    return gross_profit / gross_loss
+
+
+def _path_expected_source_pf(path: pd.DataFrame) -> float | None:
+    if "expected_weighted_source_pf" not in path or path["expected_weighted_source_pf"].dropna().empty:
+        return None
+    return float(path["expected_weighted_source_pf"].dropna().iloc[0])
+
+
+def _assert_synthetic_calendar(frame: pd.DataFrame) -> None:
+    if frame.empty:
+        return
+    if frame["session_date"].duplicated().any():
+        raise ValueError("synthetic continuation assigns more than one trade to the same lifecycle day")
+    ordered = frame.sort_values("sequence_number")
+    if ordered["session_date"].tolist() != sorted(ordered["session_date"].tolist()):
+        raise ValueError("synthetic continuation session dates must follow sequence order")
+    intervals = []
+    for row in ordered.itertuples(index=False):
+        entry = pd.Timestamp(row.entry_time)
+        exit_ = pd.Timestamp(row.exit_time)
+        if _trade_day(exit_, "America/New_York").date().isoformat() != str(row.session_date):
+            raise ValueError("synthetic exit trade day does not match assigned session_date")
+        intervals.append((entry, exit_))
+    for (_, previous_exit), (next_entry, _) in zip(intervals, intervals[1:]):
+        if next_entry < previous_exit:
+            raise ValueError("synthetic positions overlap")
+
+
+def _assert_trade_order_and_overlap(trades: list[Trade]) -> None:
+    if not trades:
+        return
+    sequence = [_metadata_int_like(trade.metadata.get("sequence_number")) for trade in trades]
+    if sequence != sorted(sequence):
+        raise ValueError("lifecycle trade processing order must equal sequence_number order")
+    days = [trade.metadata.get("session_date") for trade in trades]
+    if len(days) != len(set(days)):
+        raise ValueError("one lifecycle day per trade invariant failed")
+    for previous, current in zip(trades, trades[1:]):
+        if current.entry_time < previous.exit_time:
+            raise ValueError("lifecycle trades overlap")
+
+
+def _metadata_int_like(value: Any) -> int:
+    if value is None or pd.isna(value):
+        return -1
+    return int(value)
+
+
+def _strict_trace_rates(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    trade_rows = [row for row in rows if row.get("record_type") == "TRADE" and row.get("account_taken")]
+    exact = [row for row in trade_rows if row.get("strict_account_result") != "UNKNOWN"]
+    unknown = [row for row in trade_rows if row.get("strict_account_result") == "UNKNOWN"]
+    realized_only_failures = [row for row in trade_rows if row.get("realized_pnl_only_result") == "FAILED"]
+    exact_failures = [row for row in exact if row.get("strict_account_result") == "FAILED"]
+    return {
+        "strict_exact_known_trades": len(exact),
+        "strict_unknown_trades": len(unknown),
+        "realized_only_trades": len(trade_rows),
+        "strict_exact_failure_rate": (len(exact_failures) / len(exact)) if exact else None,
+        "strict_unknown_rate": (len(unknown) / len(trade_rows)) if trade_rows else None,
+        "realized_only_failure_rate": (len(realized_only_failures) / len(trade_rows)) if trade_rows else None,
+    }

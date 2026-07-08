@@ -1,0 +1,363 @@
+path_id,plan_key,event_order,month_index,date,stage,event,amount,balance,floor,attempt,note,strategy_path_id,account_path_id,prefix_application_basis
+1,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-12,funded,funded_failed,0.0,49648.0,49200.0,1,Drawdown breached,0,1,ACCOUNT_STATE_BEFORE_PREFIX
+1,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49648.0,49200.0,1,capital budget exhausted or rebuys disabled,0,1,ACCOUNT_STATE_BEFORE_PREFIX
+3,TakeProfitTrader - PRO 50K - Funded only,1,2,2026-08-12,funded,funded_failed,0.0,49648.0,49200.0,1,Drawdown breached,0,3,ACCOUNT_STATE_BEFORE_PREFIX
+3,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49648.0,49200.0,1,capital budget exhausted or rebuys disabled,0,3,ACCOUNT_STATE_BEFORE_PREFIX
+13,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-06,funded,funded_failed,0.0,49267.0,49200.0,1,Drawdown breached,3,13,ACCOUNT_STATE_BEFORE_PREFIX
+13,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49267.0,49200.0,1,capital budget exhausted or rebuys disabled,3,13,ACCOUNT_STATE_BEFORE_PREFIX
+15,TakeProfitTrader - PRO 50K - Funded only,1,2,2026-08-06,funded,funded_failed,0.0,49267.0,49200.0,1,Drawdown breached,3,15,ACCOUNT_STATE_BEFORE_PREFIX
+15,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49267.0,49200.0,1,capital budget exhausted or rebuys disabled,3,15,ACCOUNT_STATE_BEFORE_PREFIX
+17,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,4,17,ACCOUNT_STATE_BEFORE_PREFIX
+17,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,4,17,ACCOUNT_STATE_BEFORE_PREFIX
+19,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,4,19,ACCOUNT_STATE_BEFORE_PREFIX
+19,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,4,19,ACCOUNT_STATE_BEFORE_PREFIX
+21,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-20,funded,funded_failed,0.0,49282.0,49200.0,1,Drawdown breached,5,21,ACCOUNT_STATE_BEFORE_PREFIX
+21,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49282.0,49200.0,1,capital budget exhausted or rebuys disabled,5,21,ACCOUNT_STATE_BEFORE_PREFIX
+23,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-20,funded,funded_failed,0.0,49282.0,49200.0,1,Drawdown breached,5,23,ACCOUNT_STATE_BEFORE_PREFIX
+23,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49282.0,49200.0,1,capital budget exhausted or rebuys disabled,5,23,ACCOUNT_STATE_BEFORE_PREFIX
+25,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49774.0,49200.0,1,Drawdown breached,6,25,ACCOUNT_STATE_BEFORE_PREFIX
+25,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49774.0,49200.0,1,capital budget exhausted or rebuys disabled,6,25,ACCOUNT_STATE_BEFORE_PREFIX
+27,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49774.0,49200.0,1,Drawdown breached,6,27,ACCOUNT_STATE_BEFORE_PREFIX
+27,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49774.0,49200.0,1,capital budget exhausted or rebuys disabled,6,27,ACCOUNT_STATE_BEFORE_PREFIX
+29,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49444.0,49200.0,1,Drawdown breached,7,29,ACCOUNT_STATE_BEFORE_PREFIX
+29,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49444.0,49200.0,1,capital budget exhausted or rebuys disabled,7,29,ACCOUNT_STATE_BEFORE_PREFIX
+31,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49444.0,49200.0,1,Drawdown breached,7,31,ACCOUNT_STATE_BEFORE_PREFIX
+31,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49444.0,49200.0,1,capital budget exhausted or rebuys disabled,7,31,ACCOUNT_STATE_BEFORE_PREFIX
+33,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,8,33,ACCOUNT_STATE_BEFORE_PREFIX
+33,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,8,33,ACCOUNT_STATE_BEFORE_PREFIX
+35,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,8,35,ACCOUNT_STATE_BEFORE_PREFIX
+35,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,8,35,ACCOUNT_STATE_BEFORE_PREFIX
+37,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,9,37,ACCOUNT_STATE_BEFORE_PREFIX
+37,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,9,37,ACCOUNT_STATE_BEFORE_PREFIX
+39,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,9,39,ACCOUNT_STATE_BEFORE_PREFIX
+39,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,9,39,ACCOUNT_STATE_BEFORE_PREFIX
+41,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49270.0,49200.0,1,Drawdown breached,10,41,ACCOUNT_STATE_BEFORE_PREFIX
+41,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49270.0,49200.0,1,capital budget exhausted or rebuys disabled,10,41,ACCOUNT_STATE_BEFORE_PREFIX
+43,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49270.0,49200.0,1,Drawdown breached,10,43,ACCOUNT_STATE_BEFORE_PREFIX
+43,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49270.0,49200.0,1,capital budget exhausted or rebuys disabled,10,43,ACCOUNT_STATE_BEFORE_PREFIX
+49,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,12,49,ACCOUNT_STATE_BEFORE_PREFIX
+49,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,12,49,ACCOUNT_STATE_BEFORE_PREFIX
+51,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,12,51,ACCOUNT_STATE_BEFORE_PREFIX
+51,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,12,51,ACCOUNT_STATE_BEFORE_PREFIX
+53,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49270.0,49200.0,1,Drawdown breached,13,53,ACCOUNT_STATE_BEFORE_PREFIX
+53,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49270.0,49200.0,1,capital budget exhausted or rebuys disabled,13,53,ACCOUNT_STATE_BEFORE_PREFIX
+55,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49270.0,49200.0,1,Drawdown breached,13,55,ACCOUNT_STATE_BEFORE_PREFIX
+55,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49270.0,49200.0,1,capital budget exhausted or rebuys disabled,13,55,ACCOUNT_STATE_BEFORE_PREFIX
+57,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49690.0,49200.0,1,Drawdown breached,14,57,ACCOUNT_STATE_BEFORE_PREFIX
+57,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49690.0,49200.0,1,capital budget exhausted or rebuys disabled,14,57,ACCOUNT_STATE_BEFORE_PREFIX
+59,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49690.0,49200.0,1,Drawdown breached,14,59,ACCOUNT_STATE_BEFORE_PREFIX
+59,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49690.0,49200.0,1,capital budget exhausted or rebuys disabled,14,59,ACCOUNT_STATE_BEFORE_PREFIX
+61,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-15,funded,funded_failed,0.0,49218.67411896348,49200.0,1,Drawdown breached,15,61,ACCOUNT_STATE_BEFORE_PREFIX
+61,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49218.67411896348,49200.0,1,capital budget exhausted or rebuys disabled,15,61,ACCOUNT_STATE_BEFORE_PREFIX
+63,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-15,funded,funded_failed,0.0,49218.67411896348,49200.0,1,Drawdown breached,15,63,ACCOUNT_STATE_BEFORE_PREFIX
+63,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49218.67411896348,49200.0,1,capital budget exhausted or rebuys disabled,15,63,ACCOUNT_STATE_BEFORE_PREFIX
+65,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,16,65,ACCOUNT_STATE_BEFORE_PREFIX
+65,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,16,65,ACCOUNT_STATE_BEFORE_PREFIX
+67,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,16,67,ACCOUNT_STATE_BEFORE_PREFIX
+67,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,16,67,ACCOUNT_STATE_BEFORE_PREFIX
+69,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49642.0,49200.0,1,Drawdown breached,17,69,ACCOUNT_STATE_BEFORE_PREFIX
+69,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49642.0,49200.0,1,capital budget exhausted or rebuys disabled,17,69,ACCOUNT_STATE_BEFORE_PREFIX
+71,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49642.0,49200.0,1,Drawdown breached,17,71,ACCOUNT_STATE_BEFORE_PREFIX
+71,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49642.0,49200.0,1,capital budget exhausted or rebuys disabled,17,71,ACCOUNT_STATE_BEFORE_PREFIX
+75,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-14,funded,funded_failed,0.0,49600.0,50000.0,1,Drawdown breached,18,75,ACCOUNT_STATE_BEFORE_PREFIX
+75,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,50000.0,1,capital budget exhausted or rebuys disabled,18,75,ACCOUNT_STATE_BEFORE_PREFIX
+77,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-11,funded,funded_failed,0.0,49978.0,49200.0,1,Drawdown breached,19,77,ACCOUNT_STATE_BEFORE_PREFIX
+77,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49978.0,49200.0,1,capital budget exhausted or rebuys disabled,19,77,ACCOUNT_STATE_BEFORE_PREFIX
+79,TakeProfitTrader - PRO 50K - Funded only,1,2,2026-08-11,funded,funded_failed,0.0,49978.0,49200.0,1,Drawdown breached,19,79,ACCOUNT_STATE_BEFORE_PREFIX
+79,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49978.0,49200.0,1,capital budget exhausted or rebuys disabled,19,79,ACCOUNT_STATE_BEFORE_PREFIX
+81,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49228.0,49200.0,1,Drawdown breached,20,81,ACCOUNT_STATE_BEFORE_PREFIX
+81,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49228.0,49200.0,1,capital budget exhausted or rebuys disabled,20,81,ACCOUNT_STATE_BEFORE_PREFIX
+83,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49228.0,49200.0,1,Drawdown breached,20,83,ACCOUNT_STATE_BEFORE_PREFIX
+83,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49228.0,49200.0,1,capital budget exhausted or rebuys disabled,20,83,ACCOUNT_STATE_BEFORE_PREFIX
+85,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,21,85,ACCOUNT_STATE_BEFORE_PREFIX
+85,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,21,85,ACCOUNT_STATE_BEFORE_PREFIX
+87,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,21,87,ACCOUNT_STATE_BEFORE_PREFIX
+87,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,21,87,ACCOUNT_STATE_BEFORE_PREFIX
+89,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-11,funded,funded_failed,0.0,49552.53151308239,49200.0,1,Drawdown breached,22,89,ACCOUNT_STATE_BEFORE_PREFIX
+89,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49552.53151308239,49200.0,1,capital budget exhausted or rebuys disabled,22,89,ACCOUNT_STATE_BEFORE_PREFIX
+91,TakeProfitTrader - PRO 50K - Funded only,1,2,2026-08-11,funded,funded_failed,0.0,49552.53151308239,49421.765756541194,1,Drawdown breached,22,91,ACCOUNT_STATE_BEFORE_PREFIX
+91,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49552.53151308239,49421.765756541194,1,capital budget exhausted or rebuys disabled,22,91,ACCOUNT_STATE_BEFORE_PREFIX
+93,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49501.0,49200.0,1,Drawdown breached,23,93,ACCOUNT_STATE_BEFORE_PREFIX
+93,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49501.0,49200.0,1,capital budget exhausted or rebuys disabled,23,93,ACCOUNT_STATE_BEFORE_PREFIX
+95,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49501.0,49200.0,1,Drawdown breached,23,95,ACCOUNT_STATE_BEFORE_PREFIX
+95,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49501.0,49200.0,1,capital budget exhausted or rebuys disabled,23,95,ACCOUNT_STATE_BEFORE_PREFIX
+97,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-15,funded,funded_failed,0.0,49813.0,49200.0,1,Drawdown breached,24,97,ACCOUNT_STATE_BEFORE_PREFIX
+97,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49813.0,49200.0,1,capital budget exhausted or rebuys disabled,24,97,ACCOUNT_STATE_BEFORE_PREFIX
+99,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,50000.0,1,Drawdown breached,24,99,ACCOUNT_STATE_BEFORE_PREFIX
+99,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,50000.0,1,capital budget exhausted or rebuys disabled,24,99,ACCOUNT_STATE_BEFORE_PREFIX
+101,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49501.0,49200.0,1,Drawdown breached,25,101,ACCOUNT_STATE_BEFORE_PREFIX
+101,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49501.0,49200.0,1,capital budget exhausted or rebuys disabled,25,101,ACCOUNT_STATE_BEFORE_PREFIX
+103,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49501.0,49200.0,1,Drawdown breached,25,103,ACCOUNT_STATE_BEFORE_PREFIX
+103,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49501.0,49200.0,1,capital budget exhausted or rebuys disabled,25,103,ACCOUNT_STATE_BEFORE_PREFIX
+107,TakeProfitTrader - PRO 50K - Funded only,1,2,2026-08-13,funded,funded_failed,0.0,50110.0,50000.0,1,Drawdown breached,26,107,ACCOUNT_STATE_BEFORE_PREFIX
+107,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,50110.0,50000.0,1,capital budget exhausted or rebuys disabled,26,107,ACCOUNT_STATE_BEFORE_PREFIX
+109,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49300.0,49200.0,1,Drawdown breached,27,109,ACCOUNT_STATE_BEFORE_PREFIX
+109,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49300.0,49200.0,1,capital budget exhausted or rebuys disabled,27,109,ACCOUNT_STATE_BEFORE_PREFIX
+111,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49300.0,49200.0,1,Drawdown breached,27,111,ACCOUNT_STATE_BEFORE_PREFIX
+111,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49300.0,49200.0,1,capital budget exhausted or rebuys disabled,27,111,ACCOUNT_STATE_BEFORE_PREFIX
+113,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-14,funded,funded_failed,0.0,49531.0,49200.0,1,Drawdown breached,28,113,ACCOUNT_STATE_BEFORE_PREFIX
+113,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49531.0,49200.0,1,capital budget exhausted or rebuys disabled,28,113,ACCOUNT_STATE_BEFORE_PREFIX
+115,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-14,funded,funded_failed,0.0,49531.0,49200.0,1,Drawdown breached,28,115,ACCOUNT_STATE_BEFORE_PREFIX
+115,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49531.0,49200.0,1,capital budget exhausted or rebuys disabled,28,115,ACCOUNT_STATE_BEFORE_PREFIX
+117,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,29,117,ACCOUNT_STATE_BEFORE_PREFIX
+117,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,29,117,ACCOUNT_STATE_BEFORE_PREFIX
+119,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49206.38365473335,1,Drawdown breached,29,119,ACCOUNT_STATE_BEFORE_PREFIX
+119,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49206.38365473335,1,capital budget exhausted or rebuys disabled,29,119,ACCOUNT_STATE_BEFORE_PREFIX
+121,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-17,funded,funded_failed,0.0,49306.0,49200.0,1,Drawdown breached,30,121,ACCOUNT_STATE_BEFORE_PREFIX
+121,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49306.0,49200.0,1,capital budget exhausted or rebuys disabled,30,121,ACCOUNT_STATE_BEFORE_PREFIX
+123,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-17,funded,funded_failed,0.0,49306.0,49200.0,1,Drawdown breached,30,123,ACCOUNT_STATE_BEFORE_PREFIX
+123,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49306.0,49200.0,1,capital budget exhausted or rebuys disabled,30,123,ACCOUNT_STATE_BEFORE_PREFIX
+125,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,31,125,ACCOUNT_STATE_BEFORE_PREFIX
+125,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,31,125,ACCOUNT_STATE_BEFORE_PREFIX
+127,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,31,127,ACCOUNT_STATE_BEFORE_PREFIX
+127,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,31,127,ACCOUNT_STATE_BEFORE_PREFIX
+129,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-13,funded,funded_failed,0.0,49293.67411896348,49200.0,1,Drawdown breached,32,129,ACCOUNT_STATE_BEFORE_PREFIX
+129,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49293.67411896348,49200.0,1,capital budget exhausted or rebuys disabled,32,129,ACCOUNT_STATE_BEFORE_PREFIX
+131,TakeProfitTrader - PRO 50K - Funded only,1,2,2026-08-13,funded,funded_failed,0.0,49293.67411896348,49200.0,1,Drawdown breached,32,131,ACCOUNT_STATE_BEFORE_PREFIX
+131,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49293.67411896348,49200.0,1,capital budget exhausted or rebuys disabled,32,131,ACCOUNT_STATE_BEFORE_PREFIX
+133,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49306.0,49200.0,1,Drawdown breached,33,133,ACCOUNT_STATE_BEFORE_PREFIX
+133,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49306.0,49200.0,1,capital budget exhausted or rebuys disabled,33,133,ACCOUNT_STATE_BEFORE_PREFIX
+135,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49306.0,49200.0,1,Drawdown breached,33,135,ACCOUNT_STATE_BEFORE_PREFIX
+135,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49306.0,49200.0,1,capital budget exhausted or rebuys disabled,33,135,ACCOUNT_STATE_BEFORE_PREFIX
+137,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,34,137,ACCOUNT_STATE_BEFORE_PREFIX
+137,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,34,137,ACCOUNT_STATE_BEFORE_PREFIX
+139,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49600.0,49206.38365473335,1,Drawdown breached,34,139,ACCOUNT_STATE_BEFORE_PREFIX
+139,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49206.38365473335,1,capital budget exhausted or rebuys disabled,34,139,ACCOUNT_STATE_BEFORE_PREFIX
+141,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49378.0,49200.0,1,Drawdown breached,35,141,ACCOUNT_STATE_BEFORE_PREFIX
+141,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49378.0,49200.0,1,capital budget exhausted or rebuys disabled,35,141,ACCOUNT_STATE_BEFORE_PREFIX
+143,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49378.0,49200.0,1,Drawdown breached,35,143,ACCOUNT_STATE_BEFORE_PREFIX
+143,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49378.0,49200.0,1,capital budget exhausted or rebuys disabled,35,143,ACCOUNT_STATE_BEFORE_PREFIX
+145,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-17,funded,funded_failed,0.0,49546.0,49200.0,1,Drawdown breached,36,145,ACCOUNT_STATE_BEFORE_PREFIX
+145,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49546.0,49200.0,1,capital budget exhausted or rebuys disabled,36,145,ACCOUNT_STATE_BEFORE_PREFIX
+147,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-17,funded,funded_failed,0.0,49546.0,49200.0,1,Drawdown breached,36,147,ACCOUNT_STATE_BEFORE_PREFIX
+147,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49546.0,49200.0,1,capital budget exhausted or rebuys disabled,36,147,ACCOUNT_STATE_BEFORE_PREFIX
+149,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49378.0,49200.0,1,Drawdown breached,37,149,ACCOUNT_STATE_BEFORE_PREFIX
+149,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49378.0,49200.0,1,capital budget exhausted or rebuys disabled,37,149,ACCOUNT_STATE_BEFORE_PREFIX
+151,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49378.0,49200.0,1,Drawdown breached,37,151,ACCOUNT_STATE_BEFORE_PREFIX
+151,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49378.0,49200.0,1,capital budget exhausted or rebuys disabled,37,151,ACCOUNT_STATE_BEFORE_PREFIX
+153,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49378.0,49200.0,1,Drawdown breached,38,153,ACCOUNT_STATE_BEFORE_PREFIX
+153,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49378.0,49200.0,1,capital budget exhausted or rebuys disabled,38,153,ACCOUNT_STATE_BEFORE_PREFIX
+155,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49378.0,49200.0,1,Drawdown breached,38,155,ACCOUNT_STATE_BEFORE_PREFIX
+155,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49378.0,49200.0,1,capital budget exhausted or rebuys disabled,38,155,ACCOUNT_STATE_BEFORE_PREFIX
+157,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49645.0,49200.0,1,Drawdown breached,39,157,ACCOUNT_STATE_BEFORE_PREFIX
+157,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49645.0,49200.0,1,capital budget exhausted or rebuys disabled,39,157,ACCOUNT_STATE_BEFORE_PREFIX
+159,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49645.0,49200.0,1,Drawdown breached,39,159,ACCOUNT_STATE_BEFORE_PREFIX
+159,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49645.0,49200.0,1,capital budget exhausted or rebuys disabled,39,159,ACCOUNT_STATE_BEFORE_PREFIX
+161,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49330.0,49200.0,1,Drawdown breached,40,161,ACCOUNT_STATE_BEFORE_PREFIX
+161,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49330.0,49200.0,1,capital budget exhausted or rebuys disabled,40,161,ACCOUNT_STATE_BEFORE_PREFIX
+163,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49330.0,49200.0,1,Drawdown breached,40,163,ACCOUNT_STATE_BEFORE_PREFIX
+163,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49330.0,49200.0,1,capital budget exhausted or rebuys disabled,40,163,ACCOUNT_STATE_BEFORE_PREFIX
+165,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,41,165,ACCOUNT_STATE_BEFORE_PREFIX
+165,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,41,165,ACCOUNT_STATE_BEFORE_PREFIX
+167,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,41,167,ACCOUNT_STATE_BEFORE_PREFIX
+167,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,41,167,ACCOUNT_STATE_BEFORE_PREFIX
+169,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49639.0,49200.0,1,Drawdown breached,42,169,ACCOUNT_STATE_BEFORE_PREFIX
+169,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49639.0,49200.0,1,capital budget exhausted or rebuys disabled,42,169,ACCOUNT_STATE_BEFORE_PREFIX
+171,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49639.0,49200.0,1,Drawdown breached,42,171,ACCOUNT_STATE_BEFORE_PREFIX
+171,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49639.0,49200.0,1,capital budget exhausted or rebuys disabled,42,171,ACCOUNT_STATE_BEFORE_PREFIX
+173,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,43,173,ACCOUNT_STATE_BEFORE_PREFIX
+173,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,43,173,ACCOUNT_STATE_BEFORE_PREFIX
+175,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,43,175,ACCOUNT_STATE_BEFORE_PREFIX
+175,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,43,175,ACCOUNT_STATE_BEFORE_PREFIX
+179,TakeProfitTrader - PRO 50K - Funded only,1,2,2026-08-05,funded,funded_failed,0.0,50173.0,50000.0,1,Drawdown breached,44,179,ACCOUNT_STATE_BEFORE_PREFIX
+179,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,50173.0,50000.0,1,capital budget exhausted or rebuys disabled,44,179,ACCOUNT_STATE_BEFORE_PREFIX
+181,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,45,181,ACCOUNT_STATE_BEFORE_PREFIX
+181,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,45,181,ACCOUNT_STATE_BEFORE_PREFIX
+183,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,45,183,ACCOUNT_STATE_BEFORE_PREFIX
+183,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,45,183,ACCOUNT_STATE_BEFORE_PREFIX
+185,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49306.0,49200.0,1,Drawdown breached,46,185,ACCOUNT_STATE_BEFORE_PREFIX
+185,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49306.0,49200.0,1,capital budget exhausted or rebuys disabled,46,185,ACCOUNT_STATE_BEFORE_PREFIX
+187,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49306.0,49200.0,1,Drawdown breached,46,187,ACCOUNT_STATE_BEFORE_PREFIX
+187,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49306.0,49200.0,1,capital budget exhausted or rebuys disabled,46,187,ACCOUNT_STATE_BEFORE_PREFIX
+193,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-15,funded,funded_failed,0.0,49546.0,49200.0,1,Drawdown breached,48,193,ACCOUNT_STATE_BEFORE_PREFIX
+193,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49546.0,49200.0,1,capital budget exhausted or rebuys disabled,48,193,ACCOUNT_STATE_BEFORE_PREFIX
+195,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-15,funded,funded_failed,0.0,49546.0,49200.0,1,Drawdown breached,48,195,ACCOUNT_STATE_BEFORE_PREFIX
+195,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49546.0,49200.0,1,capital budget exhausted or rebuys disabled,48,195,ACCOUNT_STATE_BEFORE_PREFIX
+197,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,49,197,ACCOUNT_STATE_BEFORE_PREFIX
+197,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,49,197,ACCOUNT_STATE_BEFORE_PREFIX
+199,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,49,199,ACCOUNT_STATE_BEFORE_PREFIX
+199,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,49,199,ACCOUNT_STATE_BEFORE_PREFIX
+201,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49465.0,49200.0,1,Drawdown breached,50,201,ACCOUNT_STATE_BEFORE_PREFIX
+201,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49465.0,49200.0,1,capital budget exhausted or rebuys disabled,50,201,ACCOUNT_STATE_BEFORE_PREFIX
+203,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49465.0,49200.0,1,Drawdown breached,50,203,ACCOUNT_STATE_BEFORE_PREFIX
+203,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49465.0,49200.0,1,capital budget exhausted or rebuys disabled,50,203,ACCOUNT_STATE_BEFORE_PREFIX
+205,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-05,funded,payout,1455.0,52100.0,50100.0,1,Payout taken; consistency state reset; gross_account_debit=1455.00; trader_profit_split=1.00,51,205,ACCOUNT_STATE_BEFORE_PREFIX
+207,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-20,funded,payout,2388.0,50000.0,50000.0,1,Payout taken; consistency state reset; gross_account_debit=2985.00; trader_profit_split=0.80,51,207,ACCOUNT_STATE_BEFORE_PREFIX
+207,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-03,funded,funded_failed,0.0,50000.0,50000.0,1,Drawdown breached,51,207,ACCOUNT_STATE_BEFORE_PREFIX
+207,TakeProfitTrader - PRO 50K - Funded only,3,2,2026-08-18,funded,terminal,0.0,50000.0,50000.0,1,capital budget exhausted or rebuys disabled,51,207,ACCOUNT_STATE_BEFORE_PREFIX
+209,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,52,209,ACCOUNT_STATE_BEFORE_PREFIX
+209,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,52,209,ACCOUNT_STATE_BEFORE_PREFIX
+211,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49206.38365473335,1,Drawdown breached,52,211,ACCOUNT_STATE_BEFORE_PREFIX
+211,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49206.38365473335,1,capital budget exhausted or rebuys disabled,52,211,ACCOUNT_STATE_BEFORE_PREFIX
+213,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,53,213,ACCOUNT_STATE_BEFORE_PREFIX
+213,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,53,213,ACCOUNT_STATE_BEFORE_PREFIX
+215,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,53,215,ACCOUNT_STATE_BEFORE_PREFIX
+215,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,53,215,ACCOUNT_STATE_BEFORE_PREFIX
+217,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-13,funded,funded_failed,0.0,49358.134594357325,49200.0,1,Drawdown breached,54,217,ACCOUNT_STATE_BEFORE_PREFIX
+217,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49358.134594357325,49200.0,1,capital budget exhausted or rebuys disabled,54,217,ACCOUNT_STATE_BEFORE_PREFIX
+219,TakeProfitTrader - PRO 50K - Funded only,1,2,2026-08-13,funded,funded_failed,0.0,49358.134594357325,49200.0,1,Drawdown breached,54,219,ACCOUNT_STATE_BEFORE_PREFIX
+219,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49358.134594357325,49200.0,1,capital budget exhausted or rebuys disabled,54,219,ACCOUNT_STATE_BEFORE_PREFIX
+221,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-17,funded,funded_failed,0.0,49309.0,49200.0,1,Drawdown breached,55,221,ACCOUNT_STATE_BEFORE_PREFIX
+221,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49309.0,49200.0,1,capital budget exhausted or rebuys disabled,55,221,ACCOUNT_STATE_BEFORE_PREFIX
+223,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-17,funded,funded_failed,0.0,49309.0,49200.0,1,Drawdown breached,55,223,ACCOUNT_STATE_BEFORE_PREFIX
+223,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49309.0,49200.0,1,capital budget exhausted or rebuys disabled,55,223,ACCOUNT_STATE_BEFORE_PREFIX
+225,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,56,225,ACCOUNT_STATE_BEFORE_PREFIX
+225,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,56,225,ACCOUNT_STATE_BEFORE_PREFIX
+227,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,56,227,ACCOUNT_STATE_BEFORE_PREFIX
+227,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,56,227,ACCOUNT_STATE_BEFORE_PREFIX
+231,TakeProfitTrader - PRO 50K - Funded only,1,2,2026-08-05,funded,payout,1895.2,50000.0,50000.0,1,Payout taken; consistency state reset; gross_account_debit=2369.00; trader_profit_split=0.80,57,231,ACCOUNT_STATE_BEFORE_PREFIX
+231,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-06,funded,funded_failed,0.0,50000.0,50000.0,1,Drawdown breached,57,231,ACCOUNT_STATE_BEFORE_PREFIX
+231,TakeProfitTrader - PRO 50K - Funded only,3,2,2026-08-18,funded,terminal,0.0,50000.0,50000.0,1,capital budget exhausted or rebuys disabled,57,231,ACCOUNT_STATE_BEFORE_PREFIX
+235,TakeProfitTrader - PRO 50K - Funded only,1,2,2026-08-14,funded,funded_failed,0.0,50171.134594357325,49937.32449453385,1,Drawdown breached,58,235,ACCOUNT_STATE_BEFORE_PREFIX
+235,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,50171.134594357325,49937.32449453385,1,capital budget exhausted or rebuys disabled,58,235,ACCOUNT_STATE_BEFORE_PREFIX
+237,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,59,237,ACCOUNT_STATE_BEFORE_PREFIX
+237,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,59,237,ACCOUNT_STATE_BEFORE_PREFIX
+239,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,59,239,ACCOUNT_STATE_BEFORE_PREFIX
+239,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,59,239,ACCOUNT_STATE_BEFORE_PREFIX
+241,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-15,funded,funded_failed,0.0,49333.0,49200.0,1,Drawdown breached,60,241,ACCOUNT_STATE_BEFORE_PREFIX
+241,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49333.0,49200.0,1,capital budget exhausted or rebuys disabled,60,241,ACCOUNT_STATE_BEFORE_PREFIX
+243,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-15,funded,funded_failed,0.0,49333.0,49200.0,1,Drawdown breached,60,243,ACCOUNT_STATE_BEFORE_PREFIX
+243,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49333.0,49200.0,1,capital budget exhausted or rebuys disabled,60,243,ACCOUNT_STATE_BEFORE_PREFIX
+245,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-04,funded,funded_failed,0.0,49462.0,49200.0,1,Drawdown breached,61,245,ACCOUNT_STATE_BEFORE_PREFIX
+245,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49462.0,49200.0,1,capital budget exhausted or rebuys disabled,61,245,ACCOUNT_STATE_BEFORE_PREFIX
+247,TakeProfitTrader - PRO 50K - Funded only,1,2,2026-08-04,funded,funded_failed,0.0,49462.0,49200.0,1,Drawdown breached,61,247,ACCOUNT_STATE_BEFORE_PREFIX
+247,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49462.0,49200.0,1,capital budget exhausted or rebuys disabled,61,247,ACCOUNT_STATE_BEFORE_PREFIX
+249,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49739.765756541194,49200.0,1,Drawdown breached,62,249,ACCOUNT_STATE_BEFORE_PREFIX
+249,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49739.765756541194,49200.0,1,capital budget exhausted or rebuys disabled,62,249,ACCOUNT_STATE_BEFORE_PREFIX
+251,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49739.765756541194,49200.0,1,Drawdown breached,62,251,ACCOUNT_STATE_BEFORE_PREFIX
+251,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49739.765756541194,49200.0,1,capital budget exhausted or rebuys disabled,62,251,ACCOUNT_STATE_BEFORE_PREFIX
+253,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-06,funded,funded_failed,0.0,49572.67411896348,49200.0,1,Drawdown breached,63,253,ACCOUNT_STATE_BEFORE_PREFIX
+253,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49572.67411896348,49200.0,1,capital budget exhausted or rebuys disabled,63,253,ACCOUNT_STATE_BEFORE_PREFIX
+255,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,50000.0,1,Drawdown breached,63,255,ACCOUNT_STATE_BEFORE_PREFIX
+255,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,50000.0,1,capital budget exhausted or rebuys disabled,63,255,ACCOUNT_STATE_BEFORE_PREFIX
+257,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-14,funded,funded_failed,0.0,49462.0,49200.0,1,Drawdown breached,64,257,ACCOUNT_STATE_BEFORE_PREFIX
+257,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49462.0,49200.0,1,capital budget exhausted or rebuys disabled,64,257,ACCOUNT_STATE_BEFORE_PREFIX
+259,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-14,funded,funded_failed,0.0,49462.0,49200.0,1,Drawdown breached,64,259,ACCOUNT_STATE_BEFORE_PREFIX
+259,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49462.0,49200.0,1,capital budget exhausted or rebuys disabled,64,259,ACCOUNT_STATE_BEFORE_PREFIX
+263,TakeProfitTrader - PRO 50K - Funded only,1,2,2026-08-10,funded,funded_failed,0.0,50155.0,49866.957086831564,1,Drawdown breached,65,263,ACCOUNT_STATE_BEFORE_PREFIX
+263,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,50155.0,49866.957086831564,1,capital budget exhausted or rebuys disabled,65,263,ACCOUNT_STATE_BEFORE_PREFIX
+265,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,66,265,ACCOUNT_STATE_BEFORE_PREFIX
+265,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,66,265,ACCOUNT_STATE_BEFORE_PREFIX
+267,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,66,267,ACCOUNT_STATE_BEFORE_PREFIX
+267,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,66,267,ACCOUNT_STATE_BEFORE_PREFIX
+269,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,67,269,ACCOUNT_STATE_BEFORE_PREFIX
+269,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,67,269,ACCOUNT_STATE_BEFORE_PREFIX
+271,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,67,271,ACCOUNT_STATE_BEFORE_PREFIX
+271,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,67,271,ACCOUNT_STATE_BEFORE_PREFIX
+273,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,68,273,ACCOUNT_STATE_BEFORE_PREFIX
+273,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,68,273,ACCOUNT_STATE_BEFORE_PREFIX
+275,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,68,275,ACCOUNT_STATE_BEFORE_PREFIX
+275,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,68,275,ACCOUNT_STATE_BEFORE_PREFIX
+279,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-15,funded,funded_failed,0.0,49831.0,49437.38365473335,1,Drawdown breached,69,279,ACCOUNT_STATE_BEFORE_PREFIX
+279,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49831.0,49437.38365473335,1,capital budget exhausted or rebuys disabled,69,279,ACCOUNT_STATE_BEFORE_PREFIX
+281,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,70,281,ACCOUNT_STATE_BEFORE_PREFIX
+281,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,70,281,ACCOUNT_STATE_BEFORE_PREFIX
+283,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,70,283,ACCOUNT_STATE_BEFORE_PREFIX
+283,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,70,283,ACCOUNT_STATE_BEFORE_PREFIX
+285,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-15,funded,funded_failed,0.0,49390.0,49200.0,1,Drawdown breached,71,285,ACCOUNT_STATE_BEFORE_PREFIX
+285,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49390.0,49200.0,1,capital budget exhausted or rebuys disabled,71,285,ACCOUNT_STATE_BEFORE_PREFIX
+287,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-15,funded,funded_failed,0.0,49390.0,49200.0,1,Drawdown breached,71,287,ACCOUNT_STATE_BEFORE_PREFIX
+287,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49390.0,49200.0,1,capital budget exhausted or rebuys disabled,71,287,ACCOUNT_STATE_BEFORE_PREFIX
+289,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,72,289,ACCOUNT_STATE_BEFORE_PREFIX
+289,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,72,289,ACCOUNT_STATE_BEFORE_PREFIX
+291,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,72,291,ACCOUNT_STATE_BEFORE_PREFIX
+291,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,72,291,ACCOUNT_STATE_BEFORE_PREFIX
+293,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49270.0,49200.0,1,Drawdown breached,73,293,ACCOUNT_STATE_BEFORE_PREFIX
+293,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49270.0,49200.0,1,capital budget exhausted or rebuys disabled,73,293,ACCOUNT_STATE_BEFORE_PREFIX
+295,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49270.0,50000.0,1,Drawdown breached,73,295,ACCOUNT_STATE_BEFORE_PREFIX
+295,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49270.0,50000.0,1,capital budget exhausted or rebuys disabled,73,295,ACCOUNT_STATE_BEFORE_PREFIX
+297,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-17,funded,funded_failed,0.0,49681.0,49200.0,1,Drawdown breached,74,297,ACCOUNT_STATE_BEFORE_PREFIX
+297,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49681.0,49200.0,1,capital budget exhausted or rebuys disabled,74,297,ACCOUNT_STATE_BEFORE_PREFIX
+299,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-17,funded,funded_failed,0.0,49681.0,49200.0,1,Drawdown breached,74,299,ACCOUNT_STATE_BEFORE_PREFIX
+299,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49681.0,49200.0,1,capital budget exhausted or rebuys disabled,74,299,ACCOUNT_STATE_BEFORE_PREFIX
+301,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-07,funded,funded_failed,0.0,49441.0,49200.0,1,Drawdown breached,75,301,ACCOUNT_STATE_BEFORE_PREFIX
+301,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49441.0,49200.0,1,capital budget exhausted or rebuys disabled,75,301,ACCOUNT_STATE_BEFORE_PREFIX
+303,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49747.0,50000.0,1,Drawdown breached,75,303,ACCOUNT_STATE_BEFORE_PREFIX
+303,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49747.0,50000.0,1,capital budget exhausted or rebuys disabled,75,303,ACCOUNT_STATE_BEFORE_PREFIX
+305,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-14,funded,funded_failed,0.0,49231.0,49200.0,1,Drawdown breached,76,305,ACCOUNT_STATE_BEFORE_PREFIX
+305,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49231.0,49200.0,1,capital budget exhausted or rebuys disabled,76,305,ACCOUNT_STATE_BEFORE_PREFIX
+307,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-14,funded,funded_failed,0.0,49231.0,49200.0,1,Drawdown breached,76,307,ACCOUNT_STATE_BEFORE_PREFIX
+307,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49231.0,49200.0,1,capital budget exhausted or rebuys disabled,76,307,ACCOUNT_STATE_BEFORE_PREFIX
+309,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49270.0,49200.0,1,Drawdown breached,77,309,ACCOUNT_STATE_BEFORE_PREFIX
+309,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49270.0,49200.0,1,capital budget exhausted or rebuys disabled,77,309,ACCOUNT_STATE_BEFORE_PREFIX
+311,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49270.0,49200.0,1,Drawdown breached,77,311,ACCOUNT_STATE_BEFORE_PREFIX
+311,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49270.0,49200.0,1,capital budget exhausted or rebuys disabled,77,311,ACCOUNT_STATE_BEFORE_PREFIX
+313,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,78,313,ACCOUNT_STATE_BEFORE_PREFIX
+313,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,78,313,ACCOUNT_STATE_BEFORE_PREFIX
+315,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,78,315,ACCOUNT_STATE_BEFORE_PREFIX
+315,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,78,315,ACCOUNT_STATE_BEFORE_PREFIX
+317,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49300.0,49200.0,1,Drawdown breached,79,317,ACCOUNT_STATE_BEFORE_PREFIX
+317,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49300.0,49200.0,1,capital budget exhausted or rebuys disabled,79,317,ACCOUNT_STATE_BEFORE_PREFIX
+319,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49300.0,49200.0,1,Drawdown breached,79,319,ACCOUNT_STATE_BEFORE_PREFIX
+319,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49300.0,49200.0,1,capital budget exhausted or rebuys disabled,79,319,ACCOUNT_STATE_BEFORE_PREFIX
+321,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49219.0,49200.0,1,Drawdown breached,80,321,ACCOUNT_STATE_BEFORE_PREFIX
+321,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49219.0,49200.0,1,capital budget exhausted or rebuys disabled,80,321,ACCOUNT_STATE_BEFORE_PREFIX
+323,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49219.0,49200.0,1,Drawdown breached,80,323,ACCOUNT_STATE_BEFORE_PREFIX
+323,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49219.0,49200.0,1,capital budget exhausted or rebuys disabled,80,323,ACCOUNT_STATE_BEFORE_PREFIX
+325,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49690.0,49200.0,1,Drawdown breached,81,325,ACCOUNT_STATE_BEFORE_PREFIX
+325,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49690.0,49200.0,1,capital budget exhausted or rebuys disabled,81,325,ACCOUNT_STATE_BEFORE_PREFIX
+327,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49690.0,49200.0,1,Drawdown breached,81,327,ACCOUNT_STATE_BEFORE_PREFIX
+327,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49690.0,49200.0,1,capital budget exhausted or rebuys disabled,81,327,ACCOUNT_STATE_BEFORE_PREFIX
+329,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49308.3533401179,49200.0,1,Drawdown breached,82,329,ACCOUNT_STATE_BEFORE_PREFIX
+329,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49308.3533401179,49200.0,1,capital budget exhausted or rebuys disabled,82,329,ACCOUNT_STATE_BEFORE_PREFIX
+331,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49308.3533401179,49200.0,1,Drawdown breached,82,331,ACCOUNT_STATE_BEFORE_PREFIX
+331,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49308.3533401179,49200.0,1,capital budget exhausted or rebuys disabled,82,331,ACCOUNT_STATE_BEFORE_PREFIX
+333,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-04,funded,funded_failed,0.0,49387.0,49200.0,1,Drawdown breached,83,333,ACCOUNT_STATE_BEFORE_PREFIX
+333,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49387.0,49200.0,1,capital budget exhausted or rebuys disabled,83,333,ACCOUNT_STATE_BEFORE_PREFIX
+335,TakeProfitTrader - PRO 50K - Funded only,1,2,2026-08-03,funded,funded_failed,0.0,49819.0,49530.957086831564,1,Drawdown breached,83,335,ACCOUNT_STATE_BEFORE_PREFIX
+335,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49819.0,49530.957086831564,1,capital budget exhausted or rebuys disabled,83,335,ACCOUNT_STATE_BEFORE_PREFIX
+337,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,84,337,ACCOUNT_STATE_BEFORE_PREFIX
+337,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,84,337,ACCOUNT_STATE_BEFORE_PREFIX
+339,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,84,339,ACCOUNT_STATE_BEFORE_PREFIX
+339,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,84,339,ACCOUNT_STATE_BEFORE_PREFIX
+341,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-14,funded,funded_failed,0.0,49513.0,49200.0,1,Drawdown breached,85,341,ACCOUNT_STATE_BEFORE_PREFIX
+341,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49513.0,49200.0,1,capital budget exhausted or rebuys disabled,85,341,ACCOUNT_STATE_BEFORE_PREFIX
+343,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-14,funded,funded_failed,0.0,49513.0,49200.0,1,Drawdown breached,85,343,ACCOUNT_STATE_BEFORE_PREFIX
+343,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49513.0,49200.0,1,capital budget exhausted or rebuys disabled,85,343,ACCOUNT_STATE_BEFORE_PREFIX
+347,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-14,funded,payout,1742.4,50000.0,50000.0,1,Payout taken; consistency state reset; gross_account_debit=2178.00; trader_profit_split=0.80,86,347,ACCOUNT_STATE_BEFORE_PREFIX
+347,TakeProfitTrader - PRO 50K - Funded only,2,1,2026-07-15,funded,funded_failed,0.0,50000.0,50000.0,1,Drawdown breached,86,347,ACCOUNT_STATE_BEFORE_PREFIX
+347,TakeProfitTrader - PRO 50K - Funded only,3,2,2026-08-18,funded,terminal,0.0,50000.0,50000.0,1,capital budget exhausted or rebuys disabled,86,347,ACCOUNT_STATE_BEFORE_PREFIX
+349,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,87,349,ACCOUNT_STATE_BEFORE_PREFIX
+349,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,87,349,ACCOUNT_STATE_BEFORE_PREFIX
+351,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,87,351,ACCOUNT_STATE_BEFORE_PREFIX
+351,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,87,351,ACCOUNT_STATE_BEFORE_PREFIX
+353,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-05,funded,funded_failed,0.0,49594.0,49200.0,1,Drawdown breached,88,353,ACCOUNT_STATE_BEFORE_PREFIX
+353,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49594.0,49200.0,1,capital budget exhausted or rebuys disabled,88,353,ACCOUNT_STATE_BEFORE_PREFIX
+355,TakeProfitTrader - PRO 50K - Funded only,1,2,2026-08-05,funded,funded_failed,0.0,49594.0,49200.0,1,Drawdown breached,88,355,ACCOUNT_STATE_BEFORE_PREFIX
+355,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49594.0,49200.0,1,capital budget exhausted or rebuys disabled,88,355,ACCOUNT_STATE_BEFORE_PREFIX
+357,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,89,357,ACCOUNT_STATE_BEFORE_PREFIX
+357,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,89,357,ACCOUNT_STATE_BEFORE_PREFIX
+359,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49206.38365473335,1,Drawdown breached,89,359,ACCOUNT_STATE_BEFORE_PREFIX
+359,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49206.38365473335,1,capital budget exhausted or rebuys disabled,89,359,ACCOUNT_STATE_BEFORE_PREFIX
+361,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-15,funded,funded_failed,0.0,49288.0,49200.0,1,Drawdown breached,90,361,ACCOUNT_STATE_BEFORE_PREFIX
+361,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49288.0,49200.0,1,capital budget exhausted or rebuys disabled,90,361,ACCOUNT_STATE_BEFORE_PREFIX
+363,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-15,funded,funded_failed,0.0,49288.0,49200.0,1,Drawdown breached,90,363,ACCOUNT_STATE_BEFORE_PREFIX
+363,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49288.0,49200.0,1,capital budget exhausted or rebuys disabled,90,363,ACCOUNT_STATE_BEFORE_PREFIX
+365,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,91,365,ACCOUNT_STATE_BEFORE_PREFIX
+365,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,91,365,ACCOUNT_STATE_BEFORE_PREFIX
+367,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,91,367,ACCOUNT_STATE_BEFORE_PREFIX
+367,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,91,367,ACCOUNT_STATE_BEFORE_PREFIX
+369,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,92,369,ACCOUNT_STATE_BEFORE_PREFIX
+369,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,92,369,ACCOUNT_STATE_BEFORE_PREFIX
+371,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,92,371,ACCOUNT_STATE_BEFORE_PREFIX
+371,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,92,371,ACCOUNT_STATE_BEFORE_PREFIX
+373,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-03,funded,funded_failed,0.0,49285.0,49200.0,1,Drawdown breached,93,373,ACCOUNT_STATE_BEFORE_PREFIX
+373,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49285.0,49200.0,1,capital budget exhausted or rebuys disabled,93,373,ACCOUNT_STATE_BEFORE_PREFIX
+375,TakeProfitTrader - PRO 50K - Funded only,1,2,2026-08-03,funded,funded_failed,0.0,49285.0,49200.0,1,Drawdown breached,93,375,ACCOUNT_STATE_BEFORE_PREFIX
+375,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49285.0,49200.0,1,capital budget exhausted or rebuys disabled,93,375,ACCOUNT_STATE_BEFORE_PREFIX
+377,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49306.0,49200.0,1,Drawdown breached,94,377,ACCOUNT_STATE_BEFORE_PREFIX
+377,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49306.0,49200.0,1,capital budget exhausted or rebuys disabled,94,377,ACCOUNT_STATE_BEFORE_PREFIX
+379,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49306.0,49200.0,1,Drawdown breached,94,379,ACCOUNT_STATE_BEFORE_PREFIX
+379,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49306.0,49200.0,1,capital budget exhausted or rebuys disabled,94,379,ACCOUNT_STATE_BEFORE_PREFIX
+381,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,95,381,ACCOUNT_STATE_BEFORE_PREFIX
+381,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,95,381,ACCOUNT_STATE_BEFORE_PREFIX
+383,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,95,383,ACCOUNT_STATE_BEFORE_PREFIX
+383,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,95,383,ACCOUNT_STATE_BEFORE_PREFIX
+385,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,96,385,ACCOUNT_STATE_BEFORE_PREFIX
+385,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,96,385,ACCOUNT_STATE_BEFORE_PREFIX
+387,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,96,387,ACCOUNT_STATE_BEFORE_PREFIX
+387,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,96,387,ACCOUNT_STATE_BEFORE_PREFIX
+397,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,99,397,ACCOUNT_STATE_BEFORE_PREFIX
+397,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,99,397,ACCOUNT_STATE_BEFORE_PREFIX
+399,TakeProfitTrader - PRO 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,99,399,ACCOUNT_STATE_BEFORE_PREFIX
+399,TakeProfitTrader - PRO 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,99,399,ACCOUNT_STATE_BEFORE_PREFIX

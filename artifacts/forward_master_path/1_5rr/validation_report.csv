@@ -1,0 +1,6 @@
+check,passed,detail
+realized_prefix_rows,True,selected RR has two realized rows
+synthetic_starts_at_3,True,continuation sequence begins at 3
+legacy_anchor_disabled,True,legacy anchor is not applied
+unknown_realized_excursion_flagged,True,missing realized MAE/MFE is explicit
+synthetic_packets_have_source,True,synthetic rows reference packet IDs
