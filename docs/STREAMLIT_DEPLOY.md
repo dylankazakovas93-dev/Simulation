@@ -22,3 +22,8 @@ Forward ledger artifacts are committed under:
 
 Use `forward_strategy_ledger.csv` for the clean two-month trade document.
 Use `per_trade_account_ledger.csv` only for Prop Lab account lifecycle traces.
+
+For uploaded historical ledgers, set each file's strategy label, asset,
+contract symbol, dollars per point, and commission in the app. Use the strategy
+priority controls to resolve overlapping timestamps; the app can export the
+overlap decisions table.

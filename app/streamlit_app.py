@@ -91,17 +91,22 @@ def main() -> None:
         st.info("Upload one or more CSV ledgers to begin.")
         show_rule_profiles(profiles)
         return
+    ledger_settings = uploaded_ledger_settings(uploaded, default_dpp=float(default_dpp))
 
     loaded_frames: list[pd.DataFrame] = []
     errors: list[str] = []
     for file in uploaded:
+        settings = ledger_settings[file.name]
         try:
             raw = read_uploaded_ledger(file)
             loaded_frames.append(
                 coerce_uploaded_ledger(
                     raw,
-                    strategy_id=Path(file.name).stem,
-                    default_dpp=default_dpp,
+                    strategy_id=settings["strategy_id"],
+                    instrument=settings["instrument"],
+                    contract_symbol=settings["contract_symbol"],
+                    default_dpp=settings["dollars_per_point"],
+                    commission_round_turn=settings["commission_round_turn"],
                     fallback_minutes=int(fallback_minutes),
                 )
             )
@@ -235,6 +240,15 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
         )
         regime_scenario = st.selectbox("Regime scenario", ["stable", "gradual_degradation", "favourable_persistence", "abrupt_tail"])
         point_scale_scenario = st.selectbox("Point-scale scenario", ["current", "low", "high"])
+        geometry_policy_label = st.selectbox(
+            "Forward point geometry",
+            ["Current range only", "Source exact"],
+            help="Current range only filters out old tiny-volatility packets. Source exact uses the historical packet sizes as-is.",
+        )
+        min_stop_points = st.number_input("Min effective stop points", min_value=0.0, value=100.0, step=5.0)
+        max_stop_points = st.number_input("Max effective stop points", min_value=1.0, value=200.0, step=5.0)
+        min_abs_nonzero_pnl = st.number_input("Min non-BE P&L points", min_value=0.0, value=100.0, step=5.0)
+        allow_cutoff_packets = st.checkbox("Allow cutoff/partial packets", value=False)
 
     with accounts:
         firm_options = sorted({plan.firm for plan in lifecycle_plans.values()})
@@ -273,6 +287,11 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
         expectancy_tilt=float(expectancy_tilt),
         regime_scenario=regime_scenario,
         point_scale_scenario=point_scale_scenario,
+        geometry_policy="FILTER_CURRENT_RANGE" if geometry_policy_label == "Current range only" else "SOURCE_EXACT",
+        min_effective_stop_points=float(min_stop_points),
+        max_effective_stop_points=float(max_stop_points),
+        min_abs_nonzero_pnl_points=float(min_abs_nonzero_pnl),
+        allow_cutoff_packets=bool(allow_cutoff_packets),
         prefix_application_basis=prefix_basis,
         current_balance=float(current_balance),
         current_floor=float(current_floor),
@@ -285,6 +304,8 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
     selected_plans = [lifecycle_plans[key] for key in selected_plan_keys]
     live_state_requested = account_state_mode == "Single live account state"
     live_state_error = None
+    if max_stop_points < min_stop_points:
+        live_state_error = "Max effective stop points must be greater than or equal to min effective stop points."
     if live_state_requested and len(selected_plans) != 1:
         live_state_error = "Single live account state requires exactly one selected lifecycle plan."
     if live_state_requested and selected_plans:
@@ -314,7 +335,11 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
         for plan in selected_plans
     }
 
-    master_path = build_master_path(scenario, path_id=0)
+    try:
+        master_path = build_master_path(scenario, path_id=0)
+    except ValueError as exc:
+        st.error(str(exc))
+        return
     strategy_ledger = forward_strategy_ledger(master_path)
     realized = master_path[master_path["status"] == "REALIZED"]
     synthetic = master_path[master_path["status"] == "SYNTHETIC"]
@@ -1147,7 +1172,15 @@ def render_ledger_page(
     st.dataframe(pd.DataFrame(counts), width="stretch", hide_index=True)
     if decisions:
         st.subheader("Conflicts preview")
-        st.dataframe(pd.DataFrame([decision.to_dict() for decision in decisions]), width="stretch", hide_index=True)
+        decisions_frame = pd.DataFrame([decision.to_dict() for decision in decisions])
+        st.dataframe(decisions_frame, width="stretch", hide_index=True)
+        st.download_button(
+            "Download overlap decisions CSV",
+            decisions_frame.to_csv(index=False),
+            "overlap_decisions.csv",
+            "text/csv",
+            use_container_width=True,
+        )
     st.subheader("Normalized ledger")
     st.dataframe(build_ledger_frame(usable_trades), width="stretch", hide_index=True)
 
@@ -1214,11 +1247,60 @@ def build_effective_current_state_rows(
     return rows
 
 
+def uploaded_ledger_settings(uploaded: list[Any], *, default_dpp: float) -> dict[str, dict[str, Any]]:
+    settings: dict[str, dict[str, Any]] = {}
+    with st.expander("Per-ledger instrument and point value", expanded=len(uploaded) > 1):
+        st.caption("Set each uploaded ledger's strategy label, instrument, and dollars per point. These values are per one micro/contract.")
+        for index, file in enumerate(uploaded):
+            st.markdown(f"**{file.name}**")
+            cols = st.columns(5)
+            strategy_id = cols[0].text_input(
+                "Strategy",
+                value=Path(file.name).stem,
+                key=f"upload_strategy_{index}_{file.name}",
+            )
+            instrument = cols[1].text_input(
+                "Asset",
+                value="NQ",
+                key=f"upload_instrument_{index}_{file.name}",
+            )
+            contract_symbol = cols[2].text_input(
+                "Contract",
+                value="MNQ",
+                key=f"upload_contract_{index}_{file.name}",
+            )
+            dollars_per_point = cols[3].number_input(
+                "$ / point",
+                min_value=0.0001,
+                value=float(default_dpp),
+                step=0.5,
+                key=f"upload_dpp_{index}_{file.name}",
+            )
+            commission = cols[4].number_input(
+                "Commission",
+                min_value=0.0,
+                value=0.0,
+                step=0.25,
+                key=f"upload_commission_{index}_{file.name}",
+            )
+            settings[file.name] = {
+                "strategy_id": strategy_id.strip() or Path(file.name).stem,
+                "instrument": instrument.strip() or "CUSTOM",
+                "contract_symbol": contract_symbol.strip() or instrument.strip() or "CUSTOM",
+                "dollars_per_point": float(dollars_per_point),
+                "commission_round_turn": float(commission),
+            }
+    return settings
+
+
 def coerce_uploaded_ledger(
     frame: pd.DataFrame,
     *,
     strategy_id: str,
+    instrument: str = "NQ",
+    contract_symbol: str = "MNQ",
     default_dpp: float,
+    commission_round_turn: float = 0.0,
     fallback_minutes: int,
 ) -> pd.DataFrame:
     columns = {normalize_column_name(str(column)): column for column in frame.columns}
@@ -1234,10 +1316,8 @@ def coerce_uploaded_ledger(
     out = pd.DataFrame(index=frame.index)
     strategy_col = columns.get("strategy_id") or columns.get("strategy")
     out["strategy_id"] = frame[strategy_col].astype(str) if strategy_col is not None else strategy_id
-    out["instrument"] = frame[columns["instrument"]].astype(str) if "instrument" in columns else "NQ"
-    out["contract_symbol"] = (
-        frame[columns["contract_symbol"]].astype(str) if "contract_symbol" in columns else "MNQ"
-    )
+    out["instrument"] = instrument
+    out["contract_symbol"] = contract_symbol
     out["entry_time"] = frame[entry_col]
     if exit_col is not None:
         out["exit_time"] = frame[exit_col]
@@ -1263,6 +1343,7 @@ def coerce_uploaded_ledger(
     else:
         out["source_row_id"] = [f"{strategy_id}:{index + 2}" for index in range(len(frame))]
     out["trade_id"] = out["source_row_id"]
+    out["commission_round_turn"] = float(commission_round_turn)
     return out
 
 

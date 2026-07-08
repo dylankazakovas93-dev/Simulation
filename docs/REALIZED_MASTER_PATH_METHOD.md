@@ -31,6 +31,8 @@ The workflow samples complete historical packet rows. It does not fabricate synt
 
 Historical `FLAT` rows are excluded from the executable sampling pool because causal forward rolling-PF gating is not fully replayed here. The exported rows label gate state as `GATING_DISABLED_FLAT_ROWS_EXCLUDED`.
 
+The default forward geometry policy is `FILTER_CURRENT_RANGE`. It filters continuation packets to current-sized effective stops and current-sized nonzero P&L before sampling. This keeps the clean two-month forward ledger from silently falling back to old low-volatility 10-40 point packets. Users can intentionally switch to `SOURCE_EXACT` in the app when they want unfiltered historical packet sizes.
+
 Each synthetic trade is assigned to a unique business day after July 8, 2026 through August 31, 2026. Dates do not wrap; requesting more trades than available forecast trading days raises a validation error. Source entry/exit offsets are aligned from `source_session_date` to the assigned `session_date`, and the lifecycle trade day must equal that assigned session. Hard assertions reject duplicate lifecycle days, sequence/order drift, and overlapping synthetic positions.
 
 The fixed prefix is never resampled, shuffled, duplicated, dropped, weighted, or outcome-adjusted. Synthetic sequence numbers start at `3`.
@@ -66,6 +68,7 @@ PF, regime, and point-scale controls are recorded in scenario metadata in this i
 Scenario controls are active:
 
 - Expectancy scenarios alter packet sampling probabilities by outcome sign and are labeled `LOWER_EXPECTANCY`, `BASE_EXPECTANCY`, and `HIGHER_EXPECTANCY`. Numeric PF labels are not shown unless calibrated. Exports include `expected_weighted_source_pf`, the weighted expected PF of the reusable source pool under the selected weighting scheme.
+- The artificial expectancy tilt is a continuous win/loss weighting control. It changes chronology/mixture by overweighting historical winners or losers; it does not change point scale.
 - Regime scenarios alter packet sampling probabilities by source year/regime/outcome mix.
 - Point-scale scenarios rescale P&L, stops, targets, MAE, and MFE together while preserving the sampled packet and exit identity; stop/target caps are enforced.
 

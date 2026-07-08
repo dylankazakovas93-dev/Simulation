@@ -13,6 +13,7 @@ from app.streamlit_app import (
     build_prop_chart_frame,
     build_effective_current_state_rows,
     build_monthly_heatmap,
+    coerce_uploaded_ledger,
     clear_stale_lifecycle_results,
     default_lifecycle_plans,
     current_state_overrides,
@@ -39,6 +40,46 @@ def test_effective_current_state_rows_convert_profit_and_cushion_to_balance_floo
 
     assert rows[0]["effective_balance"] == "$50,500"
     assert rows[0]["effective_floor"] == "$49,000"
+
+
+def test_uploaded_ledger_coercion_uses_per_file_instrument_and_point_value():
+    frame = pd.DataFrame(
+        [
+            {
+                "entry_time": "2026-01-02T10:00:00Z",
+                "exit_time": "2026-01-02T11:00:00Z",
+                "pnl_points": 10,
+            }
+        ]
+    )
+
+    nq = coerce_uploaded_ledger(
+        frame,
+        strategy_id="ledger-1",
+        instrument="NQ",
+        contract_symbol="MNQ",
+        default_dpp=2.0,
+        commission_round_turn=0.50,
+        fallback_minutes=60,
+    )
+    es = coerce_uploaded_ledger(
+        frame,
+        strategy_id="ledger-2",
+        instrument="ES",
+        contract_symbol="MES",
+        default_dpp=5.0,
+        commission_round_turn=1.25,
+        fallback_minutes=60,
+    )
+
+    assert nq.iloc[0]["instrument"] == "NQ"
+    assert nq.iloc[0]["contract_symbol"] == "MNQ"
+    assert nq.iloc[0]["dollars_per_point"] == 2.0
+    assert nq.iloc[0]["commission_round_turn"] == 0.50
+    assert es.iloc[0]["instrument"] == "ES"
+    assert es.iloc[0]["contract_symbol"] == "MES"
+    assert es.iloc[0]["dollars_per_point"] == 5.0
+    assert es.iloc[0]["commission_round_turn"] == 1.25
 
 
 def test_prop_comparison_uses_default_funded_floor_instead_of_zero_cushion_override():

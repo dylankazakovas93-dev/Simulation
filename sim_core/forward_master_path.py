@@ -19,6 +19,7 @@ from sim_core.prop_rules import _trade_day
 
 RRConfig = Literal["1rr", "1_5rr"]
 PrefixApplicationBasis = Literal["ACCOUNT_STATE_BEFORE_PREFIX", "ACCOUNT_STATE_AFTER_PREFIX"]
+GeometryPolicy = Literal["SOURCE_EXACT", "FILTER_CURRENT_RANGE"]
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATA_DIR = REPO_ROOT / "data" / "forward_master_path"
@@ -90,6 +91,10 @@ FORWARD_STRATEGY_LEDGER_COLUMNS = [
     "expected_weighted_source_pf",
     "regime_scenario",
     "point_scale_scenario",
+    "geometry_policy",
+    "min_effective_stop_points",
+    "max_effective_stop_points",
+    "min_abs_nonzero_pnl_points",
 ]
 
 
@@ -105,6 +110,12 @@ class ForwardScenario:
     expectancy_tilt: float = 0.0
     regime_scenario: str = "stable"
     point_scale_scenario: str = "current"
+    geometry_policy: GeometryPolicy = "FILTER_CURRENT_RANGE"
+    min_effective_stop_points: float = 100.0
+    max_effective_stop_points: float = 200.0
+    min_abs_nonzero_pnl_points: float = 100.0
+    allow_breakeven_packets: bool = True
+    allow_cutoff_packets: bool = False
     prefix_application_basis: PrefixApplicationBasis = "ACCOUNT_STATE_BEFORE_PREFIX"
     use_realized_master_prefix: bool = True
     use_legacy_anchor: bool = False
@@ -221,8 +232,9 @@ def build_master_path(
     )
     realized = select_realized_prefix(load_realized_master_path(Path(data_dir) / "realized_master_path.csv" if data_dir else None), scenario.rr_config_id)
     source = load_source_library(scenario.rr_config_id, data_dir)
+    weighted_source = _apply_geometry_policy(source, scenario)
     weighted_source_pf = expected_weighted_pf(
-        source,
+        weighted_source,
         scenario.pf_scenario,
         scenario.regime_scenario,
         expectancy_tilt=scenario.expectancy_tilt,
@@ -239,6 +251,10 @@ def build_master_path(
     master["expectancy_tilt"] = float(scenario.expectancy_tilt)
     master["regime_scenario"] = scenario.regime_scenario
     master["point_scale_scenario"] = scenario.point_scale_scenario
+    master["geometry_policy"] = scenario.geometry_policy
+    master["min_effective_stop_points"] = float(scenario.min_effective_stop_points)
+    master["max_effective_stop_points"] = float(scenario.max_effective_stop_points)
+    master["min_abs_nonzero_pnl_points"] = float(scenario.min_abs_nonzero_pnl_points)
     master["expected_weighted_source_pf"] = weighted_source_pf
     master["master_seed"] = scenario.master_seed
     master["mc_seed"] = scenario.mc_seed
@@ -310,6 +326,7 @@ def sample_scenario_continuation(
         pf_scenario=scenario.pf_scenario,
         expectancy_tilt=scenario.expectancy_tilt,
         regime_scenario=scenario.regime_scenario,
+        scenario=scenario,
     )
     august = _sample_month_packets(
         source,
@@ -319,6 +336,7 @@ def sample_scenario_continuation(
         pf_scenario=scenario.pf_scenario,
         expectancy_tilt=scenario.expectancy_tilt,
         regime_scenario=scenario.regime_scenario,
+        scenario=scenario,
     )
     sampled = pd.concat([july, august], ignore_index=True)
     rows: list[dict[str, Any]] = []
@@ -370,6 +388,10 @@ def path_summary(paths: list[pd.DataFrame], scenario: ForwardScenario) -> pd.Dat
                 "expected_weighted_source_pf": _path_expected_source_pf(path),
                 "regime_scenario": scenario.regime_scenario,
                 "point_scale_scenario": scenario.point_scale_scenario,
+                "geometry_policy": scenario.geometry_policy,
+                "min_effective_stop_points": float(scenario.min_effective_stop_points),
+                "max_effective_stop_points": float(scenario.max_effective_stop_points),
+                "min_abs_nonzero_pnl_points": float(scenario.min_abs_nonzero_pnl_points),
                 "realized_prefix_net_points": float(path["realized_prefix_net_points"].iloc[-1]),
                 "forward_only_net_points": float(path["forward_only_net_points"].iloc[-1]),
                 "combined_net_points": float(path["combined_net_points"].iloc[-1]),
@@ -401,6 +423,7 @@ def strategy_path_manifest(paths: list[pd.DataFrame], scenario: ForwardScenario)
                 "expected_weighted_source_pf": _path_expected_source_pf(path),
                 "regime_scenario": scenario.regime_scenario,
                 "point_scale_scenario": scenario.point_scale_scenario,
+                "geometry_policy": scenario.geometry_policy,
             }
         )
     return pd.DataFrame(rows)
@@ -679,6 +702,7 @@ def _sample_month_packets(
     pf_scenario: str | None,
     expectancy_tilt: float = 0.0,
     regime_scenario: str | None,
+    scenario: ForwardScenario | None = None,
 ) -> pd.DataFrame:
     if count <= 0:
         return source.head(0).copy()
@@ -687,8 +711,9 @@ def _sample_month_packets(
     else:
         dates = pd.to_datetime(source["source_session_date"], errors="coerce")
         candidates = source[dates.dt.month == month]
+    candidates = _apply_geometry_policy(candidates, scenario)
     if candidates.empty:
-        raise ValueError(f"no historical packets available for month {month}")
+        raise ValueError(f"no historical packets available for month {month} after forward geometry filters")
     weights = _scenario_weights(
         candidates,
         pf_scenario=pf_scenario,
@@ -770,7 +795,32 @@ def _synthetic_row(
         "pf_scenario": pd.NA,
         "regime_scenario": pd.NA,
         "point_scale_scenario": pd.NA,
+        "geometry_policy": pd.NA,
+        "min_effective_stop_points": pd.NA,
+        "max_effective_stop_points": pd.NA,
+        "min_abs_nonzero_pnl_points": pd.NA,
     }
+
+
+def _apply_geometry_policy(candidates: pd.DataFrame, scenario: ForwardScenario | None) -> pd.DataFrame:
+    if scenario is None or scenario.geometry_policy == "SOURCE_EXACT" or candidates.empty:
+        return candidates
+    out = candidates.copy()
+    stop = pd.to_numeric(out["effective_stop_points"], errors="coerce")
+    pnl = pd.to_numeric(out["pnl_points"], errors="coerce")
+    reason = out["effective_exit_reason"].astype(str).str.upper()
+    stop_ok = stop.between(
+        float(scenario.min_effective_stop_points),
+        float(scenario.max_effective_stop_points),
+        inclusive="both",
+    )
+    nonzero = pnl.abs() > 1e-9
+    pnl_ok = (~nonzero & bool(scenario.allow_breakeven_packets)) | (
+        nonzero & (pnl.abs() >= float(scenario.min_abs_nonzero_pnl_points))
+    )
+    if not scenario.allow_cutoff_packets:
+        pnl_ok &= ~reason.eq("CUTOFF")
+    return out[stop_ok & pnl_ok].reset_index(drop=True)
 
 
 def _accounting_times(row: Any) -> tuple[pd.Timestamp, pd.Timestamp]:

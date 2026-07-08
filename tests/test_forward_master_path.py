@@ -301,6 +301,33 @@ def test_artificial_expectancy_tilt_materially_changes_weighted_source_pf():
     assert float(low["expected_weighted_source_pf"].iloc[0]) < float(high["expected_weighted_source_pf"].iloc[0])
 
 
+def test_default_forward_geometry_filters_out_tiny_nonzero_packets():
+    path = build_master_path(ForwardScenario(rr_config_id="1rr", july_candidate_count=8, august_candidate_count=8))
+    synthetic = path[path["status"] == "SYNTHETIC"]
+    nonzero = synthetic[synthetic["pnl_points"].astype(float).abs() > 1e-9]
+
+    assert not nonzero.empty
+    assert nonzero["pnl_points"].abs().min() >= 100
+    assert synthetic["effective_stop_points"].between(100, 200).all()
+    assert not synthetic["effective_exit_reason"].astype(str).str.lower().eq("cutoff").any()
+
+
+def test_source_exact_geometry_can_still_show_old_small_packets_when_selected():
+    path = build_master_path(
+        ForwardScenario(
+            rr_config_id="1rr",
+            master_seed=1729,
+            july_candidate_count=8,
+            august_candidate_count=8,
+            geometry_policy="SOURCE_EXACT",
+        )
+    )
+    synthetic = path[path["status"] == "SYNTHETIC"]
+    nonzero = synthetic[synthetic["pnl_points"].astype(float).abs() > 1e-9]
+
+    assert nonzero["pnl_points"].abs().min() < 100
+
+
 def test_per_trade_ledger_reconciles_after_prefix_basis_and_current_state():
     plan = default_lifecycle_plans()["Apex Trader Funding - EOD PA 50K - Funded only"]
     scenario = ForwardScenario(
