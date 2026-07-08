@@ -9,6 +9,7 @@ from sim_core.forward_master_path import (
     build_monte_carlo_paths,
     executable_packet_pool,
     forecast_trading_dates,
+    forward_strategy_ledger,
     load_realized_master_path,
     path_summary,
     run_forward_lifecycle_grid,
@@ -256,6 +257,48 @@ def test_expectancy_manifest_exports_weighted_source_pool_pf_not_path_pf():
     assert manifest["expected_weighted_source_pf"].notna().all()
     assert manifest["expected_weighted_source_pf"].nunique() == 1
     assert results["expected_weighted_source_pf"].nunique() == 1
+
+
+def test_clean_forward_strategy_ledger_has_no_prop_account_fields():
+    path = build_master_path(ForwardScenario(rr_config_id="1rr", july_candidate_count=2, august_candidate_count=2))
+    ledger = forward_strategy_ledger(path)
+
+    forbidden = {
+        "firm",
+        "account",
+        "plan_key",
+        "balance_before",
+        "balance_after",
+        "floor_before",
+        "floor_after",
+        "payout_number",
+        "trader_cash",
+        "gross_account_debit",
+    }
+    assert forbidden.isdisjoint(set(ledger.columns))
+    assert ledger["pnl_points"].tolist() == path.sort_values("sequence_number")["pnl_points"].tolist()
+    assert {"raw_stop_points", "effective_stop_points", "target_points", "mae_points", "mfe_points"} <= set(ledger.columns)
+
+
+def test_artificial_expectancy_tilt_materially_changes_weighted_source_pf():
+    low = build_master_path(
+        ForwardScenario(
+            rr_config_id="1rr",
+            july_candidate_count=4,
+            august_candidate_count=4,
+            expectancy_tilt=-1.0,
+        )
+    )
+    high = build_master_path(
+        ForwardScenario(
+            rr_config_id="1rr",
+            july_candidate_count=4,
+            august_candidate_count=4,
+            expectancy_tilt=1.0,
+        )
+    )
+
+    assert float(low["expected_weighted_source_pf"].iloc[0]) < float(high["expected_weighted_source_pf"].iloc[0])
 
 
 def test_per_trade_ledger_reconciles_after_prefix_basis_and_current_state():

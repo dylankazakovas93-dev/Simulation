@@ -47,6 +47,8 @@ The default smoke export writes:
 
 - `artifacts/forward_master_path/selected_realized_prefix.csv`
 - `artifacts/forward_master_path/deterministic_master_path.csv`
+- `artifacts/forward_master_path/forward_strategy_ledger.csv`
+- `artifacts/forward_master_path/all_forward_strategy_ledgers.csv`
 - `artifacts/forward_master_path/monte_carlo_strategy_path_manifest.csv`
 - `artifacts/forward_master_path/path_level_point_results.csv`
 - `artifacts/forward_master_path/lifecycle_account_results.csv`
@@ -69,6 +71,8 @@ Scenario controls are active:
 
 Rolling-PF disagreement diagnostics are not used to delete confirmed realized trades. Full causal rolling-PF forward gating is not enabled in this implementation; historical FLAT rows are excluded instead.
 
-The per-trade Path Inspector ledger is emitted by the authoritative lifecycle state machine itself. It is not a second account simulator. Payout rows, failure rows, monthly rows, events, and final result values reconcile to that same state pass.
+`forward_strategy_ledger.csv` is the clean two-month forward trade ledger. It contains strategy fields only: dates, sequence, points, stops, targets, MAE/MFE, source packet IDs, source timing, and scenario metadata. It intentionally excludes prop-firm, balance, floor, payout, fee, and account lifecycle columns.
+
+The per-trade Prop Lab account trace is emitted by the authoritative lifecycle state machine itself. It is not a second account simulator. Payout rows, failure rows, monthly rows, events, and final result values reconcile to that same state pass.
 
 Live current account state can be applied only to a single selected lifecycle plan. Multi-plan comparisons use fresh profile state so a 50K balance/floor cannot accidentally be applied to 100K or 150K accounts.

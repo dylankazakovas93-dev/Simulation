@@ -17,6 +17,8 @@ from sim_core.forward_master_path import (
     build_master_path,
     build_monte_carlo_paths,
     export_forward_artifacts,
+    forward_strategy_ledger,
+    forward_strategy_ledgers,
     path_summary,
     run_forward_lifecycle_grid,
     strategy_path_manifest,
@@ -223,6 +225,14 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
         july_count = int(st.number_input("Remaining July candidate/trade count", min_value=0, value=8, step=1))
         august_count = int(st.number_input("August candidate/trade count", min_value=0, value=12, step=1))
         pf_scenario = st.selectbox("Expectancy scenario", ["LOWER_EXPECTANCY", "BASE_EXPECTANCY", "HIGHER_EXPECTANCY"])
+        expectancy_tilt = st.slider(
+            "Artificial expectancy tilt",
+            min_value=-1.0,
+            max_value=1.0,
+            value=0.0,
+            step=0.05,
+            help="Negative tilts overweight historical losers; positive tilts overweight historical winners. Point scale stays separate.",
+        )
         regime_scenario = st.selectbox("Regime scenario", ["stable", "gradual_degradation", "favourable_persistence", "abrupt_tail"])
         point_scale_scenario = st.selectbox("Point-scale scenario", ["current", "low", "high"])
 
@@ -260,6 +270,7 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
         mc_seed=mc_seed,
         path_count=path_count,
         pf_scenario=pf_scenario,
+        expectancy_tilt=float(expectancy_tilt),
         regime_scenario=regime_scenario,
         point_scale_scenario=point_scale_scenario,
         prefix_application_basis=prefix_basis,
@@ -304,6 +315,7 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
     }
 
     master_path = build_master_path(scenario, path_id=0)
+    strategy_ledger = forward_strategy_ledger(master_path)
     realized = master_path[master_path["status"] == "REALIZED"]
     synthetic = master_path[master_path["status"] == "SYNTHETIC"]
     prefix_net = float(master_path["realized_prefix_net_points"].iloc[-1])
@@ -346,9 +358,16 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
         "strict_barrier_status",
         "source_trade_packet_id",
     ]
-    st.dataframe(master_path[display_columns], width="stretch", hide_index=True)
+    st.dataframe(strategy_ledger[[column for column in display_columns if column in strategy_ledger]], width="stretch", hide_index=True)
     st.download_button(
-        "Download deterministic Master Path CSV",
+        "Download clean 2-month forward strategy ledger CSV",
+        strategy_ledger.to_csv(index=False),
+        file_name=f"forward_strategy_ledger_{rr_config_id}.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+    st.download_button(
+        "Download full metadata master path CSV",
         master_path.to_csv(index=False),
         file_name=f"master_path_{rr_config_id}.csv",
         mime="text/csv",
@@ -386,6 +405,7 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
                 per_trade_ledger,
             )
             st.session_state["forward_point_results"] = point_results
+            st.session_state["forward_strategy_ledgers"] = forward_strategy_ledgers(mc_paths)
             st.session_state["forward_manifest"] = strategy_path_manifest(mc_paths, scenario)
             st.session_state["forward_lifecycle_summary"] = lifecycle_summary
             st.session_state["forward_lifecycle_monthly"] = lifecycle_monthly
@@ -404,6 +424,19 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
         st.dataframe(point_results, width="stretch", hide_index=True)
         st.download_button("Download point results CSV", point_results.to_csv(index=False), "path_level_point_results.csv", "text/csv")
 
+    strategy_ledgers = st.session_state.get("forward_strategy_ledgers", pd.DataFrame())
+    if not strategy_ledgers.empty:
+        st.subheader("Clean Forward Strategy Ledgers")
+        st.caption("Trade-only forward ledgers: points, stops, targets, MAE/MFE, dates, source packet IDs. No firms, balances, floors, payouts, or account fields.")
+        st.dataframe(strategy_ledgers.head(500), width="stretch", hide_index=True)
+        st.download_button(
+            "Download all clean forward strategy ledgers CSV",
+            strategy_ledgers.to_csv(index=False),
+            "all_forward_strategy_ledgers.csv",
+            "text/csv",
+            use_container_width=True,
+        )
+
     manifest = st.session_state.get("forward_manifest", pd.DataFrame())
     if not manifest.empty:
         st.subheader("Strategy Path Manifest")
@@ -419,9 +452,10 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
 
     per_trade_ledger = st.session_state.get("forward_per_trade_ledger", pd.DataFrame())
     if not per_trade_ledger.empty:
-        st.subheader("Path Inspector: Per-Trade Account Ledger")
+        st.subheader("Prop Lab Account Trace")
+        st.caption("Account lifecycle trace only: firm, balance, floor, payout, fee, and failure fields live here, not in the clean forward strategy ledger.")
         st.dataframe(per_trade_ledger.head(500), width="stretch", hide_index=True)
-        st.download_button("Download per-trade account ledger CSV", per_trade_ledger.to_csv(index=False), "per_trade_account_ledger.csv", "text/csv")
+        st.download_button("Download Prop Lab account trace CSV", per_trade_ledger.to_csv(index=False), "per_trade_account_trace.csv", "text/csv")
 
     outputs = st.session_state.get("forward_outputs", {})
     if outputs:

@@ -1,2 +1,2 @@
-rr_config_id,path_id,master_seed,mc_seed,prefix_application_basis,pf_scenario,expected_weighted_source_pf,regime_scenario,point_scale_scenario,realized_prefix_net_points,forward_only_net_points,combined_net_points,synthetic_trades,unknown_realized_excursions
-1rr,0,1729,1730,ACCOUNT_STATE_BEFORE_PREFIX,BASE_EXPECTANCY,1.5683691646950209,stable,current,-50.0,-111.98317570533436,-161.98317570533436,20,2
+rr_config_id,path_id,master_seed,mc_seed,prefix_application_basis,pf_scenario,expectancy_tilt,expected_weighted_source_pf,regime_scenario,point_scale_scenario,realized_prefix_net_points,forward_only_net_points,combined_net_points,synthetic_trades,unknown_realized_excursions
+1rr,0,1729,1730,ACCOUNT_STATE_BEFORE_PREFIX,BASE_EXPECTANCY,0.0,1.5683691646950209,stable,current,-50.0,-111.98317570533436,-161.98317570533436,20,2

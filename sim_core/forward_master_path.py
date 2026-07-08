@@ -51,6 +51,46 @@ REQUIRED_PREFIX_COLUMNS = {
     "evidence_status",
     "mutually_exclusive_config_alternative",
 }
+FORWARD_STRATEGY_LEDGER_COLUMNS = [
+    "rr_config_id",
+    "path_id",
+    "sequence_number",
+    "status",
+    "record_type",
+    "session_date",
+    "entry_time",
+    "exit_time",
+    "holding_duration_minutes",
+    "direction",
+    "exit_reason",
+    "effective_exit_reason",
+    "pnl_points",
+    "candidate_pnl_points",
+    "executed_pnl_points",
+    "raw_stop_points",
+    "effective_stop_points",
+    "target_points",
+    "mae_points",
+    "mfe_points",
+    "cumulative_realized_points",
+    "cumulative_forward_only_points",
+    "cumulative_combined_points",
+    "source_trade_packet_id",
+    "source_session_date",
+    "source_entry_time",
+    "source_exit_time",
+    "source_exit_reason",
+    "source_ledger_id",
+    "evidence_status",
+    "excursion_confidence",
+    "strict_barrier_status",
+    "timestamp_policy",
+    "pf_scenario",
+    "expectancy_tilt",
+    "expected_weighted_source_pf",
+    "regime_scenario",
+    "point_scale_scenario",
+]
 
 
 @dataclass(frozen=True)
@@ -62,6 +102,7 @@ class ForwardScenario:
     mc_seed: int = 1730
     path_count: int = 100
     pf_scenario: str = "BASE_EXPECTANCY"
+    expectancy_tilt: float = 0.0
     regime_scenario: str = "stable"
     point_scale_scenario: str = "current"
     prefix_application_basis: PrefixApplicationBasis = "ACCOUNT_STATE_BEFORE_PREFIX"
@@ -180,7 +221,12 @@ def build_master_path(
     )
     realized = select_realized_prefix(load_realized_master_path(Path(data_dir) / "realized_master_path.csv" if data_dir else None), scenario.rr_config_id)
     source = load_source_library(scenario.rr_config_id, data_dir)
-    weighted_source_pf = expected_weighted_pf(source, scenario.pf_scenario, scenario.regime_scenario)
+    weighted_source_pf = expected_weighted_pf(
+        source,
+        scenario.pf_scenario,
+        scenario.regime_scenario,
+        expectancy_tilt=scenario.expectancy_tilt,
+    )
     continuation = sample_scenario_continuation(
         source,
         scenario,
@@ -190,6 +236,7 @@ def build_master_path(
     master = pd.concat([_decorate_realized(realized, scenario, path_id), continuation], ignore_index=True)
     master["prefix_application_basis"] = scenario.prefix_application_basis
     master["pf_scenario"] = scenario.pf_scenario
+    master["expectancy_tilt"] = float(scenario.expectancy_tilt)
     master["regime_scenario"] = scenario.regime_scenario
     master["point_scale_scenario"] = scenario.point_scale_scenario
     master["expected_weighted_source_pf"] = weighted_source_pf
@@ -261,6 +308,7 @@ def sample_scenario_continuation(
         scenario.july_candidate_count,
         rng,
         pf_scenario=scenario.pf_scenario,
+        expectancy_tilt=scenario.expectancy_tilt,
         regime_scenario=scenario.regime_scenario,
     )
     august = _sample_month_packets(
@@ -269,6 +317,7 @@ def sample_scenario_continuation(
         scenario.august_candidate_count,
         rng,
         pf_scenario=scenario.pf_scenario,
+        expectancy_tilt=scenario.expectancy_tilt,
         regime_scenario=scenario.regime_scenario,
     )
     sampled = pd.concat([july, august], ignore_index=True)
@@ -317,6 +366,7 @@ def path_summary(paths: list[pd.DataFrame], scenario: ForwardScenario) -> pd.Dat
                 "mc_seed": scenario.mc_seed,
                 "prefix_application_basis": scenario.prefix_application_basis,
                 "pf_scenario": scenario.pf_scenario,
+                "expectancy_tilt": float(scenario.expectancy_tilt),
                 "expected_weighted_source_pf": _path_expected_source_pf(path),
                 "regime_scenario": scenario.regime_scenario,
                 "point_scale_scenario": scenario.point_scale_scenario,
@@ -347,12 +397,29 @@ def strategy_path_manifest(paths: list[pd.DataFrame], scenario: ForwardScenario)
                 "july_candidate_count": scenario.july_candidate_count,
                 "august_candidate_count": scenario.august_candidate_count,
                 "pf_scenario": scenario.pf_scenario,
+                "expectancy_tilt": float(scenario.expectancy_tilt),
                 "expected_weighted_source_pf": _path_expected_source_pf(path),
                 "regime_scenario": scenario.regime_scenario,
                 "point_scale_scenario": scenario.point_scale_scenario,
             }
         )
     return pd.DataFrame(rows)
+
+
+def forward_strategy_ledger(path: pd.DataFrame) -> pd.DataFrame:
+    """Return the clean two-month strategy ledger, with no prop-account fields."""
+
+    out = path.copy()
+    for column in FORWARD_STRATEGY_LEDGER_COLUMNS:
+        if column not in out:
+            out[column] = pd.NA
+    return out[FORWARD_STRATEGY_LEDGER_COLUMNS].sort_values(["path_id", "sequence_number"]).reset_index(drop=True)
+
+
+def forward_strategy_ledgers(paths: list[pd.DataFrame]) -> pd.DataFrame:
+    if not paths:
+        return pd.DataFrame(columns=FORWARD_STRATEGY_LEDGER_COLUMNS)
+    return pd.concat([forward_strategy_ledger(path) for path in paths], ignore_index=True)
 
 
 def run_forward_lifecycle_grid(
@@ -533,6 +600,8 @@ def export_forward_artifacts(
     outputs = {
         "selected_realized_prefix": root / "selected_realized_prefix.csv",
         "deterministic_master_path": root / "deterministic_master_path.csv",
+        "forward_strategy_ledger": root / "forward_strategy_ledger.csv",
+        "all_forward_strategy_ledgers": root / "all_forward_strategy_ledgers.csv",
         "monte_carlo_strategy_path_manifest": root / "monte_carlo_strategy_path_manifest.csv",
         "path_level_point_results": root / "path_level_point_results.csv",
         "lifecycle_account_results": root / "lifecycle_account_results.csv",
@@ -544,6 +613,8 @@ def export_forward_artifacts(
     }
     selected_prefix.to_csv(outputs["selected_realized_prefix"], index=False)
     master_path.to_csv(outputs["deterministic_master_path"], index=False)
+    forward_strategy_ledger(master_path).to_csv(outputs["forward_strategy_ledger"], index=False)
+    forward_strategy_ledgers(mc_paths).to_csv(outputs["all_forward_strategy_ledgers"], index=False)
     strategy_path_manifest(mc_paths, scenario).to_csv(outputs["monte_carlo_strategy_path_manifest"], index=False)
     path_summary(mc_paths, scenario).to_csv(outputs["path_level_point_results"], index=False)
     lifecycle_summary.to_csv(outputs["lifecycle_account_results"], index=False)
@@ -606,6 +677,7 @@ def _sample_month_packets(
     rng: np.random.Generator,
     *,
     pf_scenario: str | None,
+    expectancy_tilt: float = 0.0,
     regime_scenario: str | None,
 ) -> pd.DataFrame:
     if count <= 0:
@@ -617,7 +689,12 @@ def _sample_month_packets(
         candidates = source[dates.dt.month == month]
     if candidates.empty:
         raise ValueError(f"no historical packets available for month {month}")
-    weights = _scenario_weights(candidates, pf_scenario=pf_scenario, regime_scenario=regime_scenario)
+    weights = _scenario_weights(
+        candidates,
+        pf_scenario=pf_scenario,
+        regime_scenario=regime_scenario,
+        expectancy_tilt=expectancy_tilt,
+    )
     indexes = rng.choice(np.arange(len(candidates)), size=count, replace=True, p=weights)
     return candidates.iloc[indexes].reset_index(drop=True)
 
@@ -742,6 +819,7 @@ def _scenario_weights(
     *,
     pf_scenario: str | None,
     regime_scenario: str | None,
+    expectancy_tilt: float = 0.0,
 ) -> np.ndarray | None:
     if candidates.empty:
         return None
@@ -758,6 +836,11 @@ def _scenario_weights(
         weights *= np.where(pnl > 0, 1.0, 1.0)
     elif scenario_key == "HIGHER_EXPECTANCY":
         weights *= np.where(pnl > 0, 1.15, np.where(pnl < 0, 0.85, 0.95))
+    tilt = float(np.clip(expectancy_tilt, -1.0, 1.0))
+    if tilt:
+        win_multiplier = float(np.exp(tilt))
+        loss_multiplier = float(np.exp(-tilt))
+        weights *= np.where(pnl > 0, win_multiplier, np.where(pnl < 0, loss_multiplier, 1.0))
 
     if regime_scenario == "gradual_degradation":
         year = pd.to_numeric(candidates.get("source_year", 2024), errors="coerce").fillna(2024).to_numpy()
@@ -834,11 +917,22 @@ def strategy_sequence_hash(path: pd.DataFrame) -> str:
     return sha256(material.encode("utf-8")).hexdigest()
 
 
-def expected_weighted_pf(frame: pd.DataFrame, pf_scenario: str | None, regime_scenario: str | None) -> float | None:
+def expected_weighted_pf(
+    frame: pd.DataFrame,
+    pf_scenario: str | None,
+    regime_scenario: str | None,
+    *,
+    expectancy_tilt: float = 0.0,
+) -> float | None:
     synthetic = frame[frame["status"].eq("SYNTHETIC")] if "status" in frame else frame
     if synthetic.empty:
         return None
-    weights = _scenario_weights(synthetic, pf_scenario=pf_scenario, regime_scenario=regime_scenario)
+    weights = _scenario_weights(
+        synthetic,
+        pf_scenario=pf_scenario,
+        regime_scenario=regime_scenario,
+        expectancy_tilt=expectancy_tilt,
+    )
     pnl = pd.to_numeric(synthetic["pnl_points"], errors="coerce").fillna(0.0).to_numpy()
     if weights is None:
         weights = np.ones(len(synthetic), dtype=float) / len(synthetic)
