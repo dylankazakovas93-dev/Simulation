@@ -1,0 +1,26 @@
+{
+  "master_path_version": "2026-07-08.v1",
+  "master_path_id": "JULY_AUGUST_REALIZED_PREFIX",
+  "created_for_branch": "recovery/prop-lab-local-2026-07-08",
+  "evidence_policy": "User-confirmed realized outcomes are authoritative; unrecovered optional execution fields are null.",
+  "configuration_alternative_group_id": "CURRENT_REALIZED_RR_ALTERNATIVES",
+  "rr_configs": {
+    "1rr": {
+      "config": "operational_100r",
+      "config_label": "OG_OPERATIONAL_100R",
+      "prefix_points": [150.0, -200.0],
+      "prefix_net_points": -50.0
+    },
+    "1_5rr": {
+      "config": "primary_150r",
+      "config_label": "OG_PRIMARY_150R",
+      "prefix_points": [0.0, -200.0],
+      "prefix_net_points": -200.0
+    }
+  },
+  "source_libraries": {
+    "1rr": "forward_1rr.csv",
+    "1_5rr": "forward_1_5rr.csv"
+  },
+  "legacy_anchor_status": "deprecated; must not be applied with realized master prefix"
+}

@@ -1,0 +1,33 @@
+{
+  "required_columns": [
+    "master_path_version",
+    "master_path_id",
+    "rr_config_id",
+    "config",
+    "config_label",
+    "sequence_number",
+    "event_group_id",
+    "configuration_alternative_group_id",
+    "status",
+    "record_type",
+    "session_date",
+    "entry_time",
+    "exit_time",
+    "direction",
+    "exit_reason",
+    "effective_exit_reason",
+    "pnl_points",
+    "raw_stop_points",
+    "effective_stop_points",
+    "target_points",
+    "mae_points",
+    "mfe_points",
+    "source_trade_packet_id",
+    "source_type",
+    "evidence_status",
+    "mutually_exclusive_config_alternative"
+  ],
+  "status_values": ["REALIZED", "SYNTHETIC"],
+  "record_type_values": ["EXECUTED_TRADE", "HISTORICAL_PACKET"],
+  "excursion_confidence_values": ["EXACT_SOURCE_VERIFIED", "UNKNOWN_USER_CONFIRMED"]
+}

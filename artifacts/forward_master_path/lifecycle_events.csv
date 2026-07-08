@@ -1,0 +1,373 @@
+path_id,plan_key,event_order,month_index,date,stage,event,amount,balance,floor,attempt,note,strategy_path_id,prefix_application_basis
+0,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49306.0,49200.0,1,Drawdown breached,0,ACCOUNT_STATE_BEFORE_PREFIX
+0,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49306.0,49200.0,1,capital budget exhausted or rebuys disabled,0,ACCOUNT_STATE_BEFORE_PREFIX
+0,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,0,ACCOUNT_STATE_BEFORE_PREFIX
+0,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,0,ACCOUNT_STATE_BEFORE_PREFIX
+1,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,1,ACCOUNT_STATE_BEFORE_PREFIX
+1,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,1,ACCOUNT_STATE_BEFORE_PREFIX
+1,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,1,ACCOUNT_STATE_BEFORE_PREFIX
+1,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,1,ACCOUNT_STATE_BEFORE_PREFIX
+2,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,2,ACCOUNT_STATE_BEFORE_PREFIX
+2,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,2,ACCOUNT_STATE_BEFORE_PREFIX
+3,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-17,funded,funded_failed,0.0,49345.0,49200.0,1,Drawdown breached,3,ACCOUNT_STATE_BEFORE_PREFIX
+3,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49345.0,49200.0,1,capital budget exhausted or rebuys disabled,3,ACCOUNT_STATE_BEFORE_PREFIX
+3,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-15,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,3,ACCOUNT_STATE_BEFORE_PREFIX
+3,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,3,ACCOUNT_STATE_BEFORE_PREFIX
+4,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49690.0,49200.0,1,Drawdown breached,4,ACCOUNT_STATE_BEFORE_PREFIX
+4,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49690.0,49200.0,1,capital budget exhausted or rebuys disabled,4,ACCOUNT_STATE_BEFORE_PREFIX
+4,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49690.0,49450.0,1,Drawdown breached,4,ACCOUNT_STATE_BEFORE_PREFIX
+4,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49690.0,49450.0,1,capital budget exhausted or rebuys disabled,4,ACCOUNT_STATE_BEFORE_PREFIX
+5,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-07,funded,funded_failed,0.0,49558.0,49200.0,1,Drawdown breached,5,ACCOUNT_STATE_BEFORE_PREFIX
+5,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49558.0,49200.0,1,capital budget exhausted or rebuys disabled,5,ACCOUNT_STATE_BEFORE_PREFIX
+5,Alpha Futures - Advanced 50K - Funded only,1,2,2026-08-07,funded,funded_failed,0.0,49558.0,49450.0,1,Drawdown breached,5,ACCOUNT_STATE_BEFORE_PREFIX
+5,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49558.0,49450.0,1,capital budget exhausted or rebuys disabled,5,ACCOUNT_STATE_BEFORE_PREFIX
+6,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,6,ACCOUNT_STATE_BEFORE_PREFIX
+6,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,6,ACCOUNT_STATE_BEFORE_PREFIX
+6,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,6,ACCOUNT_STATE_BEFORE_PREFIX
+6,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,6,ACCOUNT_STATE_BEFORE_PREFIX
+8,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,50038.0,49200.0,1,Drawdown breached,8,ACCOUNT_STATE_BEFORE_PREFIX
+8,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,50038.0,49200.0,1,capital budget exhausted or rebuys disabled,8,ACCOUNT_STATE_BEFORE_PREFIX
+8,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,8,ACCOUNT_STATE_BEFORE_PREFIX
+8,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,8,ACCOUNT_STATE_BEFORE_PREFIX
+9,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-15,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,9,ACCOUNT_STATE_BEFORE_PREFIX
+9,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,9,ACCOUNT_STATE_BEFORE_PREFIX
+9,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-15,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,9,ACCOUNT_STATE_BEFORE_PREFIX
+9,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,9,ACCOUNT_STATE_BEFORE_PREFIX
+10,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-14,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,10,ACCOUNT_STATE_BEFORE_PREFIX
+10,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,10,ACCOUNT_STATE_BEFORE_PREFIX
+10,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-14,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,10,ACCOUNT_STATE_BEFORE_PREFIX
+10,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,10,ACCOUNT_STATE_BEFORE_PREFIX
+11,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49378.0,49200.0,1,Drawdown breached,11,ACCOUNT_STATE_BEFORE_PREFIX
+11,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49378.0,49200.0,1,capital budget exhausted or rebuys disabled,11,ACCOUNT_STATE_BEFORE_PREFIX
+11,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,11,ACCOUNT_STATE_BEFORE_PREFIX
+11,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,11,ACCOUNT_STATE_BEFORE_PREFIX
+12,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,12,ACCOUNT_STATE_BEFORE_PREFIX
+12,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,12,ACCOUNT_STATE_BEFORE_PREFIX
+12,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,12,ACCOUNT_STATE_BEFORE_PREFIX
+12,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,12,ACCOUNT_STATE_BEFORE_PREFIX
+13,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49411.0,49200.0,1,Drawdown breached,13,ACCOUNT_STATE_BEFORE_PREFIX
+13,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49411.0,49200.0,1,capital budget exhausted or rebuys disabled,13,ACCOUNT_STATE_BEFORE_PREFIX
+13,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-15,funded,funded_failed,0.0,49819.0,49450.0,1,Drawdown breached,13,ACCOUNT_STATE_BEFORE_PREFIX
+13,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49819.0,49450.0,1,capital budget exhausted or rebuys disabled,13,ACCOUNT_STATE_BEFORE_PREFIX
+14,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-15,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,14,ACCOUNT_STATE_BEFORE_PREFIX
+14,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,14,ACCOUNT_STATE_BEFORE_PREFIX
+14,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-15,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,14,ACCOUNT_STATE_BEFORE_PREFIX
+14,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,14,ACCOUNT_STATE_BEFORE_PREFIX
+15,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-11,funded,funded_failed,0.0,49612.0,49200.0,1,Drawdown breached,15,ACCOUNT_STATE_BEFORE_PREFIX
+15,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49612.0,49200.0,1,capital budget exhausted or rebuys disabled,15,ACCOUNT_STATE_BEFORE_PREFIX
+15,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-20,funded,funded_failed,0.0,49870.0,49450.0,1,Drawdown breached,15,ACCOUNT_STATE_BEFORE_PREFIX
+15,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49870.0,49450.0,1,capital budget exhausted or rebuys disabled,15,ACCOUNT_STATE_BEFORE_PREFIX
+16,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-15,funded,funded_failed,0.0,49477.0,49200.0,1,Drawdown breached,16,ACCOUNT_STATE_BEFORE_PREFIX
+16,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49477.0,49200.0,1,capital budget exhausted or rebuys disabled,16,ACCOUNT_STATE_BEFORE_PREFIX
+16,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,16,ACCOUNT_STATE_BEFORE_PREFIX
+16,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,16,ACCOUNT_STATE_BEFORE_PREFIX
+17,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-17,funded,funded_failed,0.0,49846.0,49450.0,1,Drawdown breached,17,ACCOUNT_STATE_BEFORE_PREFIX
+17,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49846.0,49450.0,1,capital budget exhausted or rebuys disabled,17,ACCOUNT_STATE_BEFORE_PREFIX
+18,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-05,funded,funded_failed,0.0,50734.0,49200.0,1,Drawdown breached,18,ACCOUNT_STATE_BEFORE_PREFIX
+18,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,50734.0,49200.0,1,capital budget exhausted or rebuys disabled,18,ACCOUNT_STATE_BEFORE_PREFIX
+18,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,18,ACCOUNT_STATE_BEFORE_PREFIX
+18,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,18,ACCOUNT_STATE_BEFORE_PREFIX
+19,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-20,funded,funded_failed,0.0,49939.0,49200.0,1,Drawdown breached,19,ACCOUNT_STATE_BEFORE_PREFIX
+19,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49939.0,49200.0,1,capital budget exhausted or rebuys disabled,19,ACCOUNT_STATE_BEFORE_PREFIX
+19,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-20,funded,funded_failed,0.0,49939.0,49450.0,1,Drawdown breached,19,ACCOUNT_STATE_BEFORE_PREFIX
+19,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49939.0,49450.0,1,capital budget exhausted or rebuys disabled,19,ACCOUNT_STATE_BEFORE_PREFIX
+20,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-20,funded,funded_failed,0.0,49273.0,49200.0,1,Drawdown breached,20,ACCOUNT_STATE_BEFORE_PREFIX
+20,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49273.0,49200.0,1,capital budget exhausted or rebuys disabled,20,ACCOUNT_STATE_BEFORE_PREFIX
+20,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-14,funded,funded_failed,0.0,49921.0,49450.0,1,Drawdown breached,20,ACCOUNT_STATE_BEFORE_PREFIX
+20,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49921.0,49450.0,1,capital budget exhausted or rebuys disabled,20,ACCOUNT_STATE_BEFORE_PREFIX
+21,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,21,ACCOUNT_STATE_BEFORE_PREFIX
+21,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,21,ACCOUNT_STATE_BEFORE_PREFIX
+21,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,21,ACCOUNT_STATE_BEFORE_PREFIX
+21,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,21,ACCOUNT_STATE_BEFORE_PREFIX
+22,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-13,funded,funded_failed,0.0,49864.0,49200.0,1,Drawdown breached,22,ACCOUNT_STATE_BEFORE_PREFIX
+22,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49864.0,49200.0,1,capital budget exhausted or rebuys disabled,22,ACCOUNT_STATE_BEFORE_PREFIX
+22,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,22,ACCOUNT_STATE_BEFORE_PREFIX
+22,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,22,ACCOUNT_STATE_BEFORE_PREFIX
+23,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,23,ACCOUNT_STATE_BEFORE_PREFIX
+23,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,23,ACCOUNT_STATE_BEFORE_PREFIX
+23,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,23,ACCOUNT_STATE_BEFORE_PREFIX
+23,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,23,ACCOUNT_STATE_BEFORE_PREFIX
+24,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49819.0,49450.0,1,Drawdown breached,24,ACCOUNT_STATE_BEFORE_PREFIX
+24,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49819.0,49450.0,1,capital budget exhausted or rebuys disabled,24,ACCOUNT_STATE_BEFORE_PREFIX
+25,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,25,ACCOUNT_STATE_BEFORE_PREFIX
+25,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,25,ACCOUNT_STATE_BEFORE_PREFIX
+25,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,25,ACCOUNT_STATE_BEFORE_PREFIX
+25,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,25,ACCOUNT_STATE_BEFORE_PREFIX
+26,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-05,funded,funded_failed,0.0,49243.0,49200.0,1,Drawdown breached,26,ACCOUNT_STATE_BEFORE_PREFIX
+26,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49243.0,49200.0,1,capital budget exhausted or rebuys disabled,26,ACCOUNT_STATE_BEFORE_PREFIX
+26,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,26,ACCOUNT_STATE_BEFORE_PREFIX
+26,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,26,ACCOUNT_STATE_BEFORE_PREFIX
+27,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-15,funded,funded_failed,0.0,49306.0,49200.0,1,Drawdown breached,27,ACCOUNT_STATE_BEFORE_PREFIX
+27,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49306.0,49200.0,1,capital budget exhausted or rebuys disabled,27,ACCOUNT_STATE_BEFORE_PREFIX
+27,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,27,ACCOUNT_STATE_BEFORE_PREFIX
+27,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,27,ACCOUNT_STATE_BEFORE_PREFIX
+28,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,28,ACCOUNT_STATE_BEFORE_PREFIX
+28,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,28,ACCOUNT_STATE_BEFORE_PREFIX
+28,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,28,ACCOUNT_STATE_BEFORE_PREFIX
+28,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,28,ACCOUNT_STATE_BEFORE_PREFIX
+29,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,29,ACCOUNT_STATE_BEFORE_PREFIX
+29,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,29,ACCOUNT_STATE_BEFORE_PREFIX
+29,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,29,ACCOUNT_STATE_BEFORE_PREFIX
+29,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,29,ACCOUNT_STATE_BEFORE_PREFIX
+30,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,30,ACCOUNT_STATE_BEFORE_PREFIX
+30,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,30,ACCOUNT_STATE_BEFORE_PREFIX
+30,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,30,ACCOUNT_STATE_BEFORE_PREFIX
+30,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,30,ACCOUNT_STATE_BEFORE_PREFIX
+31,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49468.0,49200.0,1,Drawdown breached,31,ACCOUNT_STATE_BEFORE_PREFIX
+31,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49468.0,49200.0,1,capital budget exhausted or rebuys disabled,31,ACCOUNT_STATE_BEFORE_PREFIX
+31,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49639.0,49450.0,1,Drawdown breached,31,ACCOUNT_STATE_BEFORE_PREFIX
+31,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49639.0,49450.0,1,capital budget exhausted or rebuys disabled,31,ACCOUNT_STATE_BEFORE_PREFIX
+32,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-20,funded,funded_failed,0.0,50050.0,49200.0,1,Drawdown breached,32,ACCOUNT_STATE_BEFORE_PREFIX
+32,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,50050.0,49200.0,1,capital budget exhausted or rebuys disabled,32,ACCOUNT_STATE_BEFORE_PREFIX
+32,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,32,ACCOUNT_STATE_BEFORE_PREFIX
+32,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,32,ACCOUNT_STATE_BEFORE_PREFIX
+33,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-10,funded,funded_failed,0.0,49556.765756541194,49200.0,1,Drawdown breached,33,ACCOUNT_STATE_BEFORE_PREFIX
+33,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49556.765756541194,49200.0,1,capital budget exhausted or rebuys disabled,33,ACCOUNT_STATE_BEFORE_PREFIX
+33,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49819.0,49450.0,1,Drawdown breached,33,ACCOUNT_STATE_BEFORE_PREFIX
+33,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49819.0,49450.0,1,capital budget exhausted or rebuys disabled,33,ACCOUNT_STATE_BEFORE_PREFIX
+34,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,34,ACCOUNT_STATE_BEFORE_PREFIX
+34,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,34,ACCOUNT_STATE_BEFORE_PREFIX
+34,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,34,ACCOUNT_STATE_BEFORE_PREFIX
+34,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,34,ACCOUNT_STATE_BEFORE_PREFIX
+35,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,35,ACCOUNT_STATE_BEFORE_PREFIX
+35,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,35,ACCOUNT_STATE_BEFORE_PREFIX
+35,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,35,ACCOUNT_STATE_BEFORE_PREFIX
+35,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,35,ACCOUNT_STATE_BEFORE_PREFIX
+36,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-17,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,36,ACCOUNT_STATE_BEFORE_PREFIX
+36,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,36,ACCOUNT_STATE_BEFORE_PREFIX
+36,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-17,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,36,ACCOUNT_STATE_BEFORE_PREFIX
+36,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,36,ACCOUNT_STATE_BEFORE_PREFIX
+37,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49588.0,49200.0,1,Drawdown breached,37,ACCOUNT_STATE_BEFORE_PREFIX
+37,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49588.0,49200.0,1,capital budget exhausted or rebuys disabled,37,ACCOUNT_STATE_BEFORE_PREFIX
+37,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49588.0,49450.0,1,Drawdown breached,37,ACCOUNT_STATE_BEFORE_PREFIX
+37,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49588.0,49450.0,1,capital budget exhausted or rebuys disabled,37,ACCOUNT_STATE_BEFORE_PREFIX
+38,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,38,ACCOUNT_STATE_BEFORE_PREFIX
+38,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,38,ACCOUNT_STATE_BEFORE_PREFIX
+38,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,38,ACCOUNT_STATE_BEFORE_PREFIX
+38,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,38,ACCOUNT_STATE_BEFORE_PREFIX
+39,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-11,funded,funded_failed,0.0,50000.134594357325,49200.0,1,Drawdown breached,39,ACCOUNT_STATE_BEFORE_PREFIX
+39,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,50000.134594357325,49200.0,1,capital budget exhausted or rebuys disabled,39,ACCOUNT_STATE_BEFORE_PREFIX
+39,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,39,ACCOUNT_STATE_BEFORE_PREFIX
+39,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,39,ACCOUNT_STATE_BEFORE_PREFIX
+40,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-14,funded,funded_failed,0.0,50263.0,49200.0,1,Drawdown breached,40,ACCOUNT_STATE_BEFORE_PREFIX
+40,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,50263.0,49200.0,1,capital budget exhausted or rebuys disabled,40,ACCOUNT_STATE_BEFORE_PREFIX
+40,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-14,funded,funded_failed,0.0,50263.0,49450.0,1,Drawdown breached,40,ACCOUNT_STATE_BEFORE_PREFIX
+40,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,50263.0,49450.0,1,capital budget exhausted or rebuys disabled,40,ACCOUNT_STATE_BEFORE_PREFIX
+41,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,41,ACCOUNT_STATE_BEFORE_PREFIX
+41,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,41,ACCOUNT_STATE_BEFORE_PREFIX
+41,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,41,ACCOUNT_STATE_BEFORE_PREFIX
+41,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,41,ACCOUNT_STATE_BEFORE_PREFIX
+42,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-17,funded,funded_failed,0.0,49558.0,49200.0,1,Drawdown breached,42,ACCOUNT_STATE_BEFORE_PREFIX
+42,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49558.0,49200.0,1,capital budget exhausted or rebuys disabled,42,ACCOUNT_STATE_BEFORE_PREFIX
+42,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,42,ACCOUNT_STATE_BEFORE_PREFIX
+42,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,42,ACCOUNT_STATE_BEFORE_PREFIX
+43,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49768.0,49200.0,1,Drawdown breached,43,ACCOUNT_STATE_BEFORE_PREFIX
+43,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49768.0,49200.0,1,capital budget exhausted or rebuys disabled,43,ACCOUNT_STATE_BEFORE_PREFIX
+43,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49768.0,49450.0,1,Drawdown breached,43,ACCOUNT_STATE_BEFORE_PREFIX
+43,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49768.0,49450.0,1,capital budget exhausted or rebuys disabled,43,ACCOUNT_STATE_BEFORE_PREFIX
+44,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49647.3533401179,49200.0,1,Drawdown breached,44,ACCOUNT_STATE_BEFORE_PREFIX
+44,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49647.3533401179,49200.0,1,capital budget exhausted or rebuys disabled,44,ACCOUNT_STATE_BEFORE_PREFIX
+44,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49647.3533401179,49450.0,1,Drawdown breached,44,ACCOUNT_STATE_BEFORE_PREFIX
+44,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49647.3533401179,49450.0,1,capital budget exhausted or rebuys disabled,44,ACCOUNT_STATE_BEFORE_PREFIX
+45,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,45,ACCOUNT_STATE_BEFORE_PREFIX
+45,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,45,ACCOUNT_STATE_BEFORE_PREFIX
+45,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,45,ACCOUNT_STATE_BEFORE_PREFIX
+45,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,45,ACCOUNT_STATE_BEFORE_PREFIX
+46,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-14,funded,funded_failed,0.0,49639.0,49200.0,1,Drawdown breached,46,ACCOUNT_STATE_BEFORE_PREFIX
+46,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49639.0,49200.0,1,capital budget exhausted or rebuys disabled,46,ACCOUNT_STATE_BEFORE_PREFIX
+46,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-14,funded,funded_failed,0.0,49639.0,49450.0,1,Drawdown breached,46,ACCOUNT_STATE_BEFORE_PREFIX
+46,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49639.0,49450.0,1,capital budget exhausted or rebuys disabled,46,ACCOUNT_STATE_BEFORE_PREFIX
+47,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,47,ACCOUNT_STATE_BEFORE_PREFIX
+47,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,47,ACCOUNT_STATE_BEFORE_PREFIX
+47,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,47,ACCOUNT_STATE_BEFORE_PREFIX
+47,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,47,ACCOUNT_STATE_BEFORE_PREFIX
+48,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-14,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,48,ACCOUNT_STATE_BEFORE_PREFIX
+48,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,48,ACCOUNT_STATE_BEFORE_PREFIX
+48,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,48,ACCOUNT_STATE_BEFORE_PREFIX
+48,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,48,ACCOUNT_STATE_BEFORE_PREFIX
+49,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,49,ACCOUNT_STATE_BEFORE_PREFIX
+49,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,49,ACCOUNT_STATE_BEFORE_PREFIX
+50,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49342.0,49200.0,1,Drawdown breached,50,ACCOUNT_STATE_BEFORE_PREFIX
+50,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49342.0,49200.0,1,capital budget exhausted or rebuys disabled,50,ACCOUNT_STATE_BEFORE_PREFIX
+50,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,50,ACCOUNT_STATE_BEFORE_PREFIX
+50,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,50,ACCOUNT_STATE_BEFORE_PREFIX
+51,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,51,ACCOUNT_STATE_BEFORE_PREFIX
+51,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,51,ACCOUNT_STATE_BEFORE_PREFIX
+51,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,51,ACCOUNT_STATE_BEFORE_PREFIX
+51,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,51,ACCOUNT_STATE_BEFORE_PREFIX
+52,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-14,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,52,ACCOUNT_STATE_BEFORE_PREFIX
+52,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,52,ACCOUNT_STATE_BEFORE_PREFIX
+52,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,52,ACCOUNT_STATE_BEFORE_PREFIX
+52,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,52,ACCOUNT_STATE_BEFORE_PREFIX
+53,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,53,ACCOUNT_STATE_BEFORE_PREFIX
+53,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,53,ACCOUNT_STATE_BEFORE_PREFIX
+53,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,53,ACCOUNT_STATE_BEFORE_PREFIX
+53,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,53,ACCOUNT_STATE_BEFORE_PREFIX
+54,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,54,ACCOUNT_STATE_BEFORE_PREFIX
+54,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,54,ACCOUNT_STATE_BEFORE_PREFIX
+54,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,54,ACCOUNT_STATE_BEFORE_PREFIX
+54,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,54,ACCOUNT_STATE_BEFORE_PREFIX
+56,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,56,ACCOUNT_STATE_BEFORE_PREFIX
+56,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,56,ACCOUNT_STATE_BEFORE_PREFIX
+56,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,56,ACCOUNT_STATE_BEFORE_PREFIX
+56,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,56,ACCOUNT_STATE_BEFORE_PREFIX
+57,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,57,ACCOUNT_STATE_BEFORE_PREFIX
+57,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,57,ACCOUNT_STATE_BEFORE_PREFIX
+57,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,57,ACCOUNT_STATE_BEFORE_PREFIX
+57,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,57,ACCOUNT_STATE_BEFORE_PREFIX
+58,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,58,ACCOUNT_STATE_BEFORE_PREFIX
+58,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,58,ACCOUNT_STATE_BEFORE_PREFIX
+59,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,59,ACCOUNT_STATE_BEFORE_PREFIX
+59,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,59,ACCOUNT_STATE_BEFORE_PREFIX
+59,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,59,ACCOUNT_STATE_BEFORE_PREFIX
+59,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,59,ACCOUNT_STATE_BEFORE_PREFIX
+60,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,60,ACCOUNT_STATE_BEFORE_PREFIX
+60,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,60,ACCOUNT_STATE_BEFORE_PREFIX
+60,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,60,ACCOUNT_STATE_BEFORE_PREFIX
+60,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,60,ACCOUNT_STATE_BEFORE_PREFIX
+61,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-05,funded,funded_failed,0.0,49354.0,49200.0,1,Drawdown breached,61,ACCOUNT_STATE_BEFORE_PREFIX
+61,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49354.0,49200.0,1,capital budget exhausted or rebuys disabled,61,ACCOUNT_STATE_BEFORE_PREFIX
+61,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,61,ACCOUNT_STATE_BEFORE_PREFIX
+61,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,61,ACCOUNT_STATE_BEFORE_PREFIX
+62,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,62,ACCOUNT_STATE_BEFORE_PREFIX
+62,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,62,ACCOUNT_STATE_BEFORE_PREFIX
+62,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,62,ACCOUNT_STATE_BEFORE_PREFIX
+62,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,62,ACCOUNT_STATE_BEFORE_PREFIX
+63,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-15,funded,funded_failed,0.0,49819.0,49450.0,1,Drawdown breached,63,ACCOUNT_STATE_BEFORE_PREFIX
+63,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49819.0,49450.0,1,capital budget exhausted or rebuys disabled,63,ACCOUNT_STATE_BEFORE_PREFIX
+65,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-04,funded,funded_failed,0.0,49501.0,49200.0,1,Drawdown breached,65,ACCOUNT_STATE_BEFORE_PREFIX
+65,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49501.0,49200.0,1,capital budget exhausted or rebuys disabled,65,ACCOUNT_STATE_BEFORE_PREFIX
+65,Alpha Futures - Advanced 50K - Funded only,1,2,2026-08-03,funded,funded_failed,0.0,49501.0,49450.0,1,Drawdown breached,65,ACCOUNT_STATE_BEFORE_PREFIX
+65,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49501.0,49450.0,1,capital budget exhausted or rebuys disabled,65,ACCOUNT_STATE_BEFORE_PREFIX
+66,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,66,ACCOUNT_STATE_BEFORE_PREFIX
+66,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,66,ACCOUNT_STATE_BEFORE_PREFIX
+66,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,66,ACCOUNT_STATE_BEFORE_PREFIX
+66,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,66,ACCOUNT_STATE_BEFORE_PREFIX
+67,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49270.0,49200.0,1,Drawdown breached,67,ACCOUNT_STATE_BEFORE_PREFIX
+67,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49270.0,49200.0,1,capital budget exhausted or rebuys disabled,67,ACCOUNT_STATE_BEFORE_PREFIX
+67,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,67,ACCOUNT_STATE_BEFORE_PREFIX
+67,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,67,ACCOUNT_STATE_BEFORE_PREFIX
+68,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,68,ACCOUNT_STATE_BEFORE_PREFIX
+68,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,68,ACCOUNT_STATE_BEFORE_PREFIX
+68,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,68,ACCOUNT_STATE_BEFORE_PREFIX
+68,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,68,ACCOUNT_STATE_BEFORE_PREFIX
+69,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,69,ACCOUNT_STATE_BEFORE_PREFIX
+69,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,69,ACCOUNT_STATE_BEFORE_PREFIX
+69,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,69,ACCOUNT_STATE_BEFORE_PREFIX
+69,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,69,ACCOUNT_STATE_BEFORE_PREFIX
+70,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,70,ACCOUNT_STATE_BEFORE_PREFIX
+70,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,70,ACCOUNT_STATE_BEFORE_PREFIX
+70,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,70,ACCOUNT_STATE_BEFORE_PREFIX
+70,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,70,ACCOUNT_STATE_BEFORE_PREFIX
+71,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,71,ACCOUNT_STATE_BEFORE_PREFIX
+71,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,71,ACCOUNT_STATE_BEFORE_PREFIX
+71,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,71,ACCOUNT_STATE_BEFORE_PREFIX
+71,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,71,ACCOUNT_STATE_BEFORE_PREFIX
+72,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-20,funded,funded_failed,0.0,49414.0,49200.0,1,Drawdown breached,72,ACCOUNT_STATE_BEFORE_PREFIX
+72,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49414.0,49200.0,1,capital budget exhausted or rebuys disabled,72,ACCOUNT_STATE_BEFORE_PREFIX
+72,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49822.0,49450.0,1,Drawdown breached,72,ACCOUNT_STATE_BEFORE_PREFIX
+72,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49822.0,49450.0,1,capital budget exhausted or rebuys disabled,72,ACCOUNT_STATE_BEFORE_PREFIX
+73,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-14,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,73,ACCOUNT_STATE_BEFORE_PREFIX
+73,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,73,ACCOUNT_STATE_BEFORE_PREFIX
+73,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,73,ACCOUNT_STATE_BEFORE_PREFIX
+73,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,73,ACCOUNT_STATE_BEFORE_PREFIX
+74,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,74,ACCOUNT_STATE_BEFORE_PREFIX
+74,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,74,ACCOUNT_STATE_BEFORE_PREFIX
+74,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,74,ACCOUNT_STATE_BEFORE_PREFIX
+74,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,74,ACCOUNT_STATE_BEFORE_PREFIX
+75,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,75,ACCOUNT_STATE_BEFORE_PREFIX
+75,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,75,ACCOUNT_STATE_BEFORE_PREFIX
+75,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,75,ACCOUNT_STATE_BEFORE_PREFIX
+75,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,75,ACCOUNT_STATE_BEFORE_PREFIX
+76,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49642.0,49200.0,1,Drawdown breached,76,ACCOUNT_STATE_BEFORE_PREFIX
+76,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49642.0,49200.0,1,capital budget exhausted or rebuys disabled,76,ACCOUNT_STATE_BEFORE_PREFIX
+76,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49642.0,49450.0,1,Drawdown breached,76,ACCOUNT_STATE_BEFORE_PREFIX
+76,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49642.0,49450.0,1,capital budget exhausted or rebuys disabled,76,ACCOUNT_STATE_BEFORE_PREFIX
+77,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-05,funded,funded_failed,0.0,49414.0,49200.0,1,Drawdown breached,77,ACCOUNT_STATE_BEFORE_PREFIX
+77,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49414.0,49200.0,1,capital budget exhausted or rebuys disabled,77,ACCOUNT_STATE_BEFORE_PREFIX
+77,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,77,ACCOUNT_STATE_BEFORE_PREFIX
+77,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,77,ACCOUNT_STATE_BEFORE_PREFIX
+78,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,78,ACCOUNT_STATE_BEFORE_PREFIX
+78,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,78,ACCOUNT_STATE_BEFORE_PREFIX
+78,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,78,ACCOUNT_STATE_BEFORE_PREFIX
+78,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,78,ACCOUNT_STATE_BEFORE_PREFIX
+79,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-14,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,79,ACCOUNT_STATE_BEFORE_PREFIX
+79,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,79,ACCOUNT_STATE_BEFORE_PREFIX
+79,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-14,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,79,ACCOUNT_STATE_BEFORE_PREFIX
+79,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,79,ACCOUNT_STATE_BEFORE_PREFIX
+80,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,80,ACCOUNT_STATE_BEFORE_PREFIX
+80,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,80,ACCOUNT_STATE_BEFORE_PREFIX
+80,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,80,ACCOUNT_STATE_BEFORE_PREFIX
+80,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,80,ACCOUNT_STATE_BEFORE_PREFIX
+81,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,81,ACCOUNT_STATE_BEFORE_PREFIX
+81,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,81,ACCOUNT_STATE_BEFORE_PREFIX
+81,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,81,ACCOUNT_STATE_BEFORE_PREFIX
+81,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,81,ACCOUNT_STATE_BEFORE_PREFIX
+82,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,82,ACCOUNT_STATE_BEFORE_PREFIX
+82,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,82,ACCOUNT_STATE_BEFORE_PREFIX
+82,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,82,ACCOUNT_STATE_BEFORE_PREFIX
+82,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,82,ACCOUNT_STATE_BEFORE_PREFIX
+83,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-07,funded,funded_failed,0.0,49738.0,49200.0,1,Drawdown breached,83,ACCOUNT_STATE_BEFORE_PREFIX
+83,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49738.0,49200.0,1,capital budget exhausted or rebuys disabled,83,ACCOUNT_STATE_BEFORE_PREFIX
+83,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-20,funded,funded_failed,0.0,49690.0,49450.0,1,Drawdown breached,83,ACCOUNT_STATE_BEFORE_PREFIX
+83,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49690.0,49450.0,1,capital budget exhausted or rebuys disabled,83,ACCOUNT_STATE_BEFORE_PREFIX
+84,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49300.0,49200.0,1,Drawdown breached,84,ACCOUNT_STATE_BEFORE_PREFIX
+84,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49300.0,49200.0,1,capital budget exhausted or rebuys disabled,84,ACCOUNT_STATE_BEFORE_PREFIX
+84,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,84,ACCOUNT_STATE_BEFORE_PREFIX
+84,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,84,ACCOUNT_STATE_BEFORE_PREFIX
+85,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-07,funded,funded_failed,0.0,49459.0,49200.0,1,Drawdown breached,85,ACCOUNT_STATE_BEFORE_PREFIX
+85,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49459.0,49200.0,1,capital budget exhausted or rebuys disabled,85,ACCOUNT_STATE_BEFORE_PREFIX
+85,Alpha Futures - Advanced 50K - Funded only,1,2,2026-08-06,funded,funded_failed,0.0,49936.0,49450.0,1,Drawdown breached,85,ACCOUNT_STATE_BEFORE_PREFIX
+85,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49936.0,49450.0,1,capital budget exhausted or rebuys disabled,85,ACCOUNT_STATE_BEFORE_PREFIX
+86,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-04,funded,funded_failed,0.0,49621.0,49200.0,1,Drawdown breached,86,ACCOUNT_STATE_BEFORE_PREFIX
+86,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49621.0,49200.0,1,capital budget exhausted or rebuys disabled,86,ACCOUNT_STATE_BEFORE_PREFIX
+86,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,86,ACCOUNT_STATE_BEFORE_PREFIX
+86,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,86,ACCOUNT_STATE_BEFORE_PREFIX
+87,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49306.0,49200.0,1,Drawdown breached,87,ACCOUNT_STATE_BEFORE_PREFIX
+87,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49306.0,49200.0,1,capital budget exhausted or rebuys disabled,87,ACCOUNT_STATE_BEFORE_PREFIX
+87,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,87,ACCOUNT_STATE_BEFORE_PREFIX
+87,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,87,ACCOUNT_STATE_BEFORE_PREFIX
+88,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-15,funded,funded_failed,0.0,49690.0,49450.0,1,Drawdown breached,88,ACCOUNT_STATE_BEFORE_PREFIX
+88,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49690.0,49450.0,1,capital budget exhausted or rebuys disabled,88,ACCOUNT_STATE_BEFORE_PREFIX
+89,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-15,funded,funded_failed,0.0,49315.0,49200.0,1,Drawdown breached,89,ACCOUNT_STATE_BEFORE_PREFIX
+89,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49315.0,49200.0,1,capital budget exhausted or rebuys disabled,89,ACCOUNT_STATE_BEFORE_PREFIX
+89,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49645.0,49450.0,1,Drawdown breached,89,ACCOUNT_STATE_BEFORE_PREFIX
+89,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49645.0,49450.0,1,capital budget exhausted or rebuys disabled,89,ACCOUNT_STATE_BEFORE_PREFIX
+90,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-05,funded,funded_failed,0.0,49420.0,49200.0,1,Drawdown breached,90,ACCOUNT_STATE_BEFORE_PREFIX
+90,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49420.0,49200.0,1,capital budget exhausted or rebuys disabled,90,ACCOUNT_STATE_BEFORE_PREFIX
+90,Alpha Futures - Advanced 50K - Funded only,1,2,2026-08-04,funded,funded_failed,0.0,49897.0,49450.0,1,Drawdown breached,90,ACCOUNT_STATE_BEFORE_PREFIX
+90,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49897.0,49450.0,1,capital budget exhausted or rebuys disabled,90,ACCOUNT_STATE_BEFORE_PREFIX
+91,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-03,funded,funded_failed,0.0,50248.0,49200.0,1,Drawdown breached,91,ACCOUNT_STATE_BEFORE_PREFIX
+91,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,50248.0,49200.0,1,capital budget exhausted or rebuys disabled,91,ACCOUNT_STATE_BEFORE_PREFIX
+91,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-13,funded,funded_failed,0.0,49501.0,49450.0,1,Drawdown breached,91,ACCOUNT_STATE_BEFORE_PREFIX
+91,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49501.0,49450.0,1,capital budget exhausted or rebuys disabled,91,ACCOUNT_STATE_BEFORE_PREFIX
+92,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,92,ACCOUNT_STATE_BEFORE_PREFIX
+92,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,92,ACCOUNT_STATE_BEFORE_PREFIX
+93,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-07,funded,funded_failed,0.0,49237.0,49200.0,1,Drawdown breached,93,ACCOUNT_STATE_BEFORE_PREFIX
+93,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49237.0,49200.0,1,capital budget exhausted or rebuys disabled,93,ACCOUNT_STATE_BEFORE_PREFIX
+93,Alpha Futures - Advanced 50K - Funded only,1,2,2026-08-06,funded,funded_failed,0.0,49690.0,49450.0,1,Drawdown breached,93,ACCOUNT_STATE_BEFORE_PREFIX
+93,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49690.0,49450.0,1,capital budget exhausted or rebuys disabled,93,ACCOUNT_STATE_BEFORE_PREFIX
+94,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-20,funded,funded_failed,0.0,49363.0,49200.0,1,Drawdown breached,94,ACCOUNT_STATE_BEFORE_PREFIX
+94,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49363.0,49200.0,1,capital budget exhausted or rebuys disabled,94,ACCOUNT_STATE_BEFORE_PREFIX
+94,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,94,ACCOUNT_STATE_BEFORE_PREFIX
+94,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,94,ACCOUNT_STATE_BEFORE_PREFIX
+95,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49573.0,49200.0,1,Drawdown breached,95,ACCOUNT_STATE_BEFORE_PREFIX
+95,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49573.0,49200.0,1,capital budget exhausted or rebuys disabled,95,ACCOUNT_STATE_BEFORE_PREFIX
+95,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,95,ACCOUNT_STATE_BEFORE_PREFIX
+95,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,95,ACCOUNT_STATE_BEFORE_PREFIX
+96,Apex Trader Funding - EOD PA 50K - Funded only,1,2,2026-08-07,funded,funded_failed,0.0,49399.0,49200.0,1,Drawdown breached,96,ACCOUNT_STATE_BEFORE_PREFIX
+96,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49399.0,49200.0,1,capital budget exhausted or rebuys disabled,96,ACCOUNT_STATE_BEFORE_PREFIX
+96,Alpha Futures - Advanced 50K - Funded only,1,2,2026-08-03,funded,funded_failed,0.0,49576.0,49450.0,1,Drawdown breached,96,ACCOUNT_STATE_BEFORE_PREFIX
+96,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49576.0,49450.0,1,capital budget exhausted or rebuys disabled,96,ACCOUNT_STATE_BEFORE_PREFIX
+97,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49642.0,49200.0,1,Drawdown breached,97,ACCOUNT_STATE_BEFORE_PREFIX
+97,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49642.0,49200.0,1,capital budget exhausted or rebuys disabled,97,ACCOUNT_STATE_BEFORE_PREFIX
+97,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-16,funded,funded_failed,0.0,49642.0,49450.0,1,Drawdown breached,97,ACCOUNT_STATE_BEFORE_PREFIX
+97,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49642.0,49450.0,1,capital budget exhausted or rebuys disabled,97,ACCOUNT_STATE_BEFORE_PREFIX
+98,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,98,ACCOUNT_STATE_BEFORE_PREFIX
+98,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,98,ACCOUNT_STATE_BEFORE_PREFIX
+98,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-09,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,98,ACCOUNT_STATE_BEFORE_PREFIX
+98,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,98,ACCOUNT_STATE_BEFORE_PREFIX
+99,Apex Trader Funding - EOD PA 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49200.0,1,Drawdown breached,99,ACCOUNT_STATE_BEFORE_PREFIX
+99,Apex Trader Funding - EOD PA 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49200.0,1,capital budget exhausted or rebuys disabled,99,ACCOUNT_STATE_BEFORE_PREFIX
+99,Alpha Futures - Advanced 50K - Funded only,1,1,2026-07-10,funded,funded_failed,0.0,49600.0,49450.0,1,Drawdown breached,99,ACCOUNT_STATE_BEFORE_PREFIX
+99,Alpha Futures - Advanced 50K - Funded only,2,2,2026-08-18,funded,terminal,0.0,49600.0,49450.0,1,capital budget exhausted or rebuys disabled,99,ACCOUNT_STATE_BEFORE_PREFIX

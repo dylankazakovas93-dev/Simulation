@@ -12,6 +12,10 @@ Strategy evidence repository: `dylankazakovas93-dev/Volatility-hodlod`
 
 Locked evidence commit requested: `269fabd6f94ae60bb7594ce9e00a1188695dfa7d`
 
+This document began as the pre-implementation plan. The implementation is now present in `sim_core/forward_master_path.py`, `app/streamlit_app.py`, `data/forward_master_path/`, and `artifacts/forward_master_path/`.
+
+The prior Stage 1 blocker was resolved by a later user instruction: user-confirmed realized outcomes are authoritative, and unrecovered optional execution fields must be stored as null rather than blocking the feature. This document is retained as an audit trail; `docs/REALIZED_MASTER_PATH_METHOD.md` is the current method note.
+
 This plan covers adding a canonical two-event realized master prefix to the existing Prop Lab without replacing the app, deleting historical mode, changing frozen strategy rules, or altering historical trade outcomes.
 
 Latest user clarification received after initial evidence audit:

@@ -7,6 +7,15 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
+from sim_core.forward_master_path import (
+    ForwardScenario,
+    build_master_path,
+    build_monte_carlo_paths,
+    export_forward_artifacts,
+    path_summary,
+    run_forward_lifecycle_grid,
+    strategy_path_manifest,
+)
 from sim_core.ingestion.csv_loader import normalize_trade_frame
 from sim_core.lifecycle import (
     LifecycleSettings,
@@ -49,6 +58,10 @@ def main() -> None:
     profiles = default_prop_rule_profiles()
     lifecycle_plans = default_lifecycle_plans()
     with st.sidebar:
+        simulation_mode = st.radio(
+            "Simulation mode",
+            ["Historical lifecycle bootstrap", "July-August realized-prefix forward simulation"],
+        )
         st.header("Ledger")
         uploaded = st.file_uploader(
             "12-month ledgers",
@@ -62,6 +75,10 @@ def main() -> None:
             "Section",
             ["Funded Guidance", "Prop Comparison", "Ledger & Conflicts", "Path Explorer", "Rules & Assumptions"],
         )
+
+    if simulation_mode == "July-August realized-prefix forward simulation":
+        render_forward_master_path_lab(lifecycle_plans, default_dpp=float(default_dpp))
+        return
 
     if not uploaded:
         st.info("Upload one or more CSV ledgers to begin.")
@@ -176,7 +193,183 @@ def main() -> None:
         st.caption(
             "Apex PA scaling tiers are listed as rule assumptions. Current implementation uses micro-equivalent caps "
             "and does not dynamically reduce contract size by balance tier inside each simulated path."
+    )
+
+
+def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_dpp: float) -> None:
+    st.header("July-August Realized-Prefix Forward Simulation")
+    st.caption(
+        "Uses the fixed user-confirmed July 7 and July 8 realized prefix, then samples July-August continuation "
+        "from RR-specific historical packet libraries. Missing realized MAE/MFE is explicit and not fabricated."
+    )
+
+    controls, accounts = st.columns([1.0, 1.25])
+    with controls:
+        rr_label = st.selectbox("RR configuration", ["1RR / OG_OPERATIONAL_100R", "1.5RR / OG_PRIMARY_150R"])
+        rr_config_id = "1rr" if rr_label.startswith("1RR") else "1_5rr"
+        prefix_basis = st.radio(
+            "Realized prefix application basis",
+            ["ACCOUNT_STATE_BEFORE_PREFIX", "ACCOUNT_STATE_AFTER_PREFIX"],
+            help="BEFORE applies July 7 and July 8 to the account. AFTER displays them but starts account processing after the prefix.",
         )
+        master_seed = int(st.number_input("Master-path seed", value=1729, step=1))
+        mc_seed = int(st.number_input("Monte Carlo seed", value=1730, step=1))
+        path_count = int(st.slider("Monte Carlo paths", 10, 1000, 100, step=10))
+        july_count = int(st.number_input("Remaining July candidate/trade count", min_value=0, value=8, step=1))
+        august_count = int(st.number_input("August candidate/trade count", min_value=0, value=12, step=1))
+        pf_scenario = st.selectbox("PF scenario", ["PF_1_35", "PF_1_50", "PF_1_65"])
+        regime_scenario = st.selectbox("Regime scenario", ["stable", "gradual_degradation", "favourable_persistence", "abrupt_tail"])
+        point_scale_scenario = st.selectbox("Point-scale scenario", ["current", "low", "high"])
+
+    with accounts:
+        firm_options = sorted({plan.firm for plan in lifecycle_plans.values()})
+        default_firms = firm_options[:2] if len(firm_options) >= 2 else firm_options
+        selected_firms = st.multiselect("Firms", firm_options, default=default_firms)
+        plan_options = [
+            key for key, plan in lifecycle_plans.items()
+            if plan.firm in set(selected_firms) and plan_route_label(plan) == "Funded only"
+        ]
+        selected_plan_keys = st.multiselect("Lifecycle plans", plan_options, default=plan_options[:4])
+        contract_values = st.multiselect("MNQ sizes", [1, 2, 3, 4], default=[1, 4])
+        desired_payout = st.number_input("Desired payout, 0 = max allowed", min_value=0.0, value=0.0, step=100.0)
+        required_cushion = st.number_input("Required cushion after payout", min_value=0.0, value=0.0, step=100.0)
+
+    scenario = ForwardScenario(
+        rr_config_id=rr_config_id,
+        july_candidate_count=july_count,
+        august_candidate_count=august_count,
+        master_seed=master_seed,
+        mc_seed=mc_seed,
+        path_count=path_count,
+        pf_scenario=pf_scenario,
+        regime_scenario=regime_scenario,
+        point_scale_scenario=point_scale_scenario,
+        prefix_application_basis=prefix_basis,
+    )
+    selected_plans = [lifecycle_plans[key] for key in selected_plan_keys]
+    settings_by_plan = {
+        plan.key: LifecycleSettings(
+            start_mode="funded",
+            desired_payout=float(desired_payout),
+            required_cushion=float(required_cushion),
+        )
+        for plan in selected_plans
+    }
+
+    master_path = build_master_path(scenario, path_id=0)
+    realized = master_path[master_path["status"] == "REALIZED"]
+    synthetic = master_path[master_path["status"] == "SYNTHETIC"]
+    prefix_net = float(master_path["realized_prefix_net_points"].iloc[-1])
+    forward_net = float(master_path["forward_only_net_points"].iloc[-1])
+    combined_net = float(master_path["combined_net_points"].iloc[-1])
+
+    st.subheader("Master Path")
+    headline = st.columns(5)
+    if rr_config_id == "1rr":
+        headline[0].metric("July 7 realized", "+150 TP")
+        headline[1].metric("July 8 realized", "-200 SL")
+    else:
+        headline[0].metric("July 7 realized", "0 BE")
+        headline[1].metric("July 8 realized", "-200 SL")
+    headline[2].metric("Realized prefix", f"{prefix_net:,.0f} pts")
+    headline[3].metric("Forecast continuation", f"{forward_net:,.0f} pts")
+    headline[4].metric("Combined", f"{combined_net:,.0f} pts")
+
+    if realized["excursion_confidence"].eq("UNKNOWN_USER_CONFIRMED").any():
+        st.warning(
+            "The realized July 7/8 rows are user-confirmed outcomes with unknown MAE/MFE. Final P&L is applied, "
+            "but strict intratrade barrier status is UNKNOWN for those rows."
+        )
+
+    display_columns = [
+        "sequence_number",
+        "status",
+        "session_date",
+        "pnl_points",
+        "cumulative_realized_points",
+        "cumulative_forward_only_points",
+        "cumulative_combined_points",
+        "exit_reason",
+        "effective_stop_points",
+        "target_points",
+        "mae_points",
+        "mfe_points",
+        "evidence_status",
+        "excursion_confidence",
+        "strict_barrier_status",
+        "source_trade_packet_id",
+    ]
+    st.dataframe(master_path[display_columns], width="stretch", hide_index=True)
+    st.download_button(
+        "Download deterministic Master Path CSV",
+        master_path.to_csv(index=False),
+        file_name=f"master_path_{rr_config_id}.csv",
+        mime="text/csv",
+    )
+
+    st.subheader("Realized Prefix")
+    st.dataframe(realized[display_columns], width="stretch", hide_index=True)
+
+    st.subheader("Synthetic Continuation")
+    st.dataframe(synthetic[display_columns], width="stretch", hide_index=True)
+
+    if st.button("Run forward Monte Carlo", type="primary", use_container_width=True):
+        with st.spinner(f"Running {path_count:,} paths with shared strategy paths across selected accounts..."):
+            mc_paths = build_monte_carlo_paths(scenario)
+            point_results = path_summary(mc_paths, scenario)
+            if selected_plans and contract_values:
+                lifecycle_summary, lifecycle_monthly, lifecycle_events = run_forward_lifecycle_grid(
+                    mc_paths,
+                    selected_plans,
+                    contract_values=[int(value) for value in contract_values],
+                    settings_by_plan=settings_by_plan,
+                    dollars_per_point=float(default_dpp),
+                    prefix_application_basis=prefix_basis,
+                )
+            else:
+                lifecycle_summary, lifecycle_monthly, lifecycle_events = pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+            outputs = export_forward_artifacts(
+                scenario,
+                master_path,
+                mc_paths,
+                lifecycle_summary,
+                lifecycle_events,
+            )
+            st.session_state["forward_point_results"] = point_results
+            st.session_state["forward_manifest"] = strategy_path_manifest(mc_paths, scenario)
+            st.session_state["forward_lifecycle_summary"] = lifecycle_summary
+            st.session_state["forward_lifecycle_monthly"] = lifecycle_monthly
+            st.session_state["forward_lifecycle_events"] = lifecycle_events
+            st.session_state["forward_outputs"] = {key: str(path) for key, path in outputs.items()}
+
+    point_results = st.session_state.get("forward_point_results", pd.DataFrame())
+    if not point_results.empty:
+        st.subheader("Monte Carlo Point Results")
+        cols = st.columns(4)
+        cols[0].metric("Paths", f"{len(point_results):,}")
+        cols[1].metric("Median combined", f"{point_results['combined_net_points'].median():,.0f} pts")
+        cols[2].metric("Median forward-only", f"{point_results['forward_only_net_points'].median():,.0f} pts")
+        cols[3].metric("Prefix basis", prefix_basis)
+        st.dataframe(point_results, width="stretch", hide_index=True)
+        st.download_button("Download point results CSV", point_results.to_csv(index=False), "path_level_point_results.csv", "text/csv")
+
+    manifest = st.session_state.get("forward_manifest", pd.DataFrame())
+    if not manifest.empty:
+        st.subheader("Strategy Path Manifest")
+        st.caption("One packet sequence per strategy path ID; account, firm, lifecycle plan, and MNQ size do not resample it.")
+        st.dataframe(manifest.head(100), width="stretch", hide_index=True)
+        st.download_button("Download strategy-path manifest CSV", manifest.to_csv(index=False), "monte_carlo_strategy_path_manifest.csv", "text/csv")
+
+    lifecycle_summary = st.session_state.get("forward_lifecycle_summary", pd.DataFrame())
+    if not lifecycle_summary.empty:
+        st.subheader("Lifecycle / Account Results")
+        st.dataframe(format_lifecycle_ranking(lifecycle_summary), width="stretch", hide_index=True)
+        st.download_button("Download lifecycle account results CSV", lifecycle_summary.to_csv(index=False), "lifecycle_account_results.csv", "text/csv")
+
+    outputs = st.session_state.get("forward_outputs", {})
+    if outputs:
+        st.subheader("Committed Export Paths")
+        st.dataframe(pd.DataFrame([{"artifact": key, "path": value} for key, value in outputs.items()]), width="stretch", hide_index=True)
 
 
 def simulation_controls(
