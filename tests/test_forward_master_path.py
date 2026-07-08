@@ -5,13 +5,17 @@ import pytest
 
 from sim_core.forward_master_path import (
     ForwardScenario,
+    build_forward_account_trade_ledger,
     build_master_path,
     build_monte_carlo_paths,
+    executable_packet_pool,
+    forecast_trading_dates,
     load_realized_master_path,
     path_summary,
     run_forward_lifecycle_grid,
     select_realized_prefix,
     strategy_path_manifest,
+    strategy_sequence_hash,
     validate_prefix_mode,
 )
 from sim_core.lifecycle import LifecycleSettings, default_lifecycle_plans
@@ -177,3 +181,131 @@ def test_no_payout_is_counted_after_failure_regression():
     if not terminal_events.empty and not payout_events.empty:
         assert payout_events["event_order"].max() < terminal_events["event_order"].min()
     assert "paid_before_first_blow_rate" in summary
+
+
+def test_synthetic_forecast_dates_are_unique_increasing_and_do_not_wrap():
+    path = build_master_path(ForwardScenario(rr_config_id="1rr", july_candidate_count=5, august_candidate_count=5))
+    synthetic = path[path["status"] == "SYNTHETIC"]
+
+    dates = synthetic["session_date"].tolist()
+    assert dates == sorted(dates)
+    assert len(dates) == len(set(dates))
+    assert min(dates) > "2026-07-08"
+    assert max(dates) <= "2026-08-31"
+    with pytest.raises(ValueError, match="exceeds available trading days"):
+        build_master_path(ForwardScenario(rr_config_id="1rr", july_candidate_count=len(forecast_trading_dates(7)) + 1))
+
+
+def test_source_packet_fields_stay_together_and_timestamps_are_shifted():
+    path = build_master_path(ForwardScenario(rr_config_id="1rr", master_seed=123, july_candidate_count=1, august_candidate_count=0))
+    row = path[path["status"] == "SYNTHETIC"].iloc[0]
+
+    assert row["source_trade_packet_id"]
+    assert row["source_entry_time"]
+    assert row["source_exit_time"]
+    assert row["timestamp_policy"] == "SYNTHETIC_SHIFTED_SOURCE_TIME_OF_DAY"
+    assert pd.Timestamp(row["exit_time"]) > pd.Timestamp(row["entry_time"])
+
+
+def test_historical_flat_rows_are_not_executable_packets():
+    frame = pd.DataFrame(
+        [
+            {"rolling_pf_is_flat": True, "rolling_pf_switch_state": "FLAT", "effective_exit_reason": "FLAT"},
+            {"rolling_pf_is_flat": False, "rolling_pf_switch_state": "ON", "effective_exit_reason": "TP"},
+        ]
+    )
+
+    assert len(executable_packet_pool(frame)) == 1
+
+
+def test_enabled_scenario_controls_materially_change_outputs_and_point_scale_caps():
+    base = build_master_path(ForwardScenario(rr_config_id="1_5rr", master_seed=42, july_candidate_count=6, august_candidate_count=6))
+    pf = build_master_path(
+        ForwardScenario(rr_config_id="1_5rr", master_seed=42, july_candidate_count=6, august_candidate_count=6, pf_scenario="PF_1_65")
+    )
+    regime = build_master_path(
+        ForwardScenario(rr_config_id="1_5rr", master_seed=42, july_candidate_count=6, august_candidate_count=6, regime_scenario="abrupt_tail")
+    )
+    high = build_master_path(
+        ForwardScenario(rr_config_id="1_5rr", master_seed=42, july_candidate_count=6, august_candidate_count=6, point_scale_scenario="high")
+    )
+
+    assert base["source_trade_packet_id"].fillna("").tolist() != pf["source_trade_packet_id"].fillna("").tolist()
+    assert base["source_trade_packet_id"].fillna("").tolist() != regime["source_trade_packet_id"].fillna("").tolist()
+    synthetic = high[high["status"] == "SYNTHETIC"]
+    assert synthetic["raw_stop_points"].max() <= 200
+    assert synthetic["effective_stop_points"].max() <= 200
+    assert synthetic["target_points"].max() <= 300
+
+
+def test_strategy_sequence_hash_is_identical_for_account_variants():
+    scenario = ForwardScenario(rr_config_id="1rr", path_count=1, july_candidate_count=2, august_candidate_count=2)
+    path = build_monte_carlo_paths(scenario)[0]
+
+    assert strategy_sequence_hash(path) == strategy_sequence_hash(path.copy())
+
+
+def test_per_trade_ledger_reconciles_after_prefix_basis_and_current_state():
+    plan = default_lifecycle_plans()["Apex Trader Funding - EOD PA 50K - Funded only"]
+    scenario = ForwardScenario(
+        rr_config_id="1rr",
+        path_count=1,
+        july_candidate_count=0,
+        august_candidate_count=0,
+        current_balance=50_500,
+        current_floor=48_500,
+        prefix_application_basis="ACCOUNT_STATE_BEFORE_PREFIX",
+    )
+    path = build_monte_carlo_paths(scenario)[0]
+    settings = {
+        plan.key: LifecycleSettings(
+            start_mode="funded",
+            current_balance=50_500,
+            current_floor=48_500,
+        )
+    }
+
+    ledger = build_forward_account_trade_ledger(
+        [path],
+        [plan],
+        contract_values=[1],
+        settings_by_plan=settings,
+        prefix_application_basis="ACCOUNT_STATE_BEFORE_PREFIX",
+        scenario=scenario,
+    )
+
+    assert ledger.iloc[0]["balance_before"] == 50_500
+    assert ledger.iloc[-1]["balance_after"] == 50_400
+    assert ledger.iloc[-1]["floor_after"] == 48_800
+
+
+def test_non_apex_lifecycle_payouts_use_profit_split_as_trader_cash():
+    plan = default_lifecycle_plans()["TakeProfitTrader - PRO 50K - Funded only"]
+    settings = {
+        plan.key: LifecycleSettings(
+            start_mode="funded",
+            current_balance=52_000,
+            current_floor=48_000,
+            current_winning_days=0,
+        )
+    }
+    path = build_master_path(ForwardScenario(rr_config_id="1rr", july_candidate_count=0, august_candidate_count=0))
+    # Use AFTER so the zero-continuation path is just account-status evaluation.
+    summary, _monthly, events = run_forward_lifecycle_grid(
+        [path],
+        [plan],
+        contract_values=[1],
+        settings_by_plan=settings,
+        prefix_application_basis="ACCOUNT_STATE_AFTER_PREFIX",
+    )
+
+    if not events.empty and (events["event"] == "payout").any():
+        payout = events[events["event"] == "payout"].iloc[0]
+        assert payout["amount"] <= 1_600
+    assert "avg_net_cash" in summary
+
+
+def test_apex_50k_frozen_floor_boundary():
+    profile = default_prop_rule_profiles()["Apex Trader Funding - EOD PA 50K"]
+
+    assert profile.floor_ceiling == 50_100

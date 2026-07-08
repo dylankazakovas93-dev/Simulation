@@ -35,6 +35,7 @@ class PropRuleProfile:
     daily_loss_hard: bool = False
     withdrawal_buffer: float = 0.0
     activation_fee: float = 0.0
+    floor_ceiling: float | None = None
     source: str = ""
     notes: tuple[str, ...] = ()
 
@@ -62,6 +63,7 @@ class PropRuleProfile:
         data = asdict(self)
         data["key"] = self.key
         data["starting_floor"] = self.starting_floor
+        data["floor_ceiling"] = _floor_ceiling(self)
         data["payout_profit_required"] = self.payout_profit_required
         return data
 
@@ -298,6 +300,7 @@ def default_prop_rule_profiles() -> dict[str, PropRuleProfile]:
                 payout_reserve=max_loss + 100,
                 winning_day_threshold=min_day_profit,
                 daily_loss_limit=daily_loss,
+                floor_ceiling=50_100 if name == "EOD PA 50K" else None,
                 **apex_common,
             )
         )
@@ -427,7 +430,7 @@ def simulate_prop_account(
         daily_profits.append(day_pnl)
         if profile.drawdown_mode == "eod_trailing":
             eod_peak = max(eod_peak, balance)
-            floor = max(floor, min(profile.starting_balance, eod_peak - profile.max_loss))
+            floor = max(floor, min(_floor_ceiling(profile), eod_peak - profile.max_loss))
         if first_eligible_day is None and _is_payout_eligible(
             balance=balance,
             profile=profile,
@@ -461,7 +464,7 @@ def simulate_prop_account(
 
         if profile.drawdown_mode == "intraday_trailing":
             running_peak = max(running_peak, balance + max(0.0, mfe))
-            floor = max(floor, min(profile.starting_balance, running_peak - profile.max_loss))
+            floor = max(floor, min(_floor_ceiling(profile), running_peak - profile.max_loss))
 
         if balance + mae <= floor:
             failed = True
@@ -676,6 +679,10 @@ def _gross_cash_available(
     if gross < profile.min_payout:
         return 0.0
     return gross
+
+
+def _floor_ceiling(profile: PropRuleProfile) -> float:
+    return float(profile.floor_ceiling if profile.floor_ceiling is not None else profile.starting_balance)
 
 
 def _trade_pnl_dollars(trade: Trade, contracts: int, default_dpp: float) -> float:

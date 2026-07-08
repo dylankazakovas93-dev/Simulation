@@ -22,12 +22,16 @@ Final realized P&L is applied. Intratrade barrier accuracy is explicitly unavail
 
 ## Synthetic Continuation
 
-Continuation rows are sampled from the RR-specific historical packet libraries:
+Continuation rows are sampled independently with replacement from the RR-specific historical packet libraries:
 
 - `data/forward_master_path/forward_1rr.csv`
 - `data/forward_master_path/forward_1_5rr.csv`
 
-The workflow samples complete historical packet rows. It does not fabricate synthetic P&L, exit reason, stop, target, MAE, MFE, or source packet IDs.
+The workflow samples complete historical packet rows. It does not fabricate synthetic P&L, exit reason, stop, target, MAE, MFE, direction, source ledger, source month, or source packet IDs.
+
+Historical `FLAT` rows are excluded from the executable sampling pool because causal forward rolling-PF gating is not fully replayed here. The exported rows label gate state as `GATING_DISABLED_FLAT_ROWS_EXCLUDED`.
+
+Each synthetic trade is assigned to a unique business day after July 8, 2026 through August 31, 2026. Dates do not wrap; requesting more trades than available forecast trading days raises a validation error. Source entry time-of-day and holding duration are shifted onto the assigned forecast date and labeled `SYNTHETIC_SHIFTED_SOURCE_TIME_OF_DAY`.
 
 The fixed prefix is never resampled, shuffled, duplicated, dropped, weighted, or outcome-adjusted. Synthetic sequence numbers start at `3`.
 
@@ -55,4 +59,12 @@ The default smoke export writes:
 
 PF, regime, and point-scale controls are recorded in scenario metadata in this implementation. The current sampler preserves historical packet outcomes and does not rewrite trade geometry.
 
-Rolling-PF disagreement diagnostics are not used to delete confirmed realized trades. The realized prefix remains executed regardless of any reconstructed gate state.
+Scenario controls are active:
+
+- PF scenarios alter packet sampling probabilities by outcome sign.
+- Regime scenarios alter packet sampling probabilities by source year/regime/outcome mix.
+- Point-scale scenarios rescale P&L, stops, targets, MAE, and MFE together while preserving the sampled packet and exit identity; stop/target caps are enforced.
+
+Rolling-PF disagreement diagnostics are not used to delete confirmed realized trades. Full causal rolling-PF forward gating is not enabled in this implementation; historical FLAT rows are excluded instead.
+
+The per-trade Path Inspector ledger is a forward-workflow ledger for funded-stage account state. The historical lifecycle bootstrap remains unchanged and remains the authoritative legacy mode for uploaded historical ledgers.

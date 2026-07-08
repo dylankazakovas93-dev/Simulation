@@ -9,6 +9,7 @@ import streamlit as st
 
 from sim_core.forward_master_path import (
     ForwardScenario,
+    build_forward_account_trade_ledger,
     build_master_path,
     build_monte_carlo_paths,
     export_forward_artifacts,
@@ -233,6 +234,14 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
         contract_values = st.multiselect("MNQ sizes", [1, 2, 3, 4], default=[1, 4])
         desired_payout = st.number_input("Desired payout, 0 = max allowed", min_value=0.0, value=0.0, step=100.0)
         required_cushion = st.number_input("Required cushion after payout", min_value=0.0, value=0.0, step=100.0)
+        st.caption("Current account state")
+        current_balance = st.number_input("Current balance", min_value=0.0, value=50_000.0, step=100.0)
+        current_floor = st.number_input("Current floor / threshold", min_value=0.0, value=48_000.0, step=100.0)
+        current_winning_days = int(st.number_input("Current qualifying days", min_value=0, value=0, step=1))
+        current_high_day = st.number_input("Current highest winning day", min_value=0.0, value=0.0, step=50.0)
+        current_daily_history = st.text_input("Current daily-profit history", value="")
+        payouts_already_taken = int(st.number_input("Payouts already taken", min_value=0, value=0, step=1))
+        prior_fees = st.number_input("Prior fees", min_value=0.0, value=0.0, step=10.0)
 
     scenario = ForwardScenario(
         rr_config_id=rr_config_id,
@@ -245,6 +254,13 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
         regime_scenario=regime_scenario,
         point_scale_scenario=point_scale_scenario,
         prefix_application_basis=prefix_basis,
+        current_balance=float(current_balance),
+        current_floor=float(current_floor),
+        current_winning_days=int(current_winning_days),
+        current_highest_winning_day=float(current_high_day),
+        current_daily_profits=tuple(parse_float_list(current_daily_history)),
+        payouts_already_taken=int(payouts_already_taken),
+        prior_fees=float(prior_fees),
     )
     selected_plans = [lifecycle_plans[key] for key in selected_plan_keys]
     settings_by_plan = {
@@ -252,6 +268,10 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
             start_mode="funded",
             desired_payout=float(desired_payout),
             required_cushion=float(required_cushion),
+            current_balance=float(current_balance),
+            current_floor=float(current_floor),
+            current_winning_days=int(current_winning_days),
+            current_highest_winning_day=float(current_high_day),
         )
         for plan in selected_plans
     }
@@ -326,20 +346,32 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
                     dollars_per_point=float(default_dpp),
                     prefix_application_basis=prefix_basis,
                 )
+                per_trade_ledger = build_forward_account_trade_ledger(
+                    mc_paths,
+                    selected_plans,
+                    contract_values=[int(value) for value in contract_values],
+                    settings_by_plan=settings_by_plan,
+                    dollars_per_point=float(default_dpp),
+                    prefix_application_basis=prefix_basis,
+                    scenario=scenario,
+                )
             else:
                 lifecycle_summary, lifecycle_monthly, lifecycle_events = pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+                per_trade_ledger = pd.DataFrame()
             outputs = export_forward_artifacts(
                 scenario,
                 master_path,
                 mc_paths,
                 lifecycle_summary,
                 lifecycle_events,
+                per_trade_ledger,
             )
             st.session_state["forward_point_results"] = point_results
             st.session_state["forward_manifest"] = strategy_path_manifest(mc_paths, scenario)
             st.session_state["forward_lifecycle_summary"] = lifecycle_summary
             st.session_state["forward_lifecycle_monthly"] = lifecycle_monthly
             st.session_state["forward_lifecycle_events"] = lifecycle_events
+            st.session_state["forward_per_trade_ledger"] = per_trade_ledger
             st.session_state["forward_outputs"] = {key: str(path) for key, path in outputs.items()}
 
     point_results = st.session_state.get("forward_point_results", pd.DataFrame())
@@ -365,6 +397,12 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
         st.subheader("Lifecycle / Account Results")
         st.dataframe(format_lifecycle_ranking(lifecycle_summary), width="stretch", hide_index=True)
         st.download_button("Download lifecycle account results CSV", lifecycle_summary.to_csv(index=False), "lifecycle_account_results.csv", "text/csv")
+
+    per_trade_ledger = st.session_state.get("forward_per_trade_ledger", pd.DataFrame())
+    if not per_trade_ledger.empty:
+        st.subheader("Path Inspector: Per-Trade Account Ledger")
+        st.dataframe(per_trade_ledger.head(500), width="stretch", hide_index=True)
+        st.download_button("Download per-trade account ledger CSV", per_trade_ledger.to_csv(index=False), "per_trade_account_ledger.csv", "text/csv")
 
     outputs = st.session_state.get("forward_outputs", {})
     if outputs:
@@ -553,6 +591,16 @@ def clear_stale_lifecycle_results(session_state: Any) -> bool:
         session_state.pop(key, None)
     session_state["result_schema_version"] = RESULT_SCHEMA_VERSION
     return True
+
+
+def parse_float_list(raw: str) -> list[float]:
+    values: list[float] = []
+    for item in raw.replace("\n", ",").split(","):
+        item = item.strip()
+        if not item:
+            continue
+        values.append(float(item))
+    return values
 
 
 def score_controls(mode: str) -> dict[str, float]:

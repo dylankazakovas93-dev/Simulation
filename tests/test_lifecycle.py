@@ -230,7 +230,7 @@ def test_tpt_buffer_allows_withdrawal_after_threshold_without_preserving_full_bu
     result, _months, events = simulate_lifecycle_path(trades, plan, contracts=1, settings=settings)
 
     assert result.payouts_taken == 1
-    assert result.total_payouts == 1_600
+    assert result.total_payouts == 1_280
     assert result.ending_balance == 50_400
     assert [event.event for event in events if event.event == "payout"] == ["payout"]
 

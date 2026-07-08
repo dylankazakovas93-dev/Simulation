@@ -11,6 +11,7 @@ from sim_core.prop_rules import (
     MonthBlockSampler,
     PropRuleProfile,
     default_prop_rule_profiles,
+    _floor_ceiling,
     _gross_cash_available,
     _is_payout_eligible,
     _trade_day,
@@ -376,7 +377,7 @@ def simulate_lifecycle_path(
             state.eod_peak = max(state.eod_peak, state.balance)
             state.floor = max(
                 state.floor,
-                min(state.profile.starting_balance, state.eod_peak - state.profile.max_loss),
+                min(_floor_ceiling(state.profile), state.eod_peak - state.profile.max_loss),
             )
 
     def finish_month() -> None:
@@ -420,6 +421,8 @@ def simulate_lifecycle_path(
         nonlocal total_payouts, payouts_taken, first_payout_month, first_payout_day
         nonlocal first_payout_order
         nonlocal month_payouts, cushion_ok_after_payout
+        if failed_terminal:
+            return
         if state.stage != "funded" or not settings.auto_payout:
             return
         if state.profile.payout_count_cap is not None and payouts_taken >= state.profile.payout_count_cap:
@@ -431,25 +434,27 @@ def simulate_lifecycle_path(
             daily_profits=state.daily_profits,
         ):
             return
-        available = _gross_cash_available(
+        gross_account_debit = _gross_cash_available(
             state.balance,
             state.profile,
             max_payout=_payout_cap_for_request(state.profile, payouts_taken + 1),
         )
+        trader_cash_available = gross_account_debit * state.profile.profit_split
         desired = float(settings.desired_payout)
-        payout = available if desired <= 0 else min(available, desired)
+        trader_cash = trader_cash_available if desired <= 0 else min(trader_cash_available, desired)
+        payout = trader_cash / state.profile.profit_split if state.profile.profit_split > 0 else trader_cash
         min_balance_after = state.profile.starting_balance + max(
             settings.required_cushion,
             state.profile.payout_reserve,
         )
-        if payout <= 0 or (desired > 0 and payout < desired):
+        if payout <= 0 or trader_cash <= 0 or (desired > 0 and trader_cash < desired):
             return
         if state.balance - payout < min_balance_after:
             return
         state.balance -= payout
         state.running_peak = max(state.running_peak, state.balance)
-        total_payouts += payout
-        month_payouts += payout
+        total_payouts += trader_cash
+        month_payouts += trader_cash
         payouts_taken += 1
         cushion_ok_after_payout = True
         payout_order = next_event_order()
@@ -468,11 +473,14 @@ def simulate_lifecycle_path(
                 date=str(current_day.date()),
                 stage="funded",
                 event="payout",
-                amount=payout,
+                amount=trader_cash,
                 balance=state.balance,
                 floor=state.floor,
                 attempt=max(1, attempts),
-                note="Payout taken; consistency state reset",
+                note=(
+                    "Payout taken; consistency state reset; "
+                    f"gross_account_debit={payout:.2f}; trader_profit_split={state.profile.profit_split:.2f}"
+                ),
             )
         )
 
@@ -517,7 +525,7 @@ def simulate_lifecycle_path(
             state.running_peak = max(state.running_peak, state.balance + max(0.0, mfe))
             state.floor = max(
                 state.floor,
-                min(state.profile.starting_balance, state.running_peak - state.profile.max_loss),
+                min(_floor_ceiling(state.profile), state.running_peak - state.profile.max_loss),
             )
 
         breached = state.balance + mae <= state.floor
