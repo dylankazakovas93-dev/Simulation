@@ -1,0 +1,6 @@
+allocation_id,strategy_id,gross_pnl_dollars_strategy,net_pnl_dollars_strategy,commission_dollars_strategy,trade_count_strategy,contract_count,asset_id,gross_pnl_dollars_asset,net_pnl_dollars_asset,commission_dollars_asset,trade_count_asset
+0,mnq_breakout,10.0,10.0,0.0,2,1,NQ,10.0,10.0,0.0,2
+1,mgc_revert,80.0,80.0,0.0,2,1,GC,80.0,80.0,0.0,2
+1,mgc_revert,80.0,80.0,0.0,2,1,NQ,10.0,10.0,0.0,2
+1,mnq_breakout,10.0,10.0,0.0,2,1,GC,80.0,80.0,0.0,2
+1,mnq_breakout,10.0,10.0,0.0,2,1,NQ,10.0,10.0,0.0,2

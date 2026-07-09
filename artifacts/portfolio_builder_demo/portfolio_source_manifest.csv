@@ -1,0 +1,3 @@
+strategy_id,asset_id,asset_label,contract_symbol,dollars_per_point_per_contract,commission_round_turn_per_contract,source_timezone,default_contract_count,pnl_basis,mae_mfe_convention,enabled
+mnq_breakout,NQ,Nasdaq 100,MNQ,2,0,UTC,1,points,positive_magnitude,True
+mgc_revert,GC,Gold,MGC,10,0,UTC,1,points,positive_magnitude,True

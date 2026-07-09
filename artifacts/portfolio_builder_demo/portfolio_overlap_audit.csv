@@ -1,0 +1,7 @@
+portfolio_path_id,allocation_id,overlap_cluster_id,strategies,asset_ids,contract_symbols,entry_time,exit_time,overlap_type,selected_overlap_policy,decision,priority_reason,gross_asset_exposure,net_asset_exposure
+0,0,,mnq_breakout,NQ,MNQ,2025-01-02 09:30:00+00:00,2025-01-02 10:30:00+00:00,none,REJECT_SAME_ASSET_OVERLAP,KEEP,no overlap,,
+0,0,,mnq_breakout,NQ,MNQ,2025-01-03 09:30:00+00:00,2025-01-03 09:50:00+00:00,none,REJECT_SAME_ASSET_OVERLAP,KEEP,no overlap,,
+0,1,,mnq_breakout,NQ,MNQ,2025-01-02 09:30:00+00:00,2025-01-02 10:30:00+00:00,none,REJECT_SAME_ASSET_OVERLAP,KEEP,no overlap,,
+0,1,1,mgc_revert|mnq_breakout,GC|NQ,MGC|MNQ,2025-01-02 09:45:00+00:00,2025-01-02 10:15:00+00:00,cross_asset,REJECT_SAME_ASSET_OVERLAP,KEEP,cross asset overlap retained,,
+0,1,,mnq_breakout,NQ,MNQ,2025-01-03 09:30:00+00:00,2025-01-03 09:50:00+00:00,none,REJECT_SAME_ASSET_OVERLAP,KEEP,no overlap,,
+0,1,,mgc_revert,GC,MGC,2025-01-03 10:00:00+00:00,2025-01-03 10:20:00+00:00,none,REJECT_SAME_ASSET_OVERLAP,KEEP,no overlap,,

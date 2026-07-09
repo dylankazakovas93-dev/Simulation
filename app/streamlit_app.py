@@ -31,6 +31,16 @@ from sim_core.lifecycle import (
     summarize_monthly_paths,
 )
 from sim_core.models import TradeValidationError
+from sim_core.portfolio import (
+    PortfolioAllocation,
+    PortfolioInstrumentSpec,
+    build_allocation_grid,
+    combine_portfolio_path,
+    portfolio_export_frames,
+    resolve_portfolio_overlaps,
+    simulate_portfolio_lifecycle,
+    write_portfolio_exports,
+)
 from sim_core.prop_rules import (
     default_prop_rule_profiles,
     resolve_overlapping_trades,
@@ -67,7 +77,7 @@ def main() -> None:
     with st.sidebar:
         simulation_mode = st.radio(
             "Simulation mode",
-            ["Historical lifecycle bootstrap", "July-August realized-prefix forward simulation"],
+            ["Historical lifecycle bootstrap", "July-August realized-prefix forward simulation", "Portfolio Builder"],
         )
         st.header("Ledger")
         uploaded = st.file_uploader(
@@ -116,6 +126,14 @@ def main() -> None:
     if errors:
         st.error("\n".join(errors))
     if not loaded_frames:
+        return
+
+    if simulation_mode == "Portfolio Builder":
+        render_portfolio_builder(
+            loaded_frames,
+            ledger_settings,
+            lifecycle_plans,
+        )
         return
 
     normalized_frame = pd.concat(loaded_frames, ignore_index=True)
@@ -483,6 +501,184 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
         st.dataframe(pd.DataFrame([{"artifact": key, "path": value} for key, value in outputs.items()]), width="stretch", hide_index=True)
 
 
+def render_portfolio_builder(
+    loaded_frames: list[pd.DataFrame],
+    ledger_settings: dict[str, dict[str, Any]],
+    lifecycle_plans: dict[str, Any],
+) -> None:
+    st.header("Portfolio Builder")
+    st.caption("Combine strategy ledgers with per-ledger assets, contract values, commissions, and dollar-based portfolio accounting.")
+    settings_list = list(ledger_settings.values())
+    specs: list[PortfolioInstrumentSpec] = []
+    validation_errors: list[str] = []
+    for item in settings_list:
+        try:
+            specs.append(
+                PortfolioInstrumentSpec(
+                    strategy_id=item["strategy_id"],
+                    asset_id=item["asset_id"],
+                    asset_label=item["asset_label"],
+                    contract_symbol=item["contract_symbol"],
+                    dollars_per_point_per_contract=float(item["dollars_per_point"]),
+                    commission_round_turn_per_contract=float(item["commission_round_turn"]),
+                    source_timezone=item["source_timezone"],
+                    default_contract_count=int(item["default_contract_count"]),
+                    pnl_basis=item["pnl_basis"],
+                    mae_mfe_convention=item["mae_mfe_convention"],
+                    enabled=bool(item["enabled"]),
+                )
+            )
+        except Exception as exc:  # noqa: BLE001 - surface field-level validation in UI
+            validation_errors.append(f"{item.get('strategy_id', 'ledger')}: {exc}")
+    if validation_errors:
+        st.error("\n".join(validation_errors))
+        return
+    spec_by_strategy = {spec.strategy_id: spec for spec in specs}
+    st.subheader("Asset / Unit Audit")
+    audit_rows = []
+    for spec, frame in zip(specs, loaded_frames, strict=False):
+        audit_rows.append(
+            {
+                "include": spec.enabled,
+                "strategy_id": spec.strategy_id,
+                "asset_id": spec.asset_id,
+                "asset_label": spec.asset_label,
+                "contract_symbol": spec.contract_symbol,
+                "dollars_per_point_per_contract": spec.dollars_per_point_per_contract,
+                "commission_round_turn_per_contract": spec.commission_round_turn_per_contract,
+                "source_timezone": spec.source_timezone,
+                "pnl_basis": spec.pnl_basis,
+                "default_contract_count": spec.default_contract_count,
+                "source_date_range": _frame_date_range(frame),
+                "exact_entry_exit_timestamps": {"entry_time", "exit_time"} <= set(frame.columns),
+                "mae_mfe_exists": bool({"mae_points", "mfe_points"} & set(frame.columns)),
+            }
+        )
+    st.dataframe(pd.DataFrame(audit_rows), width="stretch", hide_index=True)
+
+    allocation_choices = {
+        item["strategy_id"]: item["allocation_values"] or [0, int(item["default_contract_count"])]
+        for item in settings_list
+        if item["enabled"]
+    }
+    combination_count = 1
+    for choices in allocation_choices.values():
+        combination_count *= len(choices)
+    st.metric("Allocation combinations", f"{combination_count:,}")
+    max_allocations = int(st.number_input("Allocation grid safety cap", min_value=1, value=250, step=25))
+    dependency_mode = st.selectbox("Dependency mode", ["PAIRED_CALENDAR_BLOCKS", "INDEPENDENT_SOURCE_PATHS"])
+    overlap_policy = st.selectbox("Same-asset overlap policy", ["REJECT_SAME_ASSET_OVERLAP", "PRIORITY_KEEP_ONE", "ALLOW_STACKING"])
+    risk_mode = st.selectbox("Intratrade risk mode", ["REALIZED_PNL_ONLY", "CONSERVATIVE_OVERLAP_MAE_BOUND", "EXACT_INTRATRADE"])
+    plan_options = list(lifecycle_plans)
+    selected_plan_key = st.selectbox("Lifecycle plan", plan_options, index=plan_options.index("Apex Trader Funding - EOD PA 50K - Funded only") if "Apex Trader Funding - EOD PA 50K - Funded only" in plan_options else 0)
+    if risk_mode == "EXACT_INTRATRADE":
+        st.error("EXACT_INTRATRADE requires timestamped intratrade equity or barrier-event evidence. The uploaded point ledgers do not provide that evidence.")
+    if combination_count > max_allocations:
+        st.warning("Narrow allocation choices before running; the grid exceeds the safety cap.")
+
+    if st.button("Run portfolio allocations", type="primary", disabled=combination_count > max_allocations or risk_mode == "EXACT_INTRATRADE"):
+        try:
+            allocations = build_allocation_grid(allocation_choices, max_combinations=max_allocations)
+            base_ledgers = {}
+            for spec, frame in zip(specs, loaded_frames, strict=False):
+                if not spec.enabled:
+                    continue
+                base = frame.copy()
+                if "source_session_date" not in base:
+                    base["source_session_date"] = pd.to_datetime(base["exit_time"], errors="coerce").dt.date.astype(str)
+                base_ledgers[spec.strategy_id] = base
+            path_map = {strategy_id: frame.assign(strategy_path_id=0, portfolio_path_id=0) for strategy_id, frame in base_ledgers.items()}
+            combined_ledgers = []
+            overlap_audits = []
+            account_days = []
+            account_traces = []
+            path_results = []
+            for allocation in allocations:
+                combined = combine_portfolio_path(path_map, spec_by_strategy, allocation, portfolio_path_id=0)
+                kept, overlap_audit = resolve_portfolio_overlaps(
+                    combined,
+                    policy=overlap_policy,
+                    priority=[spec.strategy_id for spec in specs],
+                )
+                summary, day_ledger, trace = simulate_portfolio_lifecycle(
+                    kept,
+                    lifecycle_plans[selected_plan_key],
+                    LifecycleSettings(start_mode="funded"),
+                    risk_mode=risk_mode,
+                )
+                combined_ledgers.append(kept)
+                overlap_audits.append(overlap_audit)
+                account_days.append(day_ledger.assign(allocation_id=allocation.allocation_id))
+                account_traces.append(trace.assign(allocation_id=allocation.allocation_id))
+                path_results.append(summary.assign(allocation_id=allocation.allocation_id))
+            trade_ledger = pd.concat(combined_ledgers, ignore_index=True) if combined_ledgers else pd.DataFrame()
+            overlap_audit = pd.concat(overlap_audits, ignore_index=True) if overlap_audits else pd.DataFrame()
+            account_day_ledger = pd.concat(account_days, ignore_index=True) if account_days else pd.DataFrame()
+            account_trace = pd.concat(account_traces, ignore_index=True) if account_traces else pd.DataFrame()
+            path_results_frame = pd.concat(path_results, ignore_index=True) if path_results else pd.DataFrame()
+            dependency_manifest = pd.DataFrame(
+                [
+                    {
+                        "strategy_id": spec.strategy_id,
+                        "dependency_mode": dependency_mode,
+                        "dependence_label": "CROSS_STRATEGY_DEPENDENCE_UNVERIFIED" if dependency_mode == "INDEPENDENT_SOURCE_PATHS" else "USER_UPLOADED_ORDER_PAIRED",
+                        "common_date_count": pd.NA,
+                        "common_month_count": pd.NA,
+                        "paired_date_coverage_pct": pd.NA,
+                    }
+                    for spec in specs
+                ]
+            )
+            strategy_manifest = pd.DataFrame(
+                [
+                    {
+                        "portfolio_path_id": 0,
+                        "strategy_path_id": 0,
+                        "strategy_id": spec.strategy_id,
+                        "source_sequence_hash": trade_ledger.loc[trade_ledger["strategy_id"].eq(spec.strategy_id), "source_sequence_hash"].dropna().iloc[0]
+                        if not trade_ledger.loc[trade_ledger["strategy_id"].eq(spec.strategy_id)].empty
+                        else pd.NA,
+                    }
+                    for spec in specs
+                ]
+            )
+            frames = portfolio_export_frames(
+                specs=specs,
+                allocations=allocations,
+                dependency_manifest=dependency_manifest,
+                strategy_path_manifest=strategy_manifest,
+                trade_ledger=trade_ledger,
+                overlap_audit=overlap_audit,
+                account_day_ledger=account_day_ledger,
+                account_trace=account_trace,
+                path_results=path_results_frame,
+            )
+            outputs = write_portfolio_exports(frames, REPO_ROOT / "artifacts" / "portfolio_builder")
+            st.session_state["portfolio_outputs"] = {key: str(path) for key, path in outputs.items()}
+            st.session_state["portfolio_trade_ledger"] = trade_ledger
+            st.session_state["portfolio_overlap_audit"] = overlap_audit
+            st.session_state["portfolio_account_day_ledger"] = account_day_ledger
+            st.session_state["portfolio_path_results"] = path_results_frame
+        except Exception as exc:  # noqa: BLE001 - interactive validation
+            st.error(str(exc))
+
+    for title, key in [
+        ("Portfolio Trade Ledger", "portfolio_trade_ledger"),
+        ("Portfolio Overlap Audit", "portfolio_overlap_audit"),
+        ("Portfolio Account Day Ledger", "portfolio_account_day_ledger"),
+        ("Portfolio Path Results", "portfolio_path_results"),
+    ]:
+        frame = st.session_state.get(key, pd.DataFrame())
+        if not frame.empty:
+            st.subheader(title)
+            st.dataframe(frame.head(500), width="stretch", hide_index=True)
+            st.download_button(f"Download {title} CSV", frame.to_csv(index=False), f"{key}.csv", "text/csv")
+    outputs = st.session_state.get("portfolio_outputs", {})
+    if outputs:
+        st.subheader("Portfolio Export Paths")
+        st.dataframe(pd.DataFrame([{"artifact": key, "path": value} for key, value in outputs.items()]), width="stretch", hide_index=True)
+
+
 def simulation_controls(
     lifecycle_plans: dict[str, Any],
     *,
@@ -674,6 +870,24 @@ def parse_float_list(raw: str) -> list[float]:
             continue
         values.append(float(item))
     return values
+
+
+def parse_int_list(raw: str) -> list[int]:
+    values: list[int] = []
+    for item in raw.replace("\n", ",").split(","):
+        item = item.strip()
+        if not item:
+            continue
+        values.append(int(item))
+    return values
+
+
+def _frame_date_range(frame: pd.DataFrame) -> str:
+    date_col = "source_session_date" if "source_session_date" in frame else "exit_time" if "exit_time" in frame else "entry_time"
+    dates = pd.to_datetime(frame[date_col], errors="coerce")
+    if dates.dropna().empty:
+        return "unknown"
+    return f"{dates.min().date()} to {dates.max().date()}"
 
 
 def score_controls(mode: str) -> dict[str, float]:
@@ -1245,7 +1459,7 @@ def build_effective_current_state_rows(
 def uploaded_ledger_settings(uploaded: list[Any], *, default_dpp: float) -> dict[str, dict[str, Any]]:
     settings: dict[str, dict[str, Any]] = {}
     with st.expander("Per-ledger instrument and point value", expanded=len(uploaded) > 1):
-        st.caption("Set each uploaded ledger's strategy label, instrument, and dollars per point. These values are per one micro/contract.")
+        st.caption("Set each uploaded ledger's strategy label, asset, contract, and units. User-entered values are authoritative.")
         for index, file in enumerate(uploaded):
             st.markdown(f"**{file.name}**")
             cols = st.columns(5)
@@ -1278,12 +1492,38 @@ def uploaded_ledger_settings(uploaded: list[Any], *, default_dpp: float) -> dict
                 step=0.25,
                 key=f"upload_commission_{index}_{file.name}",
             )
+            with st.expander(f"Advanced units for {file.name}", expanded=False):
+                adv = st.columns(5)
+                asset_label = adv[0].text_input("Asset label", value=instrument.strip() or "NQ", key=f"upload_asset_label_{index}_{file.name}")
+                source_timezone = adv[1].text_input("Source timezone", value="UTC", key=f"upload_source_tz_{index}_{file.name}")
+                pnl_basis = adv[2].selectbox("P&L basis", ["points", "dollars"], key=f"upload_pnl_basis_{index}_{file.name}")
+                default_contract_count = adv[3].number_input("Default contracts", min_value=0, value=1, step=1, key=f"upload_default_contracts_{index}_{file.name}")
+                enabled = adv[4].checkbox("Include", value=True, key=f"upload_enabled_{index}_{file.name}")
+                mae_mfe_convention = st.selectbox(
+                    "MAE/MFE convention",
+                    ["positive_magnitude", "signed_adverse_negative", "signed_favorable_positive"],
+                    key=f"upload_mae_mfe_{index}_{file.name}",
+                )
+                allocation_values = st.text_input(
+                    "Selected allocation contract values",
+                    value="0,1",
+                    key=f"upload_allocations_{index}_{file.name}",
+                    help="Comma-separated contract counts. Zero disables this strategy for that allocation.",
+                )
             settings[file.name] = {
                 "strategy_id": strategy_id.strip() or Path(file.name).stem,
                 "instrument": instrument.strip() or "CUSTOM",
+                "asset_id": instrument.strip() or "CUSTOM",
+                "asset_label": asset_label.strip() or instrument.strip() or "CUSTOM",
                 "contract_symbol": contract_symbol.strip() or instrument.strip() or "CUSTOM",
                 "dollars_per_point": float(dollars_per_point),
                 "commission_round_turn": float(commission),
+                "source_timezone": source_timezone.strip() or "UTC",
+                "default_contract_count": int(default_contract_count),
+                "pnl_basis": pnl_basis,
+                "mae_mfe_convention": mae_mfe_convention,
+                "enabled": bool(enabled),
+                "allocation_values": parse_int_list(allocation_values),
             }
     return settings
 

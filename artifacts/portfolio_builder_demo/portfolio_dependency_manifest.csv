@@ -1,0 +1,3 @@
+strategy_id,dependency_mode,common_date_count,common_month_count,ledger_date_count,paired_date_coverage_pct,dependence_label
+mnq_breakout,PAIRED_CALENDAR_BLOCKS,2,1,2,1.0,VERIFIED_PAIRED_CALENDAR
+mgc_revert,PAIRED_CALENDAR_BLOCKS,2,1,2,1.0,VERIFIED_PAIRED_CALENDAR

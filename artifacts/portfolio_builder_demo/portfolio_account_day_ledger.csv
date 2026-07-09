@@ -1,0 +1,5 @@
+account_day,trade_count,gross_pnl_dollars,commission_dollars,net_pnl_dollars,balance_before,balance_after,floor_after,winning_days_after,strict_status,realized_only_failure,conservative_bound_failure,risk_mode,risk_mode_label,payout_eligible_after_day,allocation_id
+2025-01-02,1,20.0,0.0,20.0,50000.0,50020.0,48020.0,0,SURVIVED,False,False,REALIZED_PNL_ONLY,REALIZED_PNL_ONLY,False,0
+2025-01-03,1,-10.0,0.0,-10.0,50020.0,50010.0,48020.0,0,SURVIVED,False,False,REALIZED_PNL_ONLY,REALIZED_PNL_ONLY,False,0
+2025-01-02,2,120.0,0.0,120.0,50000.0,50120.0,48120.0,0,SURVIVED,False,False,REALIZED_PNL_ONLY,REALIZED_PNL_ONLY,False,1
+2025-01-03,2,-30.0,0.0,-30.0,50120.0,50090.0,48120.0,0,SURVIVED,False,False,REALIZED_PNL_ONLY,REALIZED_PNL_ONLY,False,1
