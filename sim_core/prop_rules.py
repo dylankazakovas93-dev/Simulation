@@ -111,6 +111,17 @@ class PropPathResult:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class PayoutDecision:
+    eligible: bool
+    taken: bool
+    gross_account_debit: float = 0.0
+    trader_cash: float = 0.0
+    payout_number: int = 0
+    balance_after: float | None = None
+    reason: str = ""
+
+
 def default_prop_rule_profiles() -> dict[str, PropRuleProfile]:
     """Built-in profiles transcribed from the user-supplied PDFs.
 
@@ -679,6 +690,64 @@ def _gross_cash_available(
     if gross < profile.min_payout:
         return 0.0
     return gross
+
+
+def _payout_cap_for_request(profile: PropRuleProfile, payout_number: int) -> float | None:
+    if not profile.payout_cap_schedule:
+        return profile.max_payout
+    index = max(0, min(int(payout_number) - 1, len(profile.payout_cap_schedule) - 1))
+    return float(profile.payout_cap_schedule[index])
+
+
+def calculate_payout_decision(
+    *,
+    balance: float,
+    profile: PropRuleProfile,
+    winning_days: int,
+    daily_profits: list[float],
+    payouts_taken: int,
+    desired_payout: float,
+    required_cushion: float,
+    auto_payout: bool,
+) -> PayoutDecision:
+    payout_number = max(0, int(payouts_taken)) + 1
+    if not auto_payout:
+        return PayoutDecision(False, False, payout_number=payout_number, reason="auto_payout_disabled")
+    if profile.payout_count_cap is not None and payouts_taken >= profile.payout_count_cap:
+        return PayoutDecision(False, False, payout_number=payout_number, reason="payout_count_cap")
+    eligible = _is_payout_eligible(
+        balance=balance,
+        profile=profile,
+        winning_days=winning_days,
+        daily_profits=daily_profits,
+    )
+    if not eligible:
+        return PayoutDecision(False, False, payout_number=payout_number, reason="not_eligible")
+    gross_available = _gross_cash_available(
+        balance,
+        profile,
+        max_payout=_payout_cap_for_request(profile, payout_number),
+    )
+    trader_cash_available = gross_available * profile.profit_split
+    desired = float(desired_payout)
+    trader_cash = trader_cash_available if desired <= 0 else min(trader_cash_available, desired)
+    gross_account_debit = trader_cash / profile.profit_split if profile.profit_split > 0 else trader_cash
+    min_balance_after = profile.starting_balance + max(float(required_cushion), profile.payout_reserve)
+    if gross_account_debit <= 0 or trader_cash <= 0:
+        return PayoutDecision(True, False, payout_number=payout_number, reason="no_cash_available")
+    if desired > 0 and trader_cash + 1e-9 < desired:
+        return PayoutDecision(True, False, payout_number=payout_number, reason="desired_payout_unavailable")
+    if balance - gross_account_debit + 1e-9 < min_balance_after:
+        return PayoutDecision(True, False, payout_number=payout_number, reason="required_cushion")
+    return PayoutDecision(
+        True,
+        True,
+        gross_account_debit=float(gross_account_debit),
+        trader_cash=float(trader_cash),
+        payout_number=payout_number,
+        balance_after=float(balance - gross_account_debit),
+        reason="taken",
+    )
 
 
 def _floor_ceiling(profile: PropRuleProfile) -> float:

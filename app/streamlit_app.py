@@ -578,13 +578,41 @@ def render_portfolio_builder(
     max_allocations = int(st.number_input("Allocation grid safety cap", min_value=1, value=250, step=25))
     portfolio_path_count = int(st.number_input("Portfolio path count", min_value=1, value=100, step=10))
     portfolio_seed = int(st.number_input("Portfolio random seed", value=1729, step=1))
-    sampled_account_days = int(st.number_input("Sampled account days per portfolio path", min_value=1, value=20, step=1))
+    forecast_start_date = st.date_input("Forecast start date", value=pd.Timestamp("2026-01-02").date())
+    sampled_account_days = int(st.number_input("Number of forecast account days", min_value=1, value=20, step=1))
     dependency_mode = st.selectbox("Dependency mode", ["PAIRED_CALENDAR_BLOCKS", "INDEPENDENT_SOURCE_PATHS"])
     seasonal_month_aware = st.checkbox("Seasonal / month-aware sampling", value=True)
     overlap_policy = st.selectbox("Same-asset overlap policy", ["REJECT_SAME_ASSET_OVERLAP", "PRIORITY_KEEP_ONE", "ALLOW_STACKING"])
     risk_mode = st.selectbox("Intratrade risk mode", ["REALIZED_PNL_ONLY", "CONSERVATIVE_OVERLAP_MAE_BOUND", "EXACT_INTRATRADE"])
-    plan_options = list(lifecycle_plans)
+    plan_options = [key for key, plan in lifecycle_plans.items() if plan.eval_profile is None]
     selected_plan_key = st.selectbox("Lifecycle plan", plan_options, index=plan_options.index("Apex Trader Funding - EOD PA 50K - Funded only") if "Apex Trader Funding - EOD PA 50K - Funded only" in plan_options else 0)
+    selected_plan = lifecycle_plans[selected_plan_key]
+    st.caption("Portfolio Builder currently supports funded-only lifecycle plans. Eval-to-funded routes are blocked until direct portfolio tests cover that route.")
+    state_mode = st.radio("Funded account state", ["Fresh funded profile", "Single live account"], horizontal=True)
+    state_cols = st.columns(4)
+    current_balance = state_cols[0].number_input("Current balance", value=float(selected_plan.funded_profile.starting_balance), step=100.0, disabled=state_mode == "Fresh funded profile")
+    current_floor = state_cols[1].number_input("Current floor", value=float(selected_plan.funded_profile.starting_floor), step=100.0, disabled=state_mode == "Fresh funded profile")
+    current_winning_days = int(state_cols[2].number_input("Current qualifying/winning days", min_value=0, value=0, step=1, disabled=state_mode == "Fresh funded profile"))
+    payouts_already_taken = int(state_cols[3].number_input("Payouts already taken", min_value=0, value=0, step=1, disabled=state_mode == "Fresh funded profile"))
+    hist_cols = st.columns(4)
+    current_daily_profit_history = hist_cols[0].text_input("Current daily-profit history", value="", placeholder="Comma-separated dollars", disabled=state_mode == "Fresh funded profile")
+    current_highest_winning_day = hist_cols[1].number_input("Current highest winning day", min_value=0.0, value=0.0, step=50.0, disabled=state_mode == "Fresh funded profile")
+    prior_fees = hist_cols[2].number_input("Prior fees", min_value=0.0, value=0.0, step=50.0, disabled=state_mode == "Fresh funded profile")
+    auto_payout = hist_cols[3].checkbox("Auto-payout", value=True)
+    payout_cols = st.columns(2)
+    desired_payout = payout_cols[0].number_input("Desired payout", min_value=0.0, value=0.0, step=100.0)
+    required_cushion = payout_cols[1].number_input("Required cushion after payout", min_value=0.0, value=0.0, step=100.0)
+    if seasonal_month_aware:
+        months = sorted({pd.Timestamp(date).month for date in pd.bdate_range(start=str(forecast_start_date), periods=sampled_account_days)})
+        source_months = sorted(
+            {
+                pd.Timestamp(value).month
+                for frame in loaded_frames
+                if "source_session_date" in frame
+                for value in pd.to_datetime(frame["source_session_date"], errors="coerce").dropna()
+            }
+        )
+        st.info(f"Seasonal run requires forecast months {months}; uploaded source months {source_months}.")
     if risk_mode == "EXACT_INTRATRADE":
         st.error("EXACT_INTRATRADE requires timestamped intratrade equity or barrier-event evidence. The uploaded point ledgers do not provide that evidence.")
     if combination_count > max_allocations:
@@ -608,6 +636,25 @@ def render_portfolio_builder(
                 mode=dependency_mode,
                 trades_per_path=sampled_account_days,
                 seasonal_month_aware=seasonal_month_aware,
+                forecast_start_date=str(forecast_start_date),
+            )
+            daily_history = tuple(
+                float(part.strip())
+                for part in str(current_daily_profit_history).split(",")
+                if part.strip()
+            )
+            lifecycle_settings = LifecycleSettings(
+                start_mode="funded",
+                current_balance=float(current_balance) if state_mode == "Single live account" else None,
+                current_floor=float(current_floor) if state_mode == "Single live account" else None,
+                current_winning_days=current_winning_days if state_mode == "Single live account" else 0,
+                current_highest_winning_day=float(current_highest_winning_day) if state_mode == "Single live account" else 0.0,
+                current_daily_profits=daily_history if state_mode == "Single live account" else (),
+                payouts_already_taken=payouts_already_taken if state_mode == "Single live account" else 0,
+                prior_fees=float(prior_fees),
+                desired_payout=float(desired_payout),
+                required_cushion=float(required_cushion),
+                auto_payout=bool(auto_payout),
             )
             combined_ledgers = []
             overlap_audits = []
@@ -625,7 +672,7 @@ def render_portfolio_builder(
                     summary, day_ledger, trace = simulate_portfolio_lifecycle(
                         kept,
                         lifecycle_plans[selected_plan_key],
-                        LifecycleSettings(start_mode="funded"),
+                        lifecycle_settings,
                         risk_mode=risk_mode,
                         path_id=portfolio_path_id,
                     )

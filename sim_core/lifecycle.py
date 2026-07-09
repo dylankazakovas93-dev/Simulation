@@ -10,9 +10,9 @@ from sim_core.models import Trade
 from sim_core.prop_rules import (
     MonthBlockSampler,
     PropRuleProfile,
+    calculate_payout_decision,
     default_prop_rule_profiles,
     _floor_ceiling,
-    _gross_cash_available,
     _is_payout_eligible,
     _trade_day,
     _trade_mae_dollars,
@@ -534,35 +534,23 @@ def simulate_lifecycle_path(
         nonlocal month_payouts, cushion_ok_after_payout
         if failed_terminal:
             return
-        if state.stage != "funded" or not settings.auto_payout:
+        if state.stage != "funded":
             return
-        if state.profile.payout_count_cap is not None and payouts_taken >= state.profile.payout_count_cap:
-            return
-        if not _is_payout_eligible(
+        decision = calculate_payout_decision(
             balance=state.balance,
             profile=state.profile,
             winning_days=state.winning_days,
             daily_profits=state.daily_profits,
-        ):
-            return
-        gross_account_debit = _gross_cash_available(
-            state.balance,
-            state.profile,
-            max_payout=_payout_cap_for_request(state.profile, payouts_taken + 1),
+            payouts_taken=payouts_taken,
+            desired_payout=settings.desired_payout,
+            required_cushion=settings.required_cushion,
+            auto_payout=settings.auto_payout,
         )
-        trader_cash_available = gross_account_debit * state.profile.profit_split
-        desired = float(settings.desired_payout)
-        trader_cash = trader_cash_available if desired <= 0 else min(trader_cash_available, desired)
-        payout = trader_cash / state.profile.profit_split if state.profile.profit_split > 0 else trader_cash
-        min_balance_after = state.profile.starting_balance + max(
-            settings.required_cushion,
-            state.profile.payout_reserve,
-        )
-        if payout <= 0 or trader_cash <= 0 or (desired > 0 and trader_cash < desired):
+        if not decision.taken:
             return
-        if state.balance - payout < min_balance_after:
-            return
-        state.balance -= payout
+        payout = decision.gross_account_debit
+        trader_cash = decision.trader_cash
+        state.balance = float(decision.balance_after)
         state.running_peak = max(state.running_peak, state.balance)
         total_payouts += trader_cash
         month_payouts += trader_cash
@@ -1185,13 +1173,6 @@ def _nanpercentile(values: np.ndarray, percentile: float) -> float | None:
     if not len(finite):
         return None
     return float(np.percentile(finite, percentile))
-
-
-def _payout_cap_for_request(profile: PropRuleProfile, payout_number: int) -> float | None:
-    if not profile.payout_cap_schedule:
-        return profile.max_payout
-    index = max(0, min(int(payout_number) - 1, len(profile.payout_cap_schedule) - 1))
-    return float(profile.payout_cap_schedule[index])
 
 
 def plan_with_costs(plan: LifecyclePlan, *, eval_fee: float, activation_fee: float, reset_fee: float) -> LifecyclePlan:

@@ -15,6 +15,7 @@ from sim_core.portfolio import (
     combine_portfolio_path,
     normalize_portfolio_ledger,
     portfolio_trade_ledger_to_lifecycle_trades,
+    portfolio_export_frames,
     resolve_portfolio_overlaps,
     simulate_portfolio_lifecycle,
 )
@@ -75,6 +76,15 @@ def _spec(strategy: str, asset: str, symbol: str, dpp: float, *, commission: flo
         default_contract_count=1,
         pnl_basis="points",
     )
+
+
+def _multi_day_portfolio_ledger(values: list[float], *, start_day: str = "2025-01-02") -> pd.DataFrame:
+    start = pd.Timestamp(start_day)
+    frames = []
+    for index, value in enumerate(values):
+        day = (start + pd.offsets.BDay(index)).date().isoformat()
+        frames.append(normalize_portfolio_ledger(_ledger("mnq", day, value), _spec("mnq", "NQ", "MNQ", 1)))
+    return pd.concat(frames, ignore_index=True)
 
 
 def test_portfolio_unit_conversion_uses_per_ledger_dollars_per_point_not_combined_points():
@@ -167,6 +177,88 @@ def test_no_payout_after_failure_in_portfolio_lifecycle_trace():
     failure_rows = trace[trace.get("failure", False).astype(str).str.lower().isin({"true", "1"})]
     if not payout_rows.empty and not failure_rows.empty:
         assert payout_rows["payout_event_order"].max() < failure_rows["payout_event_order"].min()
+
+
+def test_successful_portfolio_payout_profit_split_and_account_debit_reconcile():
+    plan = default_lifecycle_plans()["Alpha Futures - Advanced 50K - Funded only"]
+    settings = LifecycleSettings(start_mode="funded", desired_payout=900)
+    ledger = _multi_day_portfolio_ledger([600, 600, 600, 600, 600])
+
+    summary, days, trace = simulate_portfolio_lifecycle(ledger, plan, settings)
+    payouts = trace[trace["record_type"].eq("payout")]
+
+    assert not payouts.empty
+    assert summary.iloc[0]["total_payouts"] == pytest.approx(900)
+    assert payouts.iloc[0]["trader_cash"] == pytest.approx(900)
+    assert payouts.iloc[0]["gross_account_debit"] == pytest.approx(1000)
+    assert days.iloc[-1]["balance_after"] == pytest.approx(52_000)
+    assert summary.iloc[0]["ending_balance"] == pytest.approx(days.iloc[-1]["balance_after"])
+
+
+def test_payout_cap_count_cap_and_required_cushion_are_enforced():
+    plan = default_lifecycle_plans()["Apex Trader Funding - EOD PA 50K - Funded only"]
+    eligible = _multi_day_portfolio_ledger([1000, 1000, 1000, 1000, 1000])
+
+    capped_summary, _days, capped_trace = simulate_portfolio_lifecycle(eligible, plan, LifecycleSettings(start_mode="funded", desired_payout=0))
+    payout = capped_trace[capped_trace["record_type"].eq("payout")].iloc[0]
+    assert payout["gross_account_debit"] == pytest.approx(1500)
+    assert capped_summary.iloc[0]["total_payouts"] == pytest.approx(1500)
+
+    count_summary, _days, count_trace = simulate_portfolio_lifecycle(
+        eligible,
+        plan,
+        LifecycleSettings(start_mode="funded", payouts_already_taken=6, desired_payout=0),
+    )
+    assert count_trace[count_trace.get("record_type", "").eq("payout")].empty
+    assert count_summary.iloc[0]["total_payouts"] == 0
+
+    cushion_summary, _days, cushion_trace = simulate_portfolio_lifecycle(
+        eligible,
+        plan,
+        LifecycleSettings(start_mode="funded", desired_payout=1500, required_cushion=4_000),
+    )
+    assert cushion_trace[cushion_trace.get("record_type", "").eq("payout")].empty
+    assert cushion_summary.iloc[0]["total_payouts"] == 0
+
+
+def test_current_funded_account_state_changes_portfolio_result():
+    plan = default_lifecycle_plans()["Apex Trader Funding - EOD PA 50K - Funded only"]
+    ledger = _multi_day_portfolio_ledger([1000])
+    fresh, _days, fresh_trace = simulate_portfolio_lifecycle(ledger, plan, LifecycleSettings(start_mode="funded", desired_payout=500))
+    live, _days, live_trace = simulate_portfolio_lifecycle(
+        ledger,
+        plan,
+        LifecycleSettings(
+            start_mode="funded",
+            current_balance=54_000,
+            current_floor=50_100,
+            current_winning_days=4,
+            current_daily_profits=(300, 300, 300, 300),
+            desired_payout=500,
+        ),
+    )
+
+    assert fresh_trace[fresh_trace.get("record_type", "").eq("payout")].empty
+    assert not live_trace[live_trace["record_type"].eq("payout")].empty
+    assert live.iloc[0]["ending_balance"] != fresh.iloc[0]["ending_balance"]
+
+
+def test_payout_then_later_failure_ordering_and_failure_first_blocks_later_payouts():
+    plan = default_lifecycle_plans()["Apex Trader Funding - EOD PA 50K - Funded only"]
+    payout_then_fail = _multi_day_portfolio_ledger([1000, 1000, 1000, 1000, 1000, -4000])
+    summary, days, trace = simulate_portfolio_lifecycle(payout_then_fail, plan, LifecycleSettings(start_mode="funded", desired_payout=1500))
+
+    assert bool(summary.iloc[0]["failed"])
+    assert summary.iloc[0]["total_payouts"] == pytest.approx(1500)
+    assert summary.iloc[0]["first_payout_order"] < summary.iloc[0]["first_failure_order"]
+    assert days.iloc[-1]["trade_count"] == 1
+
+    failure_first = _multi_day_portfolio_ledger([-2100, 1000, 1000, 1000, 1000, 1000])
+    first_summary, first_days, first_trace = simulate_portfolio_lifecycle(failure_first, plan, LifecycleSettings(start_mode="funded", desired_payout=1500))
+    assert bool(first_summary.iloc[0]["failed"])
+    assert first_summary.iloc[0]["total_payouts"] == 0
+    assert first_trace[first_trace.get("record_type", "").eq("payout")].empty
+    assert len(first_days) == 1
 
 
 def test_failure_ordering_with_overlapping_positions_marks_missing_mae_unknown_and_conservative_bound_separate():
@@ -377,6 +469,20 @@ def test_missing_mae_never_reports_strict_survived():
     assert days.iloc[0]["strict_status"] == "UNKNOWN"
 
 
+def test_missing_mae_in_realized_only_is_strict_unknown_but_known_failure_overrides_unknown():
+    plan = default_lifecycle_plans()["Apex Trader Funding - EOD PA 50K - Funded only"]
+    missing = normalize_portfolio_ledger(_timed_ledger("mnq", "2025-01-02", 100, entry="09:30", exit_="09:45", mae_points=None), _spec("mnq", "NQ", "MNQ", 1))
+    days = build_portfolio_account_day_ledger(missing, plan, LifecycleSettings(start_mode="funded"), risk_mode="REALIZED_PNL_ONLY")
+    assert days.iloc[0]["strict_status"] == "UNKNOWN"
+    assert days.iloc[0]["realized_only_status"] == "SURVIVED"
+    assert days.iloc[0]["missing_mae_trade_count"] == 1
+
+    known_loss = normalize_portfolio_ledger(_timed_ledger("mnq", "2025-01-02", -2100, entry="10:00", exit_="10:15", mae_points=None), _spec("mnq", "NQ", "MNQ", 1))
+    fail_days = build_portfolio_account_day_ledger(pd.concat([missing, known_loss], ignore_index=True), plan, LifecycleSettings(start_mode="funded"), risk_mode="REALIZED_PNL_ONLY")
+    assert fail_days.iloc[0]["strict_status"] == "FAILED"
+    assert fail_days.iloc[0]["realized_only_status"] == "FAILED"
+
+
 def test_non_overlapping_same_day_mae_bounds_are_not_summed():
     plan = default_lifecycle_plans()["Apex Trader Funding - EOD PA 50K - Funded only"]
     settings = LifecycleSettings(start_mode="funded")
@@ -412,6 +518,22 @@ def test_account_trace_day_ledger_and_result_reconcile():
 
     assert summary.iloc[0]["ending_balance"] == days.iloc[-1]["balance_after"]
     assert trace.iloc[-1]["balance_after"] == days.iloc[-1]["balance_after"]
+
+
+def test_terminal_accounting_reconciles_executed_trace_only():
+    plan = default_lifecycle_plans()["Apex Trader Funding - EOD PA 50K - Funded only"]
+    first = normalize_portfolio_ledger(_timed_ledger("mnq", "2025-01-02", -2100, entry="09:30", exit_="09:45"), _spec("mnq", "NQ", "MNQ", 1))
+    later = normalize_portfolio_ledger(_timed_ledger("mgc", "2025-01-02", 1000, entry="10:00", exit_="10:15", asset="GC"), _spec("mgc", "GC", "MGC", 1))
+
+    summary, days, trace = simulate_portfolio_lifecycle(pd.concat([first, later], ignore_index=True), plan, LifecycleSettings(start_mode="funded"))
+
+    executed_trade_pnl = trace[trace["record_type"].eq("trade")]["pnl_dollars"].sum()
+    assert executed_trade_pnl == pytest.approx(days["net_pnl_dollars"].sum())
+    assert days.iloc[0]["trade_count"] == 1
+    assert days.iloc[0]["gross_pnl_dollars"] == pytest.approx(-2100)
+    assert summary.iloc[0]["ending_balance"] == days.iloc[-1]["balance_after"]
+    assert trace[trace["record_type"].eq("payout")]["trader_cash"].sum() == summary.iloc[0]["total_payouts"]
+    assert summary.iloc[0]["net_cash"] == pytest.approx(summary.iloc[0]["total_payouts"] - summary.iloc[0]["total_fees"])
 
 
 def test_points_dollars_conflict_blocks_without_confirmation_and_source_contract_scaling():
@@ -460,6 +582,52 @@ def test_priority_displacement_rewrites_final_audit_decision():
     assert kept["strategy_id"].tolist() == ["nq"]
     assert audit.set_index("strategies").loc["mnq|nq"]["decision"].tolist().count("DROP") == 1
     assert audit[audit["priority_reason"].eq("priority winner")]["decision"].tolist() == ["KEEP"]
+
+
+def test_three_trade_same_asset_chain_keeps_non_overlapping_a_and_c():
+    a = normalize_portfolio_ledger(_timed_ledger("a", "2025-01-02", 1, entry="09:30", exit_="10:00"), _spec("a", "NQ", "MNQ", 2))
+    b = normalize_portfolio_ledger(_timed_ledger("b", "2025-01-02", 1, entry="09:45", exit_="10:15"), _spec("b", "NQ", "MNQ", 2))
+    c = normalize_portfolio_ledger(_timed_ledger("c", "2025-01-02", 1, entry="10:00", exit_="10:30"), _spec("c", "NQ", "MNQ", 2))
+
+    kept, audit = resolve_portfolio_overlaps(pd.concat([a, b, c], ignore_index=True), policy="REJECT_SAME_ASSET_OVERLAP")
+    assert kept["strategy_id"].tolist() == ["a", "c"]
+    assert audit[audit["decision"].eq("DROP")]["strategies"].tolist() == ["a|b|c"]
+
+    priority_kept, _priority_audit = resolve_portfolio_overlaps(pd.concat([a, b, c], ignore_index=True), policy="PRIORITY_KEEP_ONE", priority=["b", "a", "c"])
+    intervals = priority_kept.sort_values("entry_time")
+    assert all(pd.Timestamp(left.exit_time) <= pd.Timestamp(right.entry_time) for left, right in zip(intervals.itertuples(), list(intervals.itertuples())[1:], strict=False))
+
+
+def test_portfolio_exports_preserve_per_path_contributions_and_allocation_rates():
+    trade_ledger = pd.concat(
+        [
+            normalize_portfolio_ledger(_ledger("mnq", "2025-01-02", 10), _spec("mnq", "NQ", "MNQ", 2), portfolio_path_id=0, allocation_id=0),
+            normalize_portfolio_ledger(_ledger("mgc", "2025-01-02", 10, asset="GC"), _spec("mgc", "GC", "MGC", 10), portfolio_path_id=1, allocation_id=0),
+        ],
+        ignore_index=True,
+    )
+    path_results = pd.DataFrame(
+        [
+            {"portfolio_path_id": 0, "allocation_id": 0, "ending_balance": 51_000, "net_cash": 500, "total_payouts": 500, "failed": False, "first_payout_order": 2, "first_failure_order": pd.NA},
+            {"portfolio_path_id": 1, "allocation_id": 0, "ending_balance": 49_000, "net_cash": 0, "total_payouts": 0, "failed": True, "first_payout_order": pd.NA, "first_failure_order": 1},
+        ]
+    )
+    frames = portfolio_export_frames(
+        specs=[_spec("mnq", "NQ", "MNQ", 2), _spec("mgc", "GC", "MGC", 10)],
+        allocations=[PortfolioAllocation(0, {"mnq": 1, "mgc": 1})],
+        dependency_manifest=pd.DataFrame(),
+        strategy_path_manifest=pd.DataFrame(),
+        trade_ledger=trade_ledger,
+        overlap_audit=pd.DataFrame(),
+        account_day_ledger=pd.DataFrame(),
+        account_trace=pd.DataFrame(),
+        path_results=path_results,
+    )
+
+    assert {"portfolio_path_id", "allocation_id", "strategy_id"} <= set(frames["portfolio_per_path_strategy_contribution"].columns)
+    assert {"portfolio_path_id", "allocation_id", "asset_id"} <= set(frames["portfolio_per_path_asset_contribution"].columns)
+    assert frames["portfolio_allocation_summary"].iloc[0]["path_count"] == 2
+    assert frames["portfolio_allocation_summary"].iloc[0]["first_payout_rate"] == pytest.approx(0.5)
 
 
 def test_known_contract_symbols_suggest_underlying_asset_without_overriding_user_value():

@@ -12,7 +12,12 @@ import pandas as pd
 
 from sim_core.lifecycle import LifecyclePlan, LifecycleSettings
 from sim_core.models import Trade
-from sim_core.prop_rules import _floor_ceiling, _is_payout_eligible, _trade_day
+from sim_core.prop_rules import (
+    calculate_payout_decision,
+    _floor_ceiling,
+    _is_payout_eligible,
+    _trade_day,
+)
 
 PnlBasis = Literal["points", "dollars"]
 MaeMfeConvention = Literal[
@@ -561,29 +566,50 @@ def resolve_portfolio_overlaps(
                 reason_by_row = {int(rows[0]["_row_id"]): "no overlap"}
                 decision_by_row = {int(rows[0]["_row_id"]): "KEEP"}
             elif policy == "REJECT_SAME_ASSET_OVERLAP":
-                winner = min(rows, key=lambda item: (pd.Timestamp(item["entry_time"]), pd.Timestamp(item["exit_time"]), str(item["strategy_id"])))
-                winners = {int(winner["_row_id"])}
-                reason_by_row = {
-                    int(item["_row_id"]): "first same-asset interval kept" if int(item["_row_id"]) in winners else "same asset overlap rejected"
-                    for item in rows
-                }
+                selected: list[dict[str, Any]] = []
+                reject_conflict: dict[int, dict[str, Any]] = {}
+                for item in sorted(rows, key=lambda row: (pd.Timestamp(row["entry_time"]), pd.Timestamp(row["exit_time"]), str(row["strategy_id"]))):
+                    conflict = next((kept for kept in selected if _rows_overlap(item, kept)), None)
+                    if conflict is None:
+                        selected.append(item)
+                    else:
+                        reject_conflict[int(item["_row_id"])] = conflict
+                winners = {int(item["_row_id"]) for item in selected}
+                reason_by_row = {}
+                for item in rows:
+                    row_id = int(item["_row_id"])
+                    if row_id in winners:
+                        reason_by_row[row_id] = "first non-overlapping interval kept"
+                    else:
+                        conflict = reject_conflict[row_id]
+                        reason_by_row[row_id] = f"same asset overlap rejected by {conflict['strategy_id']}"
                 decision_by_row = {int(item["_row_id"]): "KEEP" if int(item["_row_id"]) in winners else "DROP" for item in rows}
             elif policy == "PRIORITY_KEEP_ONE":
-                winner = min(
+                selected = []
+                reject_conflict = {}
+                for item in sorted(
                     rows,
-                    key=lambda item: (
-                        rank.get(str(item["strategy_id"]), len(rank)),
-                        pd.Timestamp(item["entry_time"]),
-                        pd.Timestamp(item["exit_time"]),
-                        str(item["strategy_id"]),
+                    key=lambda row: (
+                        rank.get(str(row["strategy_id"]), len(rank)),
+                        pd.Timestamp(row["entry_time"]),
+                        pd.Timestamp(row["exit_time"]),
+                        str(row["strategy_id"]),
                     ),
-                )
-                winners = {int(winner["_row_id"])}
-                winner_strategy = str(winner["strategy_id"])
-                reason_by_row = {
-                    int(item["_row_id"]): "priority winner" if int(item["_row_id"]) in winners else f"priority kept {winner_strategy}"
-                    for item in rows
-                }
+                ):
+                    conflict = next((kept for kept in selected if _rows_overlap(item, kept)), None)
+                    if conflict is None:
+                        selected.append(item)
+                    else:
+                        reject_conflict[int(item["_row_id"])] = conflict
+                winners = {int(item["_row_id"]) for item in selected}
+                reason_by_row = {}
+                for item in rows:
+                    row_id = int(item["_row_id"])
+                    if row_id in winners:
+                        reason_by_row[row_id] = "priority winner"
+                    else:
+                        conflict = reject_conflict[row_id]
+                        reason_by_row[row_id] = f"priority kept {conflict['strategy_id']}"
                 decision_by_row = {int(item["_row_id"]): "KEEP" if int(item["_row_id"]) in winners else "DROP" for item in rows}
             else:
                 winners = {int(item["_row_id"]) for item in rows}
@@ -661,6 +687,10 @@ def _cross_asset_overlap_audit(kept: pd.DataFrame, policy: OverlapPolicy, starti
                         }
                     )
     return pd.DataFrame(decisions)
+
+
+def _rows_overlap(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    return pd.Timestamp(left["entry_time"]) < pd.Timestamp(right["exit_time"]) and pd.Timestamp(left["exit_time"]) > pd.Timestamp(right["entry_time"])
 
 
 def _gross_asset_exposure(rows: list[dict[str, Any]]) -> int:
@@ -755,6 +785,9 @@ def _simulate_portfolio_state(
     total_payouts = 0.0
     total_fees = max(0.0, float(settings.prior_fees))
     payouts_taken = max(0, int(settings.payouts_already_taken))
+    first_payout_day: int | None = None
+    first_payout_order: int | None = None
+    cushion_ok_after_payout = False
     failed = False
     failure_reason: str | None = None
     first_failure_day: int | None = None
@@ -777,6 +810,9 @@ def _simulate_portfolio_state(
             max_drawdown=0.0,
             first_failure_day=None,
             first_failure_order=None,
+            first_payout_day=None,
+            first_payout_order=None,
+            cushion_ok_after_payout=False,
             account_day=pd.DataFrame(),
         )
         return pd.DataFrame([summary]), pd.DataFrame(), pd.DataFrame()
@@ -839,11 +875,21 @@ def _simulate_portfolio_state(
                 return
 
     for day_number, (day, group) in enumerate(work.groupby("account_day", sort=True), start=1):
+        if failed:
+            for _, trade in group.sort_values(["exit_time", "entry_time", "strategy_id"]).iterrows():
+                trace_rows.append(_portfolio_trace_trade_row(path_id, plan, trade, balance, balance, floor, next_event(), skipped=True))
+            continue
         start_balance = balance
         day_net = 0.0
+        day_gross = 0.0
+        day_commission = 0.0
+        executed_count = 0
         conservative_failure = False
         realized_only_failure = False
+        daily_paused = False
         day_missing_mae = _day_has_missing_mae(group, risk_mode)
+        missing_mae_count = _missing_mae_trade_count(group)
+        exact_mae_count = int(len(group) - missing_mae_count)
         for _, trade in group.sort_values(["exit_time", "entry_time", "strategy_id"]).iterrows():
             exit_time = pd.Timestamp(trade["exit_time"])
             evaluate_due_clusters(exit_time, day_number)
@@ -851,9 +897,15 @@ def _simulate_portfolio_state(
             if failed:
                 trace_rows.append(_portfolio_trace_trade_row(path_id, plan, trade, before, balance, floor, next_event(), skipped=True))
                 continue
+            if daily_paused:
+                trace_rows.append(_portfolio_trace_trade_row(path_id, plan, trade, before, balance, floor, next_event(), skipped=True, reason="daily_loss_pause"))
+                continue
             pnl = float(trade["net_pnl_dollars"])
             balance += pnl
             day_net += pnl
+            day_gross += float(trade.get("gross_pnl_dollars", pnl))
+            day_commission += float(trade.get("commission_dollars", 0.0))
+            executed_count += 1
             running_peak = max(running_peak, balance)
             max_drawdown = max(max_drawdown, running_peak - balance)
             order = next_event()
@@ -861,33 +913,113 @@ def _simulate_portfolio_state(
             if balance <= floor:
                 realized_only_failure = True
                 fail_now(day_number, "realized_exit_floor_breach", exit_time)
+                continue
+            if profile.daily_loss_limit is not None and day_net <= -abs(profile.daily_loss_limit):
+                if profile.daily_loss_hard:
+                    realized_only_failure = True
+                    fail_now(day_number, "daily_loss_limit_breach", exit_time)
+                else:
+                    daily_paused = True
         conservative_failure = failed and first_failure_day == day_number and failure_reason == "conservative_overlap_mae_bound"
         running_peak = max(running_peak, balance)
+        if failed and executed_count == 0 and not conservative_failure:
+            continue
         if not failed and balance > floor and day_net >= profile.winning_day_threshold and day_net > 0:
             winning_days += 1
-        daily_profits.append(day_net)
-        eod_peak = max(eod_peak, balance)
         if not failed and profile.drawdown_mode == "eod_trailing":
+            eod_peak = max(eod_peak, balance)
             floor = max(floor, min(_floor_ceiling(profile), eod_peak - profile.max_loss))
-        strict_status = "UNKNOWN" if day_missing_mae else "FAILED" if conservative_failure or realized_only_failure else "SURVIVED"
-        payout_eligible = (not failed) and _is_payout_eligible(balance=balance, profile=profile, winning_days=winning_days, daily_profits=daily_profits)
+        payout_eligible = False
+        payout_gross_debit = 0.0
+        payout_trader_cash = 0.0
+        payout_order: int | None = None
+        if not failed:
+            daily_profits.append(day_net)
+            payout_decision = calculate_payout_decision(
+                balance=balance,
+                profile=profile,
+                winning_days=winning_days,
+                daily_profits=daily_profits,
+                payouts_taken=payouts_taken,
+                desired_payout=settings.desired_payout,
+                required_cushion=settings.required_cushion,
+                auto_payout=settings.auto_payout,
+            )
+            payout_eligible = payout_decision.eligible
+            if payout_decision.taken:
+                payout_gross_debit = payout_decision.gross_account_debit
+                payout_trader_cash = payout_decision.trader_cash
+                before_payout = balance
+                balance = float(payout_decision.balance_after)
+                payouts_taken += 1
+                total_payouts += payout_trader_cash
+                winning_days = 0
+                daily_profits = []
+                cushion_ok_after_payout = True
+                payout_order = next_event()
+                if first_payout_day is None:
+                    first_payout_day = day_number
+                    first_payout_order = payout_order
+                trace_rows.append(
+                    {
+                        "path_id": path_id,
+                        "plan_key": plan.key,
+                        "firm": plan.firm,
+                        "account": plan.account_name,
+                        "record_type": "payout",
+                        "event_order": payout_order,
+                        "payout_event_order": payout_order,
+                        "session_date": day,
+                        "entry_time": pd.NaT,
+                        "exit_time": pd.NaT,
+                        "balance_before": before_payout,
+                        "pnl_dollars": 0.0,
+                        "gross_account_debit": payout_gross_debit,
+                        "trader_cash": payout_trader_cash,
+                        "payout_number": payouts_taken,
+                        "balance_after": balance,
+                        "floor": floor,
+                        "failure": False,
+                        "failure_reason": "",
+                        "total_payouts": total_payouts,
+                        "total_fees": total_fees,
+                        "net_cash": total_payouts - total_fees,
+                        "note": (
+                            "Payout taken; consistency state reset; "
+                            f"gross_account_debit={payout_gross_debit:.2f}; trader_profit_split={profile.profit_split:.2f}"
+                        ),
+                    }
+                )
+        known_failure = bool(conservative_failure or realized_only_failure)
+        strict_status = "FAILED" if known_failure else "UNKNOWN" if day_missing_mae else "SURVIVED"
+        realized_only_status = "FAILED" if realized_only_failure else "SURVIVED"
+        conservative_bound_status = "FAILED" if conservative_failure else "UNKNOWN" if risk_mode == "CONSERVATIVE_OVERLAP_MAE_BOUND" and day_missing_mae else "SURVIVED"
+        evidence_coverage = exact_mae_count / len(group) if len(group) else 1.0
         rows.append(
             {
                 "account_day": day,
-                "trade_count": int(len(group)),
-                "gross_pnl_dollars": float(group["gross_pnl_dollars"].sum()),
-                "commission_dollars": float(group["commission_dollars"].sum()),
+                "trade_count": int(executed_count),
+                "gross_pnl_dollars": day_gross,
+                "commission_dollars": day_commission,
                 "net_pnl_dollars": day_net,
                 "balance_before": start_balance,
                 "balance_after": balance,
                 "floor_after": floor,
                 "winning_days_after": winning_days,
                 "strict_status": strict_status,
+                "realized_only_status": realized_only_status,
+                "conservative_bound_status": conservative_bound_status,
+                "evidence_coverage": evidence_coverage,
+                "missing_mae_trade_count": missing_mae_count,
+                "exact_mae_trade_count": exact_mae_count,
                 "realized_only_failure": bool(realized_only_failure),
                 "conservative_bound_failure": bool(conservative_failure),
                 "risk_mode": risk_mode,
                 "risk_mode_label": "conservative bound, not exact" if risk_mode == "CONSERVATIVE_OVERLAP_MAE_BOUND" else risk_mode,
                 "payout_eligible_after_day": bool(payout_eligible),
+                "payout_gross_account_debit": payout_gross_debit,
+                "payout_trader_cash": payout_trader_cash,
+                "payout_event_order": payout_order,
             }
         )
     account_day = pd.DataFrame(rows)
@@ -904,6 +1036,9 @@ def _simulate_portfolio_state(
         max_drawdown=max_drawdown,
         first_failure_day=first_failure_day,
         first_failure_order=first_failure_order,
+        first_payout_day=first_payout_day,
+        first_payout_order=first_payout_order,
+        cushion_ok_after_payout=cushion_ok_after_payout,
         account_day=account_day,
     )
     return pd.DataFrame([summary]), account_day, pd.DataFrame(trace_rows)
@@ -919,6 +1054,7 @@ def _portfolio_trace_trade_row(
     event_order: int,
     *,
     skipped: bool,
+    reason: str = "",
 ) -> dict[str, Any]:
     return {
         "path_id": path_id,
@@ -938,8 +1074,11 @@ def _portfolio_trace_trade_row(
         "balance_after": after,
         "floor": floor,
         "failure": False,
-        "failure_reason": "",
+        "failure_reason": reason,
         "trader_cash": 0.0,
+        "gross_account_debit": 0.0,
+        "total_payouts": 0.0,
+        "total_fees": 0.0,
         "net_cash": 0.0,
     }
 
@@ -958,6 +1097,9 @@ def _portfolio_summary_row(
     max_drawdown: float,
     first_failure_day: int | None,
     first_failure_order: int | None,
+    first_payout_day: int | None,
+    first_payout_order: int | None,
+    cushion_ok_after_payout: bool,
     account_day: pd.DataFrame,
 ) -> dict[str, Any]:
     net_cash = total_payouts - total_fees
@@ -974,9 +1116,9 @@ def _portfolio_summary_row(
         "eval_passes": 0,
         "funded_failures": int(bool(failed)),
         "payouts_taken": payouts_taken,
-        "first_payout_month": None,
-        "first_payout_day": None,
-        "first_payout_order": None,
+        "first_payout_month": None if first_payout_day is None else 1,
+        "first_payout_day": first_payout_day,
+        "first_payout_order": first_payout_order,
         "first_failure_month": None if first_failure_day is None else 1,
         "first_failure_day": first_failure_day,
         "first_failure_order": first_failure_order,
@@ -988,7 +1130,7 @@ def _portfolio_summary_row(
         "ending_floor": ending_floor,
         "max_drawdown": max_drawdown,
         "target_hit": False,
-        "cushion_ok_after_payout": False,
+        "cushion_ok_after_payout": bool(cushion_ok_after_payout),
         "strict_known_failure_rate": float((account_day["strict_status"] == "FAILED").mean()) if not account_day.empty else 0.0,
         "strict_unknown_rate": float((account_day["strict_status"] == "UNKNOWN").mean()) if not account_day.empty else 0.0,
         "realized_only_failure_rate": float((account_day["realized_only_failure"].astype(bool)).mean()) if not account_day.empty else 0.0,
@@ -1008,11 +1150,15 @@ def _has_overlap_missing_mae(group: pd.DataFrame) -> bool:
 
 
 def _day_has_missing_mae(group: pd.DataFrame, risk_mode: IntratradeRiskMode) -> bool:
-    if risk_mode != "CONSERVATIVE_OVERLAP_MAE_BOUND":
-        return False
     if "mae_dollars_abs" not in group:
         return True
     return bool(group["mae_dollars_abs"].isna().any())
+
+
+def _missing_mae_trade_count(group: pd.DataFrame) -> int:
+    if "mae_dollars_abs" not in group:
+        return int(len(group))
+    return int(group["mae_dollars_abs"].isna().sum())
 
 
 def _risk_clusters(ledger: pd.DataFrame) -> list[dict[str, Any]]:
@@ -1062,7 +1208,7 @@ def _max_concurrent_mae(cluster: list[dict[str, Any]]) -> float:
 
 def portfolio_contribution_summary(ledger: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     by_strategy = (
-        ledger.groupby(["allocation_id", "strategy_id"], dropna=False)
+        ledger.groupby(["portfolio_path_id", "allocation_id", "strategy_id"], dropna=False)
         .agg(
             gross_pnl_dollars=("gross_pnl_dollars", "sum"),
             net_pnl_dollars=("net_pnl_dollars", "sum"),
@@ -1073,7 +1219,7 @@ def portfolio_contribution_summary(ledger: pd.DataFrame) -> tuple[pd.DataFrame, 
         .reset_index()
     )
     by_asset = (
-        ledger.groupby(["allocation_id", "asset_id"], dropna=False)
+        ledger.groupby(["portfolio_path_id", "allocation_id", "asset_id"], dropna=False)
         .agg(
             gross_pnl_dollars=("gross_pnl_dollars", "sum"),
             net_pnl_dollars=("net_pnl_dollars", "sum"),
@@ -1083,6 +1229,62 @@ def portfolio_contribution_summary(ledger: pd.DataFrame) -> tuple[pd.DataFrame, 
         .reset_index()
     )
     return by_strategy, by_asset
+
+
+def portfolio_allocation_monte_carlo_summary(
+    path_results: pd.DataFrame,
+    by_strategy: pd.DataFrame,
+    allocation_manifest: pd.DataFrame,
+) -> pd.DataFrame:
+    if path_results.empty:
+        return pd.DataFrame()
+    rows = []
+
+    def numeric_column(frame: pd.DataFrame, column: str, default: float = 0.0) -> pd.Series:
+        if column not in frame:
+            return pd.Series(default, index=frame.index, dtype=float)
+        return pd.to_numeric(frame[column], errors="coerce").fillna(default)
+
+    for allocation_id, group in path_results.groupby("allocation_id", dropna=False):
+        paid = pd.to_numeric(group.get("total_payouts", 0), errors="coerce").fillna(0) > 0
+        failed = group.get("failed", pd.Series(False, index=group.index)).astype(bool)
+        first_payout_order = pd.to_numeric(group.get("first_payout_order"), errors="coerce")
+        first_failure_order = pd.to_numeric(group.get("first_failure_order"), errors="coerce")
+        payout_before_failure = first_payout_order.notna() & (first_failure_order.isna() | (first_payout_order < first_failure_order))
+        failure_before_payout = first_failure_order.notna() & (first_payout_order.isna() | (first_failure_order < first_payout_order))
+        net_cash = pd.to_numeric(group.get("net_cash", 0), errors="coerce").fillna(0)
+        ending_balance = pd.to_numeric(group.get("ending_balance", 0), errors="coerce").fillna(0)
+        paid_days = pd.to_numeric(group.loc[paid, "first_payout_day"], errors="coerce") if "first_payout_day" in group else pd.Series(dtype=float)
+        row = {
+            "allocation_id": allocation_id,
+            "path_count": int(group["portfolio_path_id"].nunique() if "portfolio_path_id" in group else len(group)),
+            "median_ending_balance": float(ending_balance.median()),
+            "mean_ending_balance": float(ending_balance.mean()),
+            "median_net_cash": float(net_cash.median()),
+            "p10_net_cash": float(net_cash.quantile(0.10)),
+            "p90_net_cash": float(net_cash.quantile(0.90)),
+            "payout_before_failure_rate": float(payout_before_failure.mean()),
+            "failure_before_first_payout_rate": float(failure_before_payout.mean()),
+            "first_payout_rate": float(paid.mean()),
+            "median_time_to_first_payout_among_paid_paths": None if paid_days.dropna().empty else float(paid_days.median()),
+            "terminal_failure_rate": float(failed.mean()),
+            "survival_rate": float((~failed).mean()),
+            "strict_known_failure_rate": float(numeric_column(group, "strict_known_failure_rate").mean()),
+            "strict_unknown_evidence_rate": float(numeric_column(group, "strict_unknown_rate").mean()),
+            "realized_only_failure_rate": float(numeric_column(group, "realized_only_failure_rate").mean()),
+            "conservative_bound_failure_rate": float(numeric_column(group, "conservative_bound_failure_rate").mean()),
+        }
+        strategy_rows = by_strategy[by_strategy["allocation_id"].eq(allocation_id)] if not by_strategy.empty else pd.DataFrame()
+        for strategy_id, strat_group in strategy_rows.groupby("strategy_id", dropna=False):
+            row[f"median_gross_pnl_strategy_{strategy_id}"] = float(pd.to_numeric(strat_group["gross_pnl_dollars"], errors="coerce").median())
+            row[f"median_net_pnl_strategy_{strategy_id}"] = float(pd.to_numeric(strat_group["net_pnl_dollars"], errors="coerce").median())
+        manifest_rows = allocation_manifest[allocation_manifest["allocation_id"].eq(allocation_id)]
+        if not manifest_rows.empty:
+            for column, value in manifest_rows.iloc[0].items():
+                if column != "allocation_id":
+                    row[f"contracts_{column}"] = value
+        rows.append(row)
+    return pd.DataFrame(rows).sort_values("allocation_id").reset_index(drop=True)
 
 
 def portfolio_export_frames(
@@ -1101,6 +1303,7 @@ def portfolio_export_frames(
     allocation_manifest = pd.DataFrame(
         [{"allocation_id": allocation.allocation_id, **allocation.contracts_by_strategy} for allocation in allocations]
     )
+    allocation_summary = portfolio_allocation_monte_carlo_summary(path_results, by_strategy, allocation_manifest)
     return {
         "portfolio_source_manifest": pd.DataFrame([asdict(spec) for spec in specs]),
         "portfolio_instrument_specs": pd.DataFrame([asdict(spec) for spec in specs]),
@@ -1112,7 +1315,9 @@ def portfolio_export_frames(
         "portfolio_account_day_ledger": account_day_ledger,
         "portfolio_account_trace": account_trace,
         "portfolio_path_results": path_results,
-        "portfolio_allocation_summary": by_strategy.merge(by_asset, on="allocation_id", how="outer", suffixes=("_strategy", "_asset")),
+        "portfolio_per_path_strategy_contribution": by_strategy,
+        "portfolio_per_path_asset_contribution": by_asset,
+        "portfolio_allocation_summary": allocation_summary,
         "portfolio_validation_report": pd.DataFrame([{"check": "portfolio_units_are_dollars", "passed": "combined_portfolio_points" not in trade_ledger.columns}]),
     }
 
