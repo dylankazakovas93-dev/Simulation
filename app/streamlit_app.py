@@ -38,6 +38,8 @@ from sim_core.portfolio import (
     build_joint_portfolio_paths,
     combine_portfolio_path,
     canonical_asset_suggestion,
+    is_supported_portfolio_lifecycle_plan,
+    portfolio_lifecycle_plan_unsupported_reason,
     portfolio_export_frames,
     resolve_portfolio_overlaps,
     simulate_portfolio_lifecycle,
@@ -584,10 +586,17 @@ def render_portfolio_builder(
     seasonal_month_aware = st.checkbox("Seasonal / month-aware sampling", value=True)
     overlap_policy = st.selectbox("Same-asset overlap policy", ["REJECT_SAME_ASSET_OVERLAP", "PRIORITY_KEEP_ONE", "ALLOW_STACKING"])
     risk_mode = st.selectbox("Intratrade risk mode", ["REALIZED_PNL_ONLY", "CONSERVATIVE_OVERLAP_MAE_BOUND", "EXACT_INTRATRADE"])
-    plan_options = [key for key, plan in lifecycle_plans.items() if plan.eval_profile is None]
+    unsupported_plan_messages = [
+        {"plan": key, "reason": portfolio_lifecycle_plan_unsupported_reason(plan)}
+        for key, plan in lifecycle_plans.items()
+        if portfolio_lifecycle_plan_unsupported_reason(plan) is not None
+    ]
+    plan_options = [key for key, plan in lifecycle_plans.items() if is_supported_portfolio_lifecycle_plan(plan)]
     selected_plan_key = st.selectbox("Lifecycle plan", plan_options, index=plan_options.index("Apex Trader Funding - EOD PA 50K - Funded only") if "Apex Trader Funding - EOD PA 50K - Funded only" in plan_options else 0)
     selected_plan = lifecycle_plans[selected_plan_key]
-    st.caption("Portfolio Builder currently supports funded-only lifecycle plans. Eval-to-funded routes are blocked until direct portfolio tests cover that route.")
+    st.caption("Portfolio Builder currently supports funded-only lifecycle plans with non-intraday drawdown. Eval-to-funded routes and intraday-trailing plans are blocked.")
+    if unsupported_plan_messages:
+        st.info("Intraday-trailing plans require genuine intratrade evidence and are not currently supported in Portfolio Builder.")
     state_mode = st.radio("Funded account state", ["Fresh funded profile", "Single live account"], horizontal=True)
     state_cols = st.columns(4)
     current_balance = state_cols[0].number_input("Current balance", value=float(selected_plan.funded_profile.starting_balance), step=100.0, disabled=state_mode == "Fresh funded profile")

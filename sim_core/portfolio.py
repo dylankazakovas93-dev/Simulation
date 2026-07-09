@@ -41,6 +41,18 @@ CANONICAL_ASSET_BY_CONTRACT = {
 }
 
 
+def portfolio_lifecycle_plan_unsupported_reason(plan: LifecyclePlan) -> str | None:
+    if plan.eval_profile is not None:
+        return "Portfolio Builder supports funded-only lifecycle plans; eval-to-funded routing is not implemented."
+    if plan.funded_profile.drawdown_mode == "intraday_trailing":
+        return "Intraday-trailing funded plans require genuine intratrade evidence and are not supported by the portfolio lifecycle engine."
+    return None
+
+
+def is_supported_portfolio_lifecycle_plan(plan: LifecyclePlan) -> bool:
+    return portfolio_lifecycle_plan_unsupported_reason(plan) is None
+
+
 @dataclass(frozen=True)
 class PortfolioInstrumentSpec:
     strategy_id: str
@@ -749,6 +761,9 @@ def simulate_portfolio_lifecycle(
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     if risk_mode == "EXACT_INTRATRADE":
         raise ValueError("EXACT_INTRATRADE requires timestamped intratrade equity evidence")
+    unsupported = portfolio_lifecycle_plan_unsupported_reason(plan)
+    if unsupported is not None:
+        raise ValueError(f"unsupported portfolio lifecycle plan: {unsupported}")
     return _simulate_portfolio_state(ledger, plan, settings, risk_mode=risk_mode, timezone=timezone, path_id=path_id)
 
 
@@ -762,6 +777,9 @@ def build_portfolio_account_day_ledger(
 ) -> pd.DataFrame:
     if risk_mode == "EXACT_INTRATRADE":
         raise ValueError("EXACT_INTRATRADE requires timestamped intratrade equity evidence")
+    unsupported = portfolio_lifecycle_plan_unsupported_reason(plan)
+    if unsupported is not None:
+        raise ValueError(f"unsupported portfolio lifecycle plan: {unsupported}")
     _summary, account_day, _trace = _simulate_portfolio_state(ledger, plan, settings, risk_mode=risk_mode, timezone=timezone, path_id=0)
     return account_day
 
@@ -782,6 +800,10 @@ def _simulate_portfolio_state(
     running_peak = balance
     winning_days = int(settings.current_winning_days)
     daily_profits = list(float(value) for value in settings.current_daily_profits)
+    if settings.current_highest_winning_day > 0 and (
+        not daily_profits or float(settings.current_highest_winning_day) > max(daily_profits)
+    ):
+        daily_profits.append(float(settings.current_highest_winning_day))
     total_payouts = 0.0
     total_fees = max(0.0, float(settings.prior_fees))
     payouts_taken = max(0, int(settings.payouts_already_taken))
@@ -853,7 +875,10 @@ def _simulate_portfolio_state(
                 "floor": floor,
                 "failure": True,
                 "failure_reason": reason,
+                "gross_account_debit": 0.0,
                 "trader_cash": 0.0,
+                "total_payouts": total_payouts,
+                "total_fees": total_fees,
                 "net_cash": total_payouts - total_fees,
             }
         )
@@ -877,7 +902,20 @@ def _simulate_portfolio_state(
     for day_number, (day, group) in enumerate(work.groupby("account_day", sort=True), start=1):
         if failed:
             for _, trade in group.sort_values(["exit_time", "entry_time", "strategy_id"]).iterrows():
-                trace_rows.append(_portfolio_trace_trade_row(path_id, plan, trade, balance, balance, floor, next_event(), skipped=True))
+                trace_rows.append(
+                    _portfolio_trace_trade_row(
+                        path_id,
+                        plan,
+                        trade,
+                        balance,
+                        balance,
+                        floor,
+                        next_event(),
+                        skipped=True,
+                        total_payouts=total_payouts,
+                        total_fees=total_fees,
+                    )
+                )
             continue
         start_balance = balance
         day_net = 0.0
@@ -895,10 +933,37 @@ def _simulate_portfolio_state(
             evaluate_due_clusters(exit_time, day_number)
             before = balance
             if failed:
-                trace_rows.append(_portfolio_trace_trade_row(path_id, plan, trade, before, balance, floor, next_event(), skipped=True))
+                trace_rows.append(
+                    _portfolio_trace_trade_row(
+                        path_id,
+                        plan,
+                        trade,
+                        before,
+                        balance,
+                        floor,
+                        next_event(),
+                        skipped=True,
+                        total_payouts=total_payouts,
+                        total_fees=total_fees,
+                    )
+                )
                 continue
             if daily_paused:
-                trace_rows.append(_portfolio_trace_trade_row(path_id, plan, trade, before, balance, floor, next_event(), skipped=True, reason="daily_loss_pause"))
+                trace_rows.append(
+                    _portfolio_trace_trade_row(
+                        path_id,
+                        plan,
+                        trade,
+                        before,
+                        balance,
+                        floor,
+                        next_event(),
+                        skipped=True,
+                        reason="daily_loss_pause",
+                        total_payouts=total_payouts,
+                        total_fees=total_fees,
+                    )
+                )
                 continue
             pnl = float(trade["net_pnl_dollars"])
             balance += pnl
@@ -909,7 +974,20 @@ def _simulate_portfolio_state(
             running_peak = max(running_peak, balance)
             max_drawdown = max(max_drawdown, running_peak - balance)
             order = next_event()
-            trace_rows.append(_portfolio_trace_trade_row(path_id, plan, trade, before, balance, floor, order, skipped=False))
+            trace_rows.append(
+                _portfolio_trace_trade_row(
+                    path_id,
+                    plan,
+                    trade,
+                    before,
+                    balance,
+                    floor,
+                    order,
+                    skipped=False,
+                    total_payouts=total_payouts,
+                    total_fees=total_fees,
+                )
+            )
             if balance <= floor:
                 realized_only_failure = True
                 fail_now(day_number, "realized_exit_floor_breach", exit_time)
@@ -991,7 +1069,14 @@ def _simulate_portfolio_state(
                     }
                 )
         known_failure = bool(conservative_failure or realized_only_failure)
-        strict_status = "FAILED" if known_failure else "UNKNOWN" if day_missing_mae else "SURVIVED"
+        if known_failure:
+            strict_status = "FAILED"
+        elif risk_mode == "REALIZED_PNL_ONLY":
+            strict_status = "UNKNOWN"
+        elif risk_mode == "CONSERVATIVE_OVERLAP_MAE_BOUND":
+            strict_status = "UNKNOWN" if day_missing_mae else "SURVIVED"
+        else:
+            strict_status = "UNKNOWN"
         realized_only_status = "FAILED" if realized_only_failure else "SURVIVED"
         conservative_bound_status = "FAILED" if conservative_failure else "UNKNOWN" if risk_mode == "CONSERVATIVE_OVERLAP_MAE_BOUND" and day_missing_mae else "SURVIVED"
         evidence_coverage = exact_mae_count / len(group) if len(group) else 1.0
@@ -1055,6 +1140,8 @@ def _portfolio_trace_trade_row(
     *,
     skipped: bool,
     reason: str = "",
+    total_payouts: float,
+    total_fees: float,
 ) -> dict[str, Any]:
     return {
         "path_id": path_id,
@@ -1077,9 +1164,9 @@ def _portfolio_trace_trade_row(
         "failure_reason": reason,
         "trader_cash": 0.0,
         "gross_account_debit": 0.0,
-        "total_payouts": 0.0,
-        "total_fees": 0.0,
-        "net_cash": 0.0,
+        "total_payouts": total_payouts,
+        "total_fees": total_fees,
+        "net_cash": total_payouts - total_fees,
     }
 
 
