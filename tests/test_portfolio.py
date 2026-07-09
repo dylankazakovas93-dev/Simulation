@@ -11,6 +11,7 @@ from sim_core.portfolio import (
     build_allocation_grid,
     build_joint_portfolio_paths,
     build_portfolio_account_day_ledger,
+    canonical_asset_suggestion,
     combine_portfolio_path,
     normalize_portfolio_ledger,
     portfolio_trade_ledger_to_lifecycle_trades,
@@ -36,6 +37,30 @@ def _ledger(strategy: str, date: str, pnl_points: float, *, asset: str = "NQ", o
             }
         ]
     )
+
+
+def _timed_ledger(
+    strategy: str,
+    date: str,
+    pnl_points: float,
+    *,
+    entry: str,
+    exit_: str,
+    asset: str = "NQ",
+    mae_points: float | None = 2.0,
+) -> pd.DataFrame:
+    row = {
+        "trade_id": f"{strategy}-{date}-{entry}",
+        "source_session_date": date,
+        "entry_time": f"{date}T{entry}:00Z",
+        "exit_time": f"{date}T{exit_}:00Z",
+        "direction": "long",
+        "pnl_points": pnl_points,
+        "mfe_points": 12.0,
+    }
+    if mae_points is not None:
+        row["mae_points"] = mae_points
+    return pd.DataFrame([row])
 
 
 def _spec(strategy: str, asset: str, symbol: str, dpp: float, *, commission: float = 0.0) -> PortfolioInstrumentSpec:
@@ -193,6 +218,64 @@ def test_paired_date_resampling_preserves_same_date_combinations_and_seed_reprod
     assert first[0]["mnq"]["source_session_date"].tolist() == second[0]["mnq"]["source_session_date"].tolist()
 
 
+def test_union_calendar_blocks_keep_single_strategy_dates_and_report_coverage():
+    ledgers = {
+        "mnq": pd.concat([_ledger("mnq", "2025-01-02", 1), _ledger("mnq", "2025-01-03", 2)], ignore_index=True),
+        "mgc": pd.concat([_ledger("mgc", "2025-01-03", 3, asset="GC"), _ledger("mgc", "2025-01-06", 4, asset="GC")], ignore_index=True),
+    }
+
+    paths, manifest = build_joint_portfolio_paths(ledgers, path_count=1, seed=0, trades_per_path=6, forecast_start_date="2026-01-02")
+    original_dates = pd.concat([paths[0]["mnq"], paths[0]["mgc"]], ignore_index=True)["original_source_session_date"].tolist()
+
+    assert set(original_dates) == {"2025-01-02", "2025-01-03", "2025-01-06"}
+    assert manifest["union_date_count"].iloc[0] == 3
+    assert manifest["full_common_date_count"].iloc[0] == 1
+    assert manifest["coactive_date_count"].iloc[0] == 1
+
+
+def test_repeated_blocks_shift_to_unique_synthetic_dates_preserving_duration_and_overlap():
+    ledgers = {
+        "mnq": _timed_ledger("mnq", "2025-01-02", 1, entry="09:30", exit_="10:30"),
+        "mgc": _timed_ledger("mgc", "2025-01-02", 2, entry="09:45", exit_="10:15", asset="GC"),
+    }
+
+    paths, _manifest = build_joint_portfolio_paths(ledgers, path_count=1, seed=1, trades_per_path=3, forecast_start_date="2026-01-02")
+    combined = pd.concat([paths[0]["mnq"], paths[0]["mgc"]], ignore_index=True)
+
+    assert combined.groupby("block_occurrence_id")["synthetic_account_date"].nunique().eq(1).all()
+    assert combined[["block_occurrence_id", "synthetic_account_date"]].drop_duplicates()["synthetic_account_date"].is_unique
+    assert (pd.to_datetime(paths[0]["mnq"]["exit_time"]) - pd.to_datetime(paths[0]["mnq"]["entry_time"])).dt.total_seconds().eq(3600).all()
+    assert pd.to_datetime(paths[0]["mnq"]["entry_time"]).dt.time.astype(str).eq("09:30:00").all()
+    assert pd.to_datetime(paths[0]["mgc"]["entry_time"]).dt.time.astype(str).eq("09:45:00").all()
+
+
+def test_seasonal_sampling_uses_forecast_month_and_errors_when_unavailable():
+    ledgers = {
+        "mnq": pd.concat([_ledger("mnq", "2025-01-02", 1), _ledger("mnq", "2025-02-03", 2)], ignore_index=True),
+        "mgc": pd.concat([_ledger("mgc", "2025-01-02", 3, asset="GC"), _ledger("mgc", "2025-02-03", 4, asset="GC")], ignore_index=True),
+    }
+
+    paths, _manifest = build_joint_portfolio_paths(
+        ledgers,
+        path_count=1,
+        seed=7,
+        trades_per_path=2,
+        seasonal_month_aware=True,
+        forecast_start_date="2026-02-02",
+    )
+
+    assert set(paths[0]["mnq"]["original_source_session_date"]) == {"2025-02-03"}
+    with pytest.raises(ValueError, match="forecast month 3"):
+        build_joint_portfolio_paths(
+            ledgers,
+            path_count=1,
+            seed=7,
+            trades_per_path=1,
+            seasonal_month_aware=True,
+            forecast_start_date="2026-03-02",
+        )
+
+
 def test_allocation_changes_reuse_source_paths_and_independent_mode_is_labelled_unverified():
     ledgers = {
         "mnq": pd.concat([_ledger("mnq", "2025-01-02", 1), _ledger("mnq", "2025-02-03", 2)], ignore_index=True),
@@ -268,6 +351,123 @@ def test_single_non_overlapping_mnq_strategy_matches_existing_lifecycle_result()
 
     assert portfolio_summary.iloc[0]["ending_balance"] == legacy_result.ending_balance
     assert portfolio_summary.iloc[0]["net_cash"] == legacy_result.net_cash
+
+
+def test_realized_first_exit_breach_cannot_be_repaired_by_later_gain():
+    plan = default_lifecycle_plans()["Apex Trader Funding - EOD PA 50K - Funded only"]
+    settings = LifecycleSettings(start_mode="funded")
+    losing = normalize_portfolio_ledger(_timed_ledger("mnq", "2025-01-02", -2100, entry="09:30", exit_="09:45"), _spec("mnq", "NQ", "MNQ", 1))
+    later_gain = normalize_portfolio_ledger(_timed_ledger("mgc", "2025-01-02", 1000, entry="10:00", exit_="10:15", asset="GC"), _spec("mgc", "GC", "MGC", 1))
+
+    summary, days, trace = simulate_portfolio_lifecycle(pd.concat([losing, later_gain], ignore_index=True), plan, settings)
+
+    assert bool(summary.iloc[0]["failed"])
+    assert summary.iloc[0]["ending_balance"] == 47_900
+    assert days.iloc[0]["realized_only_failure"]
+    assert "trade_skipped_after_failure" in set(trace["record_type"])
+
+
+def test_missing_mae_never_reports_strict_survived():
+    plan = default_lifecycle_plans()["Apex Trader Funding - EOD PA 50K - Funded only"]
+    settings = LifecycleSettings(start_mode="funded")
+    frame = normalize_portfolio_ledger(_timed_ledger("mnq", "2025-01-02", 0, entry="09:30", exit_="10:30", mae_points=None), _spec("mnq", "NQ", "MNQ", 1))
+
+    days = build_portfolio_account_day_ledger(frame, plan, settings, risk_mode="CONSERVATIVE_OVERLAP_MAE_BOUND")
+
+    assert days.iloc[0]["strict_status"] == "UNKNOWN"
+
+
+def test_non_overlapping_same_day_mae_bounds_are_not_summed():
+    plan = default_lifecycle_plans()["Apex Trader Funding - EOD PA 50K - Funded only"]
+    settings = LifecycleSettings(start_mode="funded")
+    first = normalize_portfolio_ledger(_timed_ledger("mnq", "2025-01-02", 0, entry="09:30", exit_="09:45", mae_points=1200), _spec("mnq", "NQ", "MNQ", 1))
+    second = normalize_portfolio_ledger(_timed_ledger("mgc", "2025-01-02", 0, entry="10:00", exit_="10:15", asset="GC", mae_points=1200), _spec("mgc", "GC", "MGC", 1))
+
+    summary, days, _trace = simulate_portfolio_lifecycle(pd.concat([first, second], ignore_index=True), plan, settings, risk_mode="CONSERVATIVE_OVERLAP_MAE_BOUND")
+
+    assert not bool(summary.iloc[0]["failed"])
+    assert not days.iloc[0]["conservative_bound_failure"]
+
+
+def test_overlapping_mae_cluster_bound_can_fail_and_block_later_trades():
+    plan = default_lifecycle_plans()["Apex Trader Funding - EOD PA 50K - Funded only"]
+    settings = LifecycleSettings(start_mode="funded")
+    first = normalize_portfolio_ledger(_timed_ledger("mnq", "2025-01-02", 0, entry="09:30", exit_="10:30", mae_points=1100), _spec("mnq", "NQ", "MNQ", 1))
+    second = normalize_portfolio_ledger(_timed_ledger("mgc", "2025-01-02", 0, entry="09:45", exit_="10:15", asset="GC", mae_points=1100), _spec("mgc", "GC", "MGC", 1))
+    later = normalize_portfolio_ledger(_timed_ledger("mes", "2025-01-02", 500, entry="11:00", exit_="11:15", asset="ES", mae_points=1), _spec("mes", "ES", "MES", 1))
+
+    summary, days, trace = simulate_portfolio_lifecycle(pd.concat([first, second, later], ignore_index=True), plan, settings, risk_mode="CONSERVATIVE_OVERLAP_MAE_BOUND")
+
+    assert bool(summary.iloc[0]["failed"])
+    assert days.iloc[0]["conservative_bound_failure"]
+    assert "trade_skipped_after_failure" in set(trace["record_type"])
+
+
+def test_account_trace_day_ledger_and_result_reconcile():
+    plan = default_lifecycle_plans()["Apex Trader Funding - EOD PA 50K - Funded only"]
+    settings = LifecycleSettings(start_mode="funded")
+    frame = normalize_portfolio_ledger(_ledger("mnq", "2025-01-02", 100), _spec("mnq", "NQ", "MNQ", 2))
+
+    summary, days, trace = simulate_portfolio_lifecycle(frame, plan, settings)
+
+    assert summary.iloc[0]["ending_balance"] == days.iloc[-1]["balance_after"]
+    assert trace.iloc[-1]["balance_after"] == days.iloc[-1]["balance_after"]
+
+
+def test_points_dollars_conflict_blocks_without_confirmation_and_source_contract_scaling():
+    frame = pd.DataFrame(
+        [
+            {
+                "trade_id": "conflict",
+                "source_session_date": "2025-01-02",
+                "entry_time": "2025-01-02T09:30:00Z",
+                "exit_time": "2025-01-02T09:45:00Z",
+                "pnl_points": 10.0,
+                "pnl_dollars": 100.0,
+                "mae_points": 1.0,
+                "mfe_points": 2.0,
+            }
+        ]
+    )
+    unconfirmed = PortfolioInstrumentSpec("mnq", "NQ", "NQ", "MNQ", 2, pnl_basis="dollars", source_contract_count=1)
+    confirmed = PortfolioInstrumentSpec("mnq", "NQ", "NQ", "MNQ", 2, pnl_basis="dollars", source_contract_count=5, pnl_basis_confirmed=True)
+
+    with pytest.raises(ValueError, match="explicitly confirm"):
+        normalize_portfolio_ledger(frame, unconfirmed)
+    normalized = normalize_portfolio_ledger(frame, confirmed, contract_count=2)
+
+    assert normalized.iloc[0]["gross_pnl_dollars"] == 40.0
+    assert normalized.iloc[0]["expected_source_pnl_dollars"] == 100.0
+
+
+def test_mae_mfe_sign_convention_validation():
+    frame = _timed_ledger("mnq", "2025-01-02", 1, entry="09:30", exit_="09:45", mae_points=-2)
+
+    with pytest.raises(ValueError, match="POSITIVE_MAGNITUDES"):
+        normalize_portfolio_ledger(frame, _spec("mnq", "NQ", "MNQ", 2))
+    signed_spec = PortfolioInstrumentSpec("mnq", "NQ", "NQ", "MNQ", 2, mae_mfe_convention="SIGNED_MAE_NEGATIVE_MFE_POSITIVE")
+    normalized = normalize_portfolio_ledger(frame, signed_spec)
+
+    assert normalized.iloc[0]["adverse_excursion_points_abs"] == 2
+
+
+def test_priority_displacement_rewrites_final_audit_decision():
+    early = normalize_portfolio_ledger(_timed_ledger("mnq", "2025-01-02", 1, entry="09:30", exit_="11:00"), _spec("mnq", "NQ", "MNQ", 2))
+    later_priority = normalize_portfolio_ledger(_timed_ledger("nq", "2025-01-02", 1, entry="09:45", exit_="10:00"), _spec("nq", "NQ", "NQ", 20))
+
+    kept, audit = resolve_portfolio_overlaps(pd.concat([early, later_priority], ignore_index=True), policy="PRIORITY_KEEP_ONE", priority=["nq", "mnq"])
+
+    assert kept["strategy_id"].tolist() == ["nq"]
+    assert audit.set_index("strategies").loc["mnq|nq"]["decision"].tolist().count("DROP") == 1
+    assert audit[audit["priority_reason"].eq("priority winner")]["decision"].tolist() == ["KEEP"]
+
+
+def test_known_contract_symbols_suggest_underlying_asset_without_overriding_user_value():
+    suggestion = canonical_asset_suggestion("MNQ", "MNQ")
+
+    assert suggestion["suggested_asset_id"] == "NQ"
+    assert suggestion["entered_asset_id"] == "MNQ"
+    assert suggestion["warning"]
 
 
 def test_existing_forward_prefix_and_target_pf_remain_unchanged():

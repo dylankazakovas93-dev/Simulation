@@ -10,15 +10,30 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import numpy as np
 import pandas as pd
 
-from sim_core.lifecycle import LifecyclePlan, LifecycleSettings, simulate_lifecycle_path
+from sim_core.lifecycle import LifecyclePlan, LifecycleSettings
 from sim_core.models import Trade
 from sim_core.prop_rules import _floor_ceiling, _is_payout_eligible, _trade_day
 
 PnlBasis = Literal["points", "dollars"]
-MaeMfeConvention = Literal["positive_magnitude", "signed_adverse_negative", "signed_favorable_positive"]
+MaeMfeConvention = Literal[
+    "POSITIVE_MAGNITUDES",
+    "SIGNED_MAE_NEGATIVE_MFE_POSITIVE",
+    "positive_magnitude",
+    "signed_adverse_negative",
+    "signed_favorable_positive",
+]
 DependencyMode = Literal["PAIRED_CALENDAR_BLOCKS", "INDEPENDENT_SOURCE_PATHS"]
 OverlapPolicy = Literal["REJECT_SAME_ASSET_OVERLAP", "PRIORITY_KEEP_ONE", "ALLOW_STACKING"]
 IntratradeRiskMode = Literal["REALIZED_PNL_ONLY", "CONSERVATIVE_OVERLAP_MAE_BOUND", "EXACT_INTRATRADE"]
+
+CANONICAL_ASSET_BY_CONTRACT = {
+    "MNQ": "NQ",
+    "NQ": "NQ",
+    "MES": "ES",
+    "ES": "ES",
+    "MGC": "GC",
+    "GC": "GC",
+}
 
 
 @dataclass(frozen=True)
@@ -31,8 +46,11 @@ class PortfolioInstrumentSpec:
     commission_round_turn_per_contract: float = 0.0
     source_timezone: str = "UTC"
     default_contract_count: int = 1
+    source_contract_count: int = 1
     pnl_basis: PnlBasis = "points"
+    pnl_basis_confirmed: bool = False
     mae_mfe_convention: MaeMfeConvention = "positive_magnitude"
+    mae_mfe_convention_override: bool = False
     enabled: bool = True
 
     def __post_init__(self) -> None:
@@ -48,6 +66,8 @@ class PortfolioInstrumentSpec:
             raise ValueError("commission_round_turn_per_contract cannot be negative")
         if self.default_contract_count < 0:
             raise ValueError("default_contract_count cannot be negative")
+        if self.source_contract_count <= 0:
+            raise ValueError("source_contract_count must be positive")
         try:
             ZoneInfo(self.source_timezone)
         except ZoneInfoNotFoundError as exc:
@@ -128,24 +148,38 @@ def normalize_portfolio_ledger(
     if basis == "points":
         gross = pnl_points.fillna(0.0) * spec.dollars_per_point_per_contract * contracts
     else:
-        gross = pnl_dollars.fillna(0.0) * (contracts / source_contracts)
+        source_contracts = float(spec.source_contract_count)
+        gross = pnl_dollars.fillna(0.0) / source_contracts * contracts
     commission = float(spec.commission_round_turn_per_contract) * contracts
+    expected_source_dollars = pnl_points * spec.dollars_per_point_per_contract * float(spec.source_contract_count)
+    disagreement_abs = (expected_source_dollars - pnl_dollars).abs()
+    disagreement_pct = disagreement_abs / pnl_dollars.abs().replace(0, np.nan)
     out["pnl_points"] = pnl_points
     out["source_pnl_dollars"] = pnl_dollars
+    out["expected_source_pnl_dollars"] = expected_source_dollars
+    out["pnl_dollar_disagreement_abs"] = disagreement_abs
+    out["pnl_dollar_disagreement_pct"] = disagreement_pct
     out["gross_pnl_dollars"] = gross.astype(float)
     out["commission_dollars"] = commission
     out["net_pnl_dollars"] = out["gross_pnl_dollars"] - commission
 
-    for source_col, target_col in [
-        ("stop_points", "stop_dollars"),
-        ("target_points", "target_dollars"),
-        ("mae_points", "mae_dollars"),
-        ("mfe_points", "mfe_dollars"),
-    ]:
-        points = pd.to_numeric(frame.get(source_col), errors="coerce") if source_col in frame else pd.Series(np.nan, index=frame.index)
-        out[source_col] = points
-        magnitude = points.map(lambda value: _excursion_magnitude(value, spec.mae_mfe_convention))
-        out[target_col] = magnitude * spec.dollars_per_point_per_contract * contracts
+    stop_points = pd.to_numeric(frame.get("stop_points"), errors="coerce") if "stop_points" in frame else pd.Series(np.nan, index=frame.index)
+    target_points = pd.to_numeric(frame.get("target_points"), errors="coerce") if "target_points" in frame else pd.Series(np.nan, index=frame.index)
+    mae_points = pd.to_numeric(frame.get("mae_points"), errors="coerce") if "mae_points" in frame else pd.Series(np.nan, index=frame.index)
+    mfe_points = pd.to_numeric(frame.get("mfe_points"), errors="coerce") if "mfe_points" in frame else pd.Series(np.nan, index=frame.index)
+    adverse_abs, favorable_abs = _normalize_mae_mfe(mae_points, mfe_points, spec)
+    out["stop_points"] = stop_points
+    out["stop_dollars"] = stop_points.abs() * spec.dollars_per_point_per_contract * contracts
+    out["target_points"] = target_points
+    out["target_dollars"] = target_points.abs() * spec.dollars_per_point_per_contract * contracts
+    out["mae_points"] = mae_points
+    out["mfe_points"] = mfe_points
+    out["adverse_excursion_points_abs"] = adverse_abs
+    out["favorable_excursion_points_abs"] = favorable_abs
+    out["mae_dollars_abs"] = adverse_abs * spec.dollars_per_point_per_contract * contracts
+    out["mfe_dollars_abs"] = favorable_abs * spec.dollars_per_point_per_contract * contracts
+    out["mae_dollars"] = out["mae_dollars_abs"]
+    out["mfe_dollars"] = out["mfe_dollars_abs"]
     out["mae_available"] = out["mae_points"].notna()
     out["mfe_available"] = out["mfe_points"].notna()
     out["has_exact_timestamps"] = out["entry_time"].notna() & out["exit_time"].notna()
@@ -175,6 +209,9 @@ def _portfolio_trade_columns() -> pd.DataFrame:
             "source_sequence_hash",
             "pnl_points",
             "source_pnl_dollars",
+            "expected_source_pnl_dollars",
+            "pnl_dollar_disagreement_abs",
+            "pnl_dollar_disagreement_pct",
             "gross_pnl_dollars",
             "commission_dollars",
             "net_pnl_dollars",
@@ -183,9 +220,13 @@ def _portfolio_trade_columns() -> pd.DataFrame:
             "target_points",
             "target_dollars",
             "mae_points",
+            "adverse_excursion_points_abs",
             "mae_dollars",
+            "mae_dollars_abs",
             "mfe_points",
+            "favorable_excursion_points_abs",
             "mfe_dollars",
+            "mfe_dollars_abs",
             "mae_available",
             "mfe_available",
             "has_exact_timestamps",
@@ -222,22 +263,39 @@ def _validate_basis(frame: pd.DataFrame, spec: PortfolioInstrumentSpec, basis: P
     if basis == "dollars" and not has_dollars:
         raise ValueError("dollars basis selected but pnl_dollars is missing")
     if has_points and has_dollars:
-        expected = pd.to_numeric(frame["pnl_points"], errors="coerce") * spec.dollars_per_point_per_contract * max(1, spec.default_contract_count)
+        expected = pd.to_numeric(frame["pnl_points"], errors="coerce") * spec.dollars_per_point_per_contract * float(spec.source_contract_count)
         actual = pd.to_numeric(frame["pnl_dollars"], errors="coerce")
         disagreement = (expected - actual).abs() > tolerance
-        if disagreement.any() and spec.pnl_basis not in {"points", "dollars"}:
-            raise ValueError("pnl_points and pnl_dollars conflict; choose authoritative basis")
+        if disagreement.any() and not spec.pnl_basis_confirmed:
+            raise ValueError("pnl_points and pnl_dollars conflict; explicitly confirm authoritative P&L basis")
 
 
-def _excursion_magnitude(value: Any, convention: MaeMfeConvention) -> float:
-    if pd.isna(value):
-        return np.nan
-    numeric = float(value)
-    if convention == "positive_magnitude":
-        return abs(numeric)
-    if convention == "signed_adverse_negative":
-        return abs(numeric)
-    return abs(numeric)
+def _canonical_mae_mfe_convention(convention: MaeMfeConvention) -> str:
+    mapping = {
+        "positive_magnitude": "POSITIVE_MAGNITUDES",
+        "signed_adverse_negative": "SIGNED_MAE_NEGATIVE_MFE_POSITIVE",
+        "signed_favorable_positive": "SIGNED_MAE_NEGATIVE_MFE_POSITIVE",
+    }
+    return mapping.get(str(convention), str(convention))
+
+
+def _normalize_mae_mfe(
+    mae_points: pd.Series,
+    mfe_points: pd.Series,
+    spec: PortfolioInstrumentSpec,
+) -> tuple[pd.Series, pd.Series]:
+    convention = _canonical_mae_mfe_convention(spec.mae_mfe_convention)
+    if convention == "POSITIVE_MAGNITUDES":
+        invalid = (mae_points.dropna() < 0).any() or (mfe_points.dropna() < 0).any()
+        if invalid and not spec.mae_mfe_convention_override:
+            raise ValueError("POSITIVE_MAGNITUDES requires MAE >= 0 and MFE >= 0")
+        return mae_points.abs(), mfe_points.abs()
+    if convention == "SIGNED_MAE_NEGATIVE_MFE_POSITIVE":
+        invalid = (mae_points.dropna() > 0).any() or (mfe_points.dropna() < 0).any()
+        if invalid and not spec.mae_mfe_convention_override:
+            raise ValueError("SIGNED_MAE_NEGATIVE_MFE_POSITIVE requires MAE <= 0 and MFE >= 0")
+        return mae_points.abs(), mfe_points.abs()
+    raise ValueError(f"unsupported MAE/MFE convention: {spec.mae_mfe_convention}")
 
 
 def source_sequence_hash(frame: pd.DataFrame) -> str:
@@ -257,6 +315,7 @@ def build_joint_portfolio_paths(
     mode: DependencyMode = "PAIRED_CALENDAR_BLOCKS",
     trades_per_path: int | None = None,
     seasonal_month_aware: bool = False,
+    forecast_start_date: str = "2026-01-02",
 ) -> tuple[list[dict[str, pd.DataFrame]], pd.DataFrame]:
     if mode == "EXACT_INTRATRADE":
         raise ValueError("invalid dependency mode")
@@ -265,94 +324,182 @@ def build_joint_portfolio_paths(
         strategy_id: set(pd.to_datetime(frame["source_session_date"]).dt.date.astype(str))
         for strategy_id, frame in ledgers_by_strategy.items()
     }
-    common = set.intersection(*normalized_dates.values()) if normalized_dates else set()
-    common_months = {pd.Timestamp(date).month for date in common}
+    union_dates = set.union(*normalized_dates.values()) if normalized_dates else set()
+    full_common = set.intersection(*normalized_dates.values()) if normalized_dates else set()
+    coactive = {
+        date for date in union_dates
+        if sum(date in dates for dates in normalized_dates.values()) >= 2
+    }
+    common_months = {pd.Timestamp(date).month for date in full_common}
     coverage_rows = []
     for strategy_id, dates in normalized_dates.items():
         coverage_rows.append(
             {
                 "strategy_id": strategy_id,
                 "dependency_mode": mode,
-                "common_date_count": len(common),
+                "union_date_count": len(union_dates),
+                "full_common_date_count": len(full_common),
+                "common_date_count": len(full_common),
+                "coactive_date_count": len(coactive),
                 "common_month_count": len(common_months),
+                "active_date_count": len(dates),
                 "ledger_date_count": len(dates),
-                "paired_date_coverage_pct": len(common & dates) / len(dates) if dates else 0.0,
-                "dependence_label": "VERIFIED_PAIRED_CALENDAR" if mode == "PAIRED_CALENDAR_BLOCKS" and common else "CROSS_STRATEGY_DEPENDENCE_UNVERIFIED",
+                "union_coverage_pct": len(dates & union_dates) / len(union_dates) if union_dates else 0.0,
+                "coactive_coverage_pct": len(dates & coactive) / len(dates) if dates else 0.0,
+                "paired_date_coverage_pct": len(dates & full_common) / len(dates) if dates else 0.0,
+                "dependence_label": "VERIFIED_PAIRED_CALENDAR" if mode == "PAIRED_CALENDAR_BLOCKS" and union_dates else "CROSS_STRATEGY_DEPENDENCE_UNVERIFIED",
                 "seasonal_month_aware": bool(seasonal_month_aware),
             }
         )
     manifest = pd.DataFrame(coverage_rows)
-    if mode == "PAIRED_CALENDAR_BLOCKS" and not common:
-        raise ValueError("paired calendar blocks require at least one common source date")
+    if mode == "PAIRED_CALENDAR_BLOCKS" and not union_dates:
+        raise ValueError("paired calendar blocks require at least one source date")
     paths = []
-    ordered_common = sorted(common)
+    ordered_union = sorted(union_dates)
     for portfolio_path_id in range(int(path_count)):
         path: dict[str, pd.DataFrame] = {}
+        count = trades_per_path or (len(ordered_union) if mode == "PAIRED_CALENDAR_BLOCKS" else max(len(frame) for frame in ledgers_by_strategy.values()))
+        forecast_dates = _forecast_account_dates(forecast_start_date, count)
         if mode == "PAIRED_CALENDAR_BLOCKS":
-            count = trades_per_path or len(ordered_common)
-            sampled_dates = _sample_dates(ordered_common, count, rng, seasonal_month_aware=seasonal_month_aware)
-            for strategy_id, frame in ledgers_by_strategy.items():
-                picked = pd.concat(
-                    [frame[pd.to_datetime(frame["source_session_date"]).dt.date.astype(str).eq(str(date))] for date in sampled_dates],
-                    ignore_index=True,
-                )
+            sampled_dates = _sample_dates_for_forecast(ordered_union, forecast_dates, rng, seasonal_month_aware=seasonal_month_aware)
+            per_strategy_rows: dict[str, list[pd.DataFrame]] = {strategy_id: [] for strategy_id in ledgers_by_strategy}
+            for block_occurrence_id, (source_date, synthetic_date) in enumerate(zip(sampled_dates, forecast_dates, strict=True)):
+                for strategy_id, frame in ledgers_by_strategy.items():
+                    mask = pd.to_datetime(frame["source_session_date"]).dt.date.astype(str).eq(str(source_date))
+                    block = frame[mask].copy()
+                    if block.empty:
+                        continue
+                    block = _shift_block_to_synthetic_date(block, str(source_date), str(synthetic_date))
+                    block["portfolio_path_id"] = portfolio_path_id
+                    block["strategy_path_id"] = portfolio_path_id
+                    block["block_occurrence_id"] = block_occurrence_id
+                    per_strategy_rows[strategy_id].append(block)
+            for strategy_id in ledgers_by_strategy:
+                picked = pd.concat(per_strategy_rows[strategy_id], ignore_index=True) if per_strategy_rows[strategy_id] else ledgers_by_strategy[strategy_id].head(0).copy()
                 picked["portfolio_path_id"] = portfolio_path_id
                 picked["strategy_path_id"] = portfolio_path_id
                 path[strategy_id] = picked
         else:
             for strategy_id, frame in ledgers_by_strategy.items():
-                count = trades_per_path or len(frame)
-                indexes = _sample_frame_indexes(frame, count, rng, seasonal_month_aware=seasonal_month_aware)
+                indexes = _sample_frame_indexes_for_forecast(frame, forecast_dates, rng, seasonal_month_aware=seasonal_month_aware)
                 picked = frame.iloc[indexes].reset_index(drop=True).copy()
+                shifted = []
+                for block_occurrence_id, (idx, synthetic_date) in enumerate(zip(indexes, forecast_dates, strict=True)):
+                    source_date = str(pd.to_datetime(frame.iloc[int(idx)]["source_session_date"]).date())
+                    row = _shift_block_to_synthetic_date(frame.iloc[[int(idx)]].copy(), source_date, str(synthetic_date))
+                    row["block_occurrence_id"] = block_occurrence_id
+                    shifted.append(row)
+                picked = pd.concat(shifted, ignore_index=True) if shifted else picked
                 picked["portfolio_path_id"] = portfolio_path_id
                 picked["strategy_path_id"] = portfolio_path_id
                 path[strategy_id] = picked
+        _assert_unique_synthetic_dates(path)
         paths.append(path)
     return paths, manifest
 
 
-def _sample_dates(
+def _forecast_account_dates(start_date: str, count: int) -> list[str]:
+    return [str(day.date()) for day in pd.bdate_range(start=start_date, periods=count)]
+
+
+def _sample_dates_for_forecast(
     dates: list[str],
-    count: int,
+    forecast_dates: list[str],
     rng: np.random.Generator,
     *,
     seasonal_month_aware: bool,
 ) -> np.ndarray:
     if not seasonal_month_aware:
-        return rng.choice(dates, size=count, replace=True)
+        return rng.choice(dates, size=len(forecast_dates), replace=True)
     by_month: dict[int, list[str]] = {}
     for date in dates:
         by_month.setdefault(pd.Timestamp(date).month, []).append(date)
-    months = sorted(by_month)
     sampled = []
-    for index in range(count):
-        month = months[index % len(months)]
+    for forecast_date in forecast_dates:
+        month = pd.Timestamp(forecast_date).month
+        if month not in by_month:
+            raise ValueError(f"seasonal sampling has no source block for forecast month {month}")
         sampled.append(rng.choice(by_month[month]))
     return np.array(sampled)
 
 
-def _sample_frame_indexes(
+def _sample_frame_indexes_for_forecast(
     frame: pd.DataFrame,
-    count: int,
+    forecast_dates: list[str],
     rng: np.random.Generator,
     *,
     seasonal_month_aware: bool,
 ) -> np.ndarray:
     if not seasonal_month_aware:
-        return rng.choice(np.arange(len(frame)), size=count, replace=True)
+        return rng.choice(np.arange(len(frame)), size=len(forecast_dates), replace=True)
     dates = pd.to_datetime(frame["source_session_date"], errors="coerce")
     by_month = {
         month: dates[dates.dt.month.eq(month)].index.to_numpy()
         for month in sorted(dates.dt.month.dropna().astype(int).unique())
     }
     if not by_month:
-        return rng.choice(np.arange(len(frame)), size=count, replace=True)
-    months = list(by_month)
+        return rng.choice(np.arange(len(frame)), size=len(forecast_dates), replace=True)
     sampled = []
-    for index in range(count):
-        month = months[index % len(months)]
+    for forecast_date in forecast_dates:
+        month = pd.Timestamp(forecast_date).month
+        if month not in by_month:
+            raise ValueError(f"seasonal sampling has no source row for forecast month {month}")
         sampled.append(rng.choice(by_month[month]))
     return np.array(sampled)
+
+
+def _shift_block_to_synthetic_date(frame: pd.DataFrame, source_date: str, synthetic_date: str) -> pd.DataFrame:
+    out = frame.copy()
+    source_midnight = pd.Timestamp(source_date)
+    synthetic_midnight = pd.Timestamp(synthetic_date)
+    offset = synthetic_midnight - source_midnight
+    out["original_source_session_date"] = out["source_session_date"].astype(str)
+    out["synthetic_account_date"] = synthetic_date
+    out["source_session_date"] = synthetic_date
+    for column in ["entry_time", "exit_time"]:
+        parsed = pd.to_datetime(out[column], errors="coerce")
+        out[column] = parsed + offset
+    return out
+
+
+def _assert_unique_synthetic_dates(path: dict[str, pd.DataFrame]) -> None:
+    occurrence_dates = {}
+    intervals = []
+    for frame in path.values():
+        if frame.empty:
+            continue
+        if {"block_occurrence_id", "synthetic_account_date"} <= set(frame.columns):
+            for item in frame[["block_occurrence_id", "synthetic_account_date"]].drop_duplicates().itertuples(index=False):
+                occurrence_id = int(item.block_occurrence_id)
+                synthetic_date = str(item.synthetic_account_date)
+                if occurrence_id in occurrence_dates and occurrence_dates[occurrence_id] != synthetic_date:
+                    raise ValueError("block occurrence maps to multiple synthetic account dates")
+                occurrence_dates[occurrence_id] = synthetic_date
+        for row in frame.itertuples(index=False):
+            intervals.append((pd.Timestamp(row.entry_time), pd.Timestamp(row.exit_time), str(row.synthetic_account_date)))
+    dates = list(occurrence_dates.values())
+    if len(dates) != len(set(dates)):
+        raise ValueError("duplicate synthetic account dates in portfolio path")
+    for left_index, left in enumerate(intervals):
+        for right in intervals[left_index + 1:]:
+            if left[2] != right[2] and left[0] < right[1] and left[1] > right[0]:
+                raise ValueError("portfolio blocks overlap across separate synthetic account dates")
+
+
+def canonical_asset_suggestion(contract_symbol: str, asset_id: str) -> dict[str, str | bool]:
+    symbol = str(contract_symbol or "").strip().upper()
+    entered = str(asset_id or "").strip().upper()
+    suggested = CANONICAL_ASSET_BY_CONTRACT.get(symbol, entered)
+    warning = bool(suggested and entered and suggested != entered)
+    return {
+        "contract_symbol": symbol,
+        "entered_asset_id": entered,
+        "suggested_asset_id": suggested,
+        "warning": warning,
+        "message": f"{symbol} normally maps to underlying asset {suggested}; entered asset is {entered}."
+        if warning
+        else "",
+    }
 
 
 def combine_portfolio_path(
@@ -386,57 +533,134 @@ def resolve_portfolio_overlaps(
     policy: OverlapPolicy = "REJECT_SAME_ASSET_OVERLAP",
     priority: list[str] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    if ledger.empty:
+        return ledger.copy(), pd.DataFrame()
     priority = priority or sorted(ledger["strategy_id"].dropna().unique().tolist())
     rank = {strategy_id: index for index, strategy_id in enumerate(priority)}
-    kept = []
+    working = ledger.reset_index(drop=True).copy()
+    working["_row_id"] = working.index
     decisions = []
+    keep_ids: set[int] = set()
     cluster_id = 0
-    for _, row in ledger.sort_values(["entry_time", "exit_time", "strategy_id"]).iterrows():
-        overlaps = [item for item in kept if row["entry_time"] < item["exit_time"] and row["exit_time"] > item["entry_time"]]
-        same_asset = [item for item in overlaps if str(item["asset_id"]) == str(row["asset_id"])]
-        cross_asset = [item for item in overlaps if str(item["asset_id"]) != str(row["asset_id"])]
-        decision = "KEEP"
-        reason = "no overlap"
-        if same_asset:
-            cluster_id += 1
-            if policy == "REJECT_SAME_ASSET_OVERLAP":
-                decision = "DROP"
-                reason = "same asset overlap rejected"
+    for asset_id, asset_rows in working.groupby("asset_id", sort=False):
+        ordered = asset_rows.sort_values(["entry_time", "exit_time", "strategy_id", "_row_id"])
+        current: list[dict[str, Any]] = []
+        current_end: pd.Timestamp | None = None
+
+        def flush_cluster(rows: list[dict[str, Any]]) -> None:
+            nonlocal cluster_id
+            if not rows:
+                return
+            overlap_exists = len(rows) > 1
+            cid = pd.NA
+            if overlap_exists:
+                cluster_id += 1
+                cid = cluster_id
+            if not overlap_exists:
+                winners = {int(rows[0]["_row_id"])}
+                reason_by_row = {int(rows[0]["_row_id"]): "no overlap"}
+                decision_by_row = {int(rows[0]["_row_id"]): "KEEP"}
+            elif policy == "REJECT_SAME_ASSET_OVERLAP":
+                winner = min(rows, key=lambda item: (pd.Timestamp(item["entry_time"]), pd.Timestamp(item["exit_time"]), str(item["strategy_id"])))
+                winners = {int(winner["_row_id"])}
+                reason_by_row = {
+                    int(item["_row_id"]): "first same-asset interval kept" if int(item["_row_id"]) in winners else "same asset overlap rejected"
+                    for item in rows
+                }
+                decision_by_row = {int(item["_row_id"]): "KEEP" if int(item["_row_id"]) in winners else "DROP" for item in rows}
             elif policy == "PRIORITY_KEEP_ONE":
-                best = min([row.to_dict(), *same_asset], key=lambda item: rank.get(str(item["strategy_id"]), len(rank)))
-                if str(best["strategy_id"]) != str(row["strategy_id"]):
-                    decision = "DROP"
-                    reason = f"priority kept {best['strategy_id']}"
-                else:
-                    kept = [item for item in kept if not (str(item["asset_id"]) == str(row["asset_id"]) and row["entry_time"] < item["exit_time"] and row["exit_time"] > item["entry_time"])]
-                    reason = "priority winner"
+                winner = min(
+                    rows,
+                    key=lambda item: (
+                        rank.get(str(item["strategy_id"]), len(rank)),
+                        pd.Timestamp(item["entry_time"]),
+                        pd.Timestamp(item["exit_time"]),
+                        str(item["strategy_id"]),
+                    ),
+                )
+                winners = {int(winner["_row_id"])}
+                winner_strategy = str(winner["strategy_id"])
+                reason_by_row = {
+                    int(item["_row_id"]): "priority winner" if int(item["_row_id"]) in winners else f"priority kept {winner_strategy}"
+                    for item in rows
+                }
+                decision_by_row = {int(item["_row_id"]): "KEEP" if int(item["_row_id"]) in winners else "DROP" for item in rows}
             else:
-                decision = "STACK"
-                reason = "same asset stacking allowed"
-        elif cross_asset:
-            cluster_id += 1
-            reason = "cross asset overlap retained"
-        if decision in {"KEEP", "STACK"}:
-            kept.append(row.to_dict())
-        decisions.append(
-            {
-                "portfolio_path_id": row.get("portfolio_path_id"),
-                "allocation_id": row.get("allocation_id"),
-                "overlap_cluster_id": cluster_id if overlaps else pd.NA,
-                "strategies": "|".join(sorted({str(row["strategy_id"]), *[str(item["strategy_id"]) for item in overlaps]})),
-                "asset_ids": "|".join(sorted({str(row["asset_id"]), *[str(item["asset_id"]) for item in overlaps]})),
-                "contract_symbols": "|".join(sorted({str(row["contract_symbol"]), *[str(item["contract_symbol"]) for item in overlaps]})),
-                "entry_time": row["entry_time"],
-                "exit_time": row["exit_time"],
-                "overlap_type": "same_asset" if same_asset else "cross_asset" if cross_asset else "none",
-                "selected_overlap_policy": policy,
-                "decision": decision,
-                "priority_reason": reason,
-                "gross_asset_exposure": _gross_asset_exposure([row.to_dict(), *same_asset]) if same_asset and policy == "ALLOW_STACKING" else pd.NA,
-                "net_asset_exposure": _net_asset_exposure([row.to_dict(), *same_asset]) if same_asset and policy == "ALLOW_STACKING" else pd.NA,
-            }
-        )
-    return pd.DataFrame(kept), pd.DataFrame(decisions)
+                winners = {int(item["_row_id"]) for item in rows}
+                reason_by_row = {int(item["_row_id"]): "same asset stacking allowed" for item in rows}
+                decision_by_row = {int(item["_row_id"]): "STACK" for item in rows}
+            keep_ids.update(winners)
+            rows_for_exposure = [dict(item) for item in rows]
+            for item in rows:
+                decisions.append(
+                    {
+                        "portfolio_path_id": item.get("portfolio_path_id"),
+                        "allocation_id": item.get("allocation_id"),
+                        "overlap_cluster_id": cid,
+                        "strategies": "|".join(sorted({str(member["strategy_id"]) for member in rows})),
+                        "asset_ids": str(asset_id),
+                        "contract_symbols": "|".join(sorted({str(member["contract_symbol"]) for member in rows})),
+                        "entry_time": item["entry_time"],
+                        "exit_time": item["exit_time"],
+                        "overlap_type": "same_asset" if overlap_exists else "none",
+                        "selected_overlap_policy": policy,
+                        "decision": decision_by_row[int(item["_row_id"])],
+                        "priority_reason": reason_by_row[int(item["_row_id"])],
+                        "gross_asset_exposure": _gross_asset_exposure(rows_for_exposure) if overlap_exists and policy == "ALLOW_STACKING" else pd.NA,
+                        "net_asset_exposure": _net_asset_exposure(rows_for_exposure) if overlap_exists and policy == "ALLOW_STACKING" else pd.NA,
+                    }
+                )
+
+        for row in ordered.to_dict("records"):
+            row_end = pd.Timestamp(row["exit_time"])
+            row_entry = pd.Timestamp(row["entry_time"])
+            if current and current_end is not None and row_entry >= current_end:
+                flush_cluster(current)
+                current = []
+                current_end = None
+            current.append(row)
+            current_end = row_end if current_end is None else max(current_end, row_end)
+        flush_cluster(current)
+
+    kept = working[working["_row_id"].isin(keep_ids)].drop(columns=["_row_id"]).sort_values(["exit_time", "entry_time", "strategy_id"]).reset_index(drop=True)
+    audit = pd.DataFrame(decisions).sort_values(["entry_time", "exit_time", "strategies"]).reset_index(drop=True)
+    cross_asset_audit = _cross_asset_overlap_audit(kept, policy, cluster_id)
+    if not cross_asset_audit.empty:
+        audit = pd.concat([audit, cross_asset_audit], ignore_index=True, sort=False)
+    return kept, audit
+
+
+def _cross_asset_overlap_audit(kept: pd.DataFrame, policy: OverlapPolicy, starting_cluster_id: int) -> pd.DataFrame:
+    rows = kept.sort_values(["entry_time", "exit_time", "strategy_id"]).to_dict("records")
+    decisions = []
+    cluster_id = starting_cluster_id
+    for left_index, left in enumerate(rows):
+        for right in rows[left_index + 1:]:
+            if str(left["asset_id"]) == str(right["asset_id"]):
+                continue
+            if pd.Timestamp(left["entry_time"]) < pd.Timestamp(right["exit_time"]) and pd.Timestamp(left["exit_time"]) > pd.Timestamp(right["entry_time"]):
+                cluster_id += 1
+                members = [left, right]
+                for item in members:
+                    decisions.append(
+                        {
+                            "portfolio_path_id": item.get("portfolio_path_id"),
+                            "allocation_id": item.get("allocation_id"),
+                            "overlap_cluster_id": cluster_id,
+                            "strategies": "|".join(sorted({str(member["strategy_id"]) for member in members})),
+                            "asset_ids": "|".join(sorted({str(member["asset_id"]) for member in members})),
+                            "contract_symbols": "|".join(sorted({str(member["contract_symbol"]) for member in members})),
+                            "entry_time": item["entry_time"],
+                            "exit_time": item["exit_time"],
+                            "overlap_type": "cross_asset",
+                            "selected_overlap_policy": policy,
+                            "decision": "KEEP",
+                            "priority_reason": "cross asset overlap retained",
+                            "gross_asset_exposure": pd.NA,
+                            "net_asset_exposure": pd.NA,
+                        }
+                    )
+    return pd.DataFrame(decisions)
 
 
 def _gross_asset_exposure(rows: list[dict[str, Any]]) -> int:
@@ -495,33 +719,7 @@ def simulate_portfolio_lifecycle(
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     if risk_mode == "EXACT_INTRATRADE":
         raise ValueError("EXACT_INTRATRADE requires timestamped intratrade equity evidence")
-    kept = ledger.sort_values(["exit_time", "entry_time", "strategy_id"]).reset_index(drop=True)
-    trades = portfolio_trade_ledger_to_lifecycle_trades(kept)
-    result, months, events, trace = simulate_lifecycle_path(
-        trades,
-        plan,
-        contracts=1,
-        settings=settings,
-        path_id=path_id,
-        seed=path_id,
-        dollars_per_point=1.0,
-        return_trade_ledger=True,
-        timezone=timezone,
-    )
-    account_day = build_portfolio_account_day_ledger(kept, plan, settings, risk_mode=risk_mode, timezone=timezone)
-    trace_frame = pd.DataFrame(trace)
-    summary = pd.DataFrame(
-        [
-            {
-                **result.to_dict(),
-                "strict_known_failure_rate": float((account_day["strict_status"] == "FAILED").mean()) if not account_day.empty else 0.0,
-                "strict_unknown_rate": float((account_day["strict_status"] == "UNKNOWN").mean()) if not account_day.empty else 0.0,
-                "realized_only_failure_rate": float((account_day["realized_only_failure"].astype(bool)).mean()) if not account_day.empty else 0.0,
-                "conservative_bound_failure_rate": float((account_day["conservative_bound_failure"].astype(bool)).mean()) if not account_day.empty else 0.0,
-            }
-        ]
-    )
-    return summary, account_day, trace_frame
+    return _simulate_portfolio_state(ledger, plan, settings, risk_mode=risk_mode, timezone=timezone, path_id=path_id)
 
 
 def build_portfolio_account_day_ledger(
@@ -532,29 +730,147 @@ def build_portfolio_account_day_ledger(
     risk_mode: IntratradeRiskMode,
     timezone: str = "America/New_York",
 ) -> pd.DataFrame:
+    if risk_mode == "EXACT_INTRATRADE":
+        raise ValueError("EXACT_INTRATRADE requires timestamped intratrade equity evidence")
+    _summary, account_day, _trace = _simulate_portfolio_state(ledger, plan, settings, risk_mode=risk_mode, timezone=timezone, path_id=0)
+    return account_day
+
+
+def _simulate_portfolio_state(
+    ledger: pd.DataFrame,
+    plan: LifecyclePlan,
+    settings: LifecycleSettings,
+    *,
+    risk_mode: IntratradeRiskMode,
+    timezone: str,
+    path_id: int,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     profile = plan.funded_profile
     balance = float(settings.current_balance if settings.current_balance is not None else profile.starting_balance)
     floor = float(settings.current_floor if settings.current_floor is not None else profile.starting_floor)
     eod_peak = max(profile.starting_balance, balance)
     running_peak = balance
     winning_days = int(settings.current_winning_days)
+    daily_profits = list(float(value) for value in settings.current_daily_profits)
+    total_payouts = 0.0
+    total_fees = max(0.0, float(settings.prior_fees))
+    payouts_taken = max(0, int(settings.payouts_already_taken))
+    failed = False
+    failure_reason: str | None = None
+    first_failure_day: int | None = None
+    first_failure_order: int | None = None
+    event_order = 0
+    max_drawdown = 0.0
+    trace_rows = []
     rows = []
-    for day, group in ledger.assign(account_day=ledger["exit_time"].map(lambda value: _trade_day(pd.Timestamp(value), timezone).date().isoformat())).groupby("account_day", sort=True):
+    if ledger.empty:
+        summary = _portfolio_summary_row(
+            plan,
+            settings,
+            path_id=path_id,
+            failed=False,
+            payouts_taken=payouts_taken,
+            total_payouts=total_payouts,
+            total_fees=total_fees,
+            ending_balance=balance,
+            ending_floor=floor,
+            max_drawdown=0.0,
+            first_failure_day=None,
+            first_failure_order=None,
+            account_day=pd.DataFrame(),
+        )
+        return pd.DataFrame([summary]), pd.DataFrame(), pd.DataFrame()
+
+    work = ledger.sort_values(["exit_time", "entry_time", "strategy_id"]).reset_index(drop=True).copy()
+    work["account_day"] = work["exit_time"].map(lambda value: _trade_day(pd.Timestamp(value), timezone).date().isoformat())
+    clusters = _risk_clusters(work) if risk_mode == "CONSERVATIVE_OVERLAP_MAE_BOUND" else []
+    evaluated_clusters: set[int] = set()
+
+    def next_event() -> int:
+        nonlocal event_order
+        event_order += 1
+        return event_order
+
+    def fail_now(day_number: int, reason: str, when: pd.Timestamp) -> None:
+        nonlocal failed, failure_reason, first_failure_day, first_failure_order
+        if failed:
+            return
+        failed = True
+        failure_reason = reason
+        order = next_event()
+        first_failure_day = day_number
+        first_failure_order = order
+        trace_rows.append(
+            {
+                "path_id": path_id,
+                "plan_key": plan.key,
+                "firm": plan.firm,
+                "account": plan.account_name,
+                "record_type": "failure",
+                "event_order": order,
+                "session_date": str(_trade_day(when, timezone).date()),
+                "entry_time": pd.NaT,
+                "exit_time": when,
+                "balance_before": balance,
+                "pnl_dollars": 0.0,
+                "balance_after": balance,
+                "floor": floor,
+                "failure": True,
+                "failure_reason": reason,
+                "trader_cash": 0.0,
+                "net_cash": total_payouts - total_fees,
+            }
+        )
+
+    def evaluate_due_clusters(exit_time: pd.Timestamp, day_number: int) -> None:
+        nonlocal max_drawdown
+        if risk_mode != "CONSERVATIVE_OVERLAP_MAE_BOUND" or failed:
+            return
+        for cluster in clusters:
+            if cluster["cluster_id"] in evaluated_clusters or cluster["start_time"] > exit_time:
+                continue
+            evaluated_clusters.add(int(cluster["cluster_id"]))
+            bound = float(cluster["max_concurrent_mae"])
+            max_drawdown = max(max_drawdown, bound)
+            if bool(cluster["missing_mae"]):
+                continue
+            if balance - bound <= floor:
+                fail_now(day_number, "conservative_overlap_mae_bound", pd.Timestamp(cluster["start_time"]))
+                return
+
+    for day_number, (day, group) in enumerate(work.groupby("account_day", sort=True), start=1):
         start_balance = balance
-        day_net = float(group["net_pnl_dollars"].sum())
-        missing_mae_overlap = _has_overlap_missing_mae(group)
-        conservative_bound = float(group["mae_dollars"].fillna(0.0).sum())
-        conservative_failure = risk_mode == "CONSERVATIVE_OVERLAP_MAE_BOUND" and start_balance - conservative_bound <= floor
-        strict_status = "UNKNOWN" if missing_mae_overlap else "FAILED" if conservative_failure else "SURVIVED"
-        realized_only_failure = start_balance + day_net <= floor
-        if not conservative_failure:
-            balance += day_net
+        day_net = 0.0
+        conservative_failure = False
+        realized_only_failure = False
+        day_missing_mae = _day_has_missing_mae(group, risk_mode)
+        for _, trade in group.sort_values(["exit_time", "entry_time", "strategy_id"]).iterrows():
+            exit_time = pd.Timestamp(trade["exit_time"])
+            evaluate_due_clusters(exit_time, day_number)
+            before = balance
+            if failed:
+                trace_rows.append(_portfolio_trace_trade_row(path_id, plan, trade, before, balance, floor, next_event(), skipped=True))
+                continue
+            pnl = float(trade["net_pnl_dollars"])
+            balance += pnl
+            day_net += pnl
+            running_peak = max(running_peak, balance)
+            max_drawdown = max(max_drawdown, running_peak - balance)
+            order = next_event()
+            trace_rows.append(_portfolio_trace_trade_row(path_id, plan, trade, before, balance, floor, order, skipped=False))
+            if balance <= floor:
+                realized_only_failure = True
+                fail_now(day_number, "realized_exit_floor_breach", exit_time)
+        conservative_failure = failed and first_failure_day == day_number and failure_reason == "conservative_overlap_mae_bound"
         running_peak = max(running_peak, balance)
-        if balance > floor and day_net >= profile.winning_day_threshold and day_net > 0:
+        if not failed and balance > floor and day_net >= profile.winning_day_threshold and day_net > 0:
             winning_days += 1
+        daily_profits.append(day_net)
         eod_peak = max(eod_peak, balance)
-        if profile.drawdown_mode == "eod_trailing":
+        if not failed and profile.drawdown_mode == "eod_trailing":
             floor = max(floor, min(_floor_ceiling(profile), eod_peak - profile.max_loss))
+        strict_status = "UNKNOWN" if day_missing_mae else "FAILED" if conservative_failure or realized_only_failure else "SURVIVED"
+        payout_eligible = (not failed) and _is_payout_eligible(balance=balance, profile=profile, winning_days=winning_days, daily_profits=daily_profits)
         rows.append(
             {
                 "account_day": day,
@@ -571,10 +887,114 @@ def build_portfolio_account_day_ledger(
                 "conservative_bound_failure": bool(conservative_failure),
                 "risk_mode": risk_mode,
                 "risk_mode_label": "conservative bound, not exact" if risk_mode == "CONSERVATIVE_OVERLAP_MAE_BOUND" else risk_mode,
-                "payout_eligible_after_day": _is_payout_eligible(balance=balance, profile=profile, winning_days=winning_days, daily_profits=[day_net]),
+                "payout_eligible_after_day": bool(payout_eligible),
             }
         )
-    return pd.DataFrame(rows)
+    account_day = pd.DataFrame(rows)
+    summary = _portfolio_summary_row(
+        plan,
+        settings,
+        path_id=path_id,
+        failed=failed,
+        payouts_taken=payouts_taken,
+        total_payouts=total_payouts,
+        total_fees=total_fees,
+        ending_balance=balance,
+        ending_floor=floor,
+        max_drawdown=max_drawdown,
+        first_failure_day=first_failure_day,
+        first_failure_order=first_failure_order,
+        account_day=account_day,
+    )
+    return pd.DataFrame([summary]), account_day, pd.DataFrame(trace_rows)
+
+
+def _portfolio_trace_trade_row(
+    path_id: int,
+    plan: LifecyclePlan,
+    trade: pd.Series,
+    before: float,
+    after: float,
+    floor: float,
+    event_order: int,
+    *,
+    skipped: bool,
+) -> dict[str, Any]:
+    return {
+        "path_id": path_id,
+        "plan_key": plan.key,
+        "firm": plan.firm,
+        "account": plan.account_name,
+        "record_type": "trade_skipped_after_failure" if skipped else "trade",
+        "event_order": event_order,
+        "sequence_number": event_order,
+        "strategy_id": trade.get("strategy_id"),
+        "source_trade_id": trade.get("source_trade_id"),
+        "session_date": trade.get("account_day", trade.get("source_session_date")),
+        "entry_time": trade.get("entry_time"),
+        "exit_time": trade.get("exit_time"),
+        "balance_before": before,
+        "pnl_dollars": 0.0 if skipped else float(trade.get("net_pnl_dollars", 0.0)),
+        "balance_after": after,
+        "floor": floor,
+        "failure": False,
+        "failure_reason": "",
+        "trader_cash": 0.0,
+        "net_cash": 0.0,
+    }
+
+
+def _portfolio_summary_row(
+    plan: LifecyclePlan,
+    settings: LifecycleSettings,
+    *,
+    path_id: int,
+    failed: bool,
+    payouts_taken: int,
+    total_payouts: float,
+    total_fees: float,
+    ending_balance: float,
+    ending_floor: float,
+    max_drawdown: float,
+    first_failure_day: int | None,
+    first_failure_order: int | None,
+    account_day: pd.DataFrame,
+) -> dict[str, Any]:
+    net_cash = total_payouts - total_fees
+    return {
+        "plan_key": plan.key,
+        "firm": plan.firm,
+        "account_name": plan.account_name,
+        "contracts": 1,
+        "path_id": path_id,
+        "seed": path_id,
+        "failed": bool(failed),
+        "terminal_stage": "funded",
+        "attempts": 0,
+        "eval_passes": 0,
+        "funded_failures": int(bool(failed)),
+        "payouts_taken": payouts_taken,
+        "first_payout_month": None,
+        "first_payout_day": None,
+        "first_payout_order": None,
+        "first_failure_month": None if first_failure_day is None else 1,
+        "first_failure_day": first_failure_day,
+        "first_failure_order": first_failure_order,
+        "total_payouts": total_payouts,
+        "total_fees": total_fees,
+        "net_cash": net_cash,
+        "roi_on_fees": net_cash / total_fees if total_fees > 0 else None,
+        "ending_balance": ending_balance,
+        "ending_floor": ending_floor,
+        "max_drawdown": max_drawdown,
+        "target_hit": False,
+        "cushion_ok_after_payout": False,
+        "strict_known_failure_rate": float((account_day["strict_status"] == "FAILED").mean()) if not account_day.empty else 0.0,
+        "strict_unknown_rate": float((account_day["strict_status"] == "UNKNOWN").mean()) if not account_day.empty else 0.0,
+        "realized_only_failure_rate": float((account_day["realized_only_failure"].astype(bool)).mean()) if not account_day.empty else 0.0,
+        "conservative_bound_failure_rate": float((account_day["conservative_bound_failure"].astype(bool)).mean()) if not account_day.empty else 0.0,
+        "desired_payout": float(settings.desired_payout),
+    }
 
 
 def _has_overlap_missing_mae(group: pd.DataFrame) -> bool:
@@ -585,6 +1005,59 @@ def _has_overlap_missing_mae(group: pd.DataFrame) -> bool:
                 if pd.isna(left.get("mae_dollars")) or pd.isna(right.get("mae_dollars")):
                     return True
     return False
+
+
+def _day_has_missing_mae(group: pd.DataFrame, risk_mode: IntratradeRiskMode) -> bool:
+    if risk_mode != "CONSERVATIVE_OVERLAP_MAE_BOUND":
+        return False
+    if "mae_dollars_abs" not in group:
+        return True
+    return bool(group["mae_dollars_abs"].isna().any())
+
+
+def _risk_clusters(ledger: pd.DataFrame) -> list[dict[str, Any]]:
+    rows = ledger.sort_values(["entry_time", "exit_time", "strategy_id"]).reset_index(drop=True).to_dict("records")
+    clusters: list[list[dict[str, Any]]] = []
+    current: list[dict[str, Any]] = []
+    current_end: pd.Timestamp | None = None
+    for row in rows:
+        entry = pd.Timestamp(row["entry_time"])
+        exit_ = pd.Timestamp(row["exit_time"])
+        if current and current_end is not None and entry >= current_end:
+            clusters.append(current)
+            current = []
+            current_end = None
+        current.append(row)
+        current_end = exit_ if current_end is None else max(current_end, exit_)
+    if current:
+        clusters.append(current)
+
+    output = []
+    for index, cluster in enumerate(clusters, start=1):
+        output.append(
+            {
+                "cluster_id": index,
+                "start_time": min(pd.Timestamp(row["entry_time"]) for row in cluster),
+                "end_time": max(pd.Timestamp(row["exit_time"]) for row in cluster),
+                "missing_mae": any(pd.isna(row.get("mae_dollars_abs", row.get("mae_dollars"))) for row in cluster),
+                "max_concurrent_mae": _max_concurrent_mae(cluster),
+            }
+        )
+    return output
+
+
+def _max_concurrent_mae(cluster: list[dict[str, Any]]) -> float:
+    times = sorted({pd.Timestamp(row["entry_time"]) for row in cluster} | {pd.Timestamp(row["exit_time"]) for row in cluster})
+    max_bound = 0.0
+    for time in times:
+        active = [
+            row
+            for row in cluster
+            if pd.Timestamp(row["entry_time"]) <= time < pd.Timestamp(row["exit_time"])
+        ]
+        bound = sum(float(row.get("mae_dollars_abs", row.get("mae_dollars", 0.0)) or 0.0) for row in active)
+        max_bound = max(max_bound, bound)
+    return max_bound
 
 
 def portfolio_contribution_summary(ledger: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:

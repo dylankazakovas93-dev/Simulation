@@ -37,6 +37,7 @@ from sim_core.portfolio import (
     build_allocation_grid,
     build_joint_portfolio_paths,
     combine_portfolio_path,
+    canonical_asset_suggestion,
     portfolio_export_frames,
     resolve_portfolio_overlaps,
     simulate_portfolio_lifecycle,
@@ -524,8 +525,11 @@ def render_portfolio_builder(
                     commission_round_turn_per_contract=float(item["commission_round_turn"]),
                     source_timezone=item["source_timezone"],
                     default_contract_count=int(item["default_contract_count"]),
+                    source_contract_count=int(item["source_contract_count"]),
                     pnl_basis=item["pnl_basis"],
+                    pnl_basis_confirmed=bool(item["pnl_basis_confirmed"]),
                     mae_mfe_convention=item["mae_mfe_convention"],
+                    mae_mfe_convention_override=bool(item["mae_mfe_convention_override"]),
                     enabled=bool(item["enabled"]),
                 )
             )
@@ -538,18 +542,23 @@ def render_portfolio_builder(
     st.subheader("Asset / Unit Audit")
     audit_rows = []
     for spec, frame in zip(specs, loaded_frames, strict=False):
+        suggestion = canonical_asset_suggestion(spec.contract_symbol, spec.asset_id)
         audit_rows.append(
             {
                 "include": spec.enabled,
                 "strategy_id": spec.strategy_id,
                 "asset_id": spec.asset_id,
+                "suggested_asset_id": suggestion["suggested_asset_id"],
+                "asset_warning": suggestion["message"],
                 "asset_label": spec.asset_label,
                 "contract_symbol": spec.contract_symbol,
                 "dollars_per_point_per_contract": spec.dollars_per_point_per_contract,
                 "commission_round_turn_per_contract": spec.commission_round_turn_per_contract,
                 "source_timezone": spec.source_timezone,
                 "pnl_basis": spec.pnl_basis,
+                "pnl_basis_confirmed": spec.pnl_basis_confirmed,
                 "default_contract_count": spec.default_contract_count,
+                "source_contract_count": spec.source_contract_count,
                 "source_date_range": _frame_date_range(frame),
                 "exact_entry_exit_timestamps": {"entry_time", "exit_time"} <= set(frame.columns),
                 "mae_mfe_exists": bool({"mae_points", "mfe_points"} & set(frame.columns)),
@@ -1504,9 +1513,28 @@ def uploaded_ledger_settings(uploaded: list[Any], *, default_dpp: float) -> dict
                 pnl_basis = adv[2].selectbox("P&L basis", ["points", "dollars"], key=f"upload_pnl_basis_{index}_{file.name}")
                 default_contract_count = adv[3].number_input("Default contracts", min_value=0, value=1, step=1, key=f"upload_default_contracts_{index}_{file.name}")
                 enabled = adv[4].checkbox("Include", value=True, key=f"upload_enabled_{index}_{file.name}")
+                unit_cols = st.columns(3)
+                source_contract_count = unit_cols[0].number_input(
+                    "Source contracts in uploaded P&L",
+                    min_value=1,
+                    value=1,
+                    step=1,
+                    key=f"upload_source_contracts_{index}_{file.name}",
+                )
+                pnl_basis_confirmed = unit_cols[1].checkbox(
+                    "Confirm authoritative P&L basis",
+                    value=False,
+                    key=f"upload_pnl_confirmed_{index}_{file.name}",
+                    help="Required when pnl_points and pnl_dollars disagree after source contract scaling.",
+                )
+                mae_mfe_convention_override = unit_cols[2].checkbox(
+                    "Override MAE/MFE sign check",
+                    value=False,
+                    key=f"upload_mae_mfe_override_{index}_{file.name}",
+                )
                 mae_mfe_convention = st.selectbox(
                     "MAE/MFE convention",
-                    ["positive_magnitude", "signed_adverse_negative", "signed_favorable_positive"],
+                    ["POSITIVE_MAGNITUDES", "SIGNED_MAE_NEGATIVE_MFE_POSITIVE", "positive_magnitude", "signed_adverse_negative", "signed_favorable_positive"],
                     key=f"upload_mae_mfe_{index}_{file.name}",
                 )
                 allocation_values = st.text_input(
@@ -1525,8 +1553,11 @@ def uploaded_ledger_settings(uploaded: list[Any], *, default_dpp: float) -> dict
                 "commission_round_turn": float(commission),
                 "source_timezone": source_timezone.strip() or "UTC",
                 "default_contract_count": int(default_contract_count),
+                "source_contract_count": int(source_contract_count),
                 "pnl_basis": pnl_basis,
+                "pnl_basis_confirmed": bool(pnl_basis_confirmed),
                 "mae_mfe_convention": mae_mfe_convention,
+                "mae_mfe_convention_override": bool(mae_mfe_convention_override),
                 "enabled": bool(enabled),
                 "allocation_values": parse_int_list(allocation_values),
             }
