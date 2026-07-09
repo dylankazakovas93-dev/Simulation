@@ -35,6 +35,7 @@ from sim_core.portfolio import (
     PortfolioAllocation,
     PortfolioInstrumentSpec,
     build_allocation_grid,
+    build_joint_portfolio_paths,
     combine_portfolio_path,
     portfolio_export_frames,
     resolve_portfolio_overlaps,
@@ -566,7 +567,11 @@ def render_portfolio_builder(
         combination_count *= len(choices)
     st.metric("Allocation combinations", f"{combination_count:,}")
     max_allocations = int(st.number_input("Allocation grid safety cap", min_value=1, value=250, step=25))
+    portfolio_path_count = int(st.number_input("Portfolio path count", min_value=1, value=100, step=10))
+    portfolio_seed = int(st.number_input("Portfolio random seed", value=1729, step=1))
+    sampled_account_days = int(st.number_input("Sampled account days per portfolio path", min_value=1, value=20, step=1))
     dependency_mode = st.selectbox("Dependency mode", ["PAIRED_CALENDAR_BLOCKS", "INDEPENDENT_SOURCE_PATHS"])
+    seasonal_month_aware = st.checkbox("Seasonal / month-aware sampling", value=True)
     overlap_policy = st.selectbox("Same-asset overlap policy", ["REJECT_SAME_ASSET_OVERLAP", "PRIORITY_KEEP_ONE", "ALLOW_STACKING"])
     risk_mode = st.selectbox("Intratrade risk mode", ["REALIZED_PNL_ONLY", "CONSERVATIVE_OVERLAP_MAE_BOUND", "EXACT_INTRATRADE"])
     plan_options = list(lifecycle_plans)
@@ -587,59 +592,59 @@ def render_portfolio_builder(
                 if "source_session_date" not in base:
                     base["source_session_date"] = pd.to_datetime(base["exit_time"], errors="coerce").dt.date.astype(str)
                 base_ledgers[spec.strategy_id] = base
-            path_map = {strategy_id: frame.assign(strategy_path_id=0, portfolio_path_id=0) for strategy_id, frame in base_ledgers.items()}
+            portfolio_paths, dependency_manifest = build_joint_portfolio_paths(
+                base_ledgers,
+                path_count=portfolio_path_count,
+                seed=portfolio_seed,
+                mode=dependency_mode,
+                trades_per_path=sampled_account_days,
+                seasonal_month_aware=seasonal_month_aware,
+            )
             combined_ledgers = []
             overlap_audits = []
             account_days = []
             account_traces = []
             path_results = []
-            for allocation in allocations:
-                combined = combine_portfolio_path(path_map, spec_by_strategy, allocation, portfolio_path_id=0)
-                kept, overlap_audit = resolve_portfolio_overlaps(
-                    combined,
-                    policy=overlap_policy,
-                    priority=[spec.strategy_id for spec in specs],
-                )
-                summary, day_ledger, trace = simulate_portfolio_lifecycle(
-                    kept,
-                    lifecycle_plans[selected_plan_key],
-                    LifecycleSettings(start_mode="funded"),
-                    risk_mode=risk_mode,
-                )
-                combined_ledgers.append(kept)
-                overlap_audits.append(overlap_audit)
-                account_days.append(day_ledger.assign(allocation_id=allocation.allocation_id))
-                account_traces.append(trace.assign(allocation_id=allocation.allocation_id))
-                path_results.append(summary.assign(allocation_id=allocation.allocation_id))
+            for portfolio_path_id, path_map in enumerate(portfolio_paths):
+                for allocation in allocations:
+                    combined = combine_portfolio_path(path_map, spec_by_strategy, allocation, portfolio_path_id=portfolio_path_id)
+                    kept, overlap_audit = resolve_portfolio_overlaps(
+                        combined,
+                        policy=overlap_policy,
+                        priority=[spec.strategy_id for spec in specs],
+                    )
+                    summary, day_ledger, trace = simulate_portfolio_lifecycle(
+                        kept,
+                        lifecycle_plans[selected_plan_key],
+                        LifecycleSettings(start_mode="funded"),
+                        risk_mode=risk_mode,
+                        path_id=portfolio_path_id,
+                    )
+                    combined_ledgers.append(kept)
+                    overlap_audits.append(overlap_audit)
+                    account_days.append(day_ledger.assign(allocation_id=allocation.allocation_id, portfolio_path_id=portfolio_path_id))
+                    account_traces.append(trace.assign(allocation_id=allocation.allocation_id, portfolio_path_id=portfolio_path_id))
+                    path_results.append(summary.assign(allocation_id=allocation.allocation_id, portfolio_path_id=portfolio_path_id))
             trade_ledger = pd.concat(combined_ledgers, ignore_index=True) if combined_ledgers else pd.DataFrame()
             overlap_audit = pd.concat(overlap_audits, ignore_index=True) if overlap_audits else pd.DataFrame()
             account_day_ledger = pd.concat(account_days, ignore_index=True) if account_days else pd.DataFrame()
             account_trace = pd.concat(account_traces, ignore_index=True) if account_traces else pd.DataFrame()
             path_results_frame = pd.concat(path_results, ignore_index=True) if path_results else pd.DataFrame()
-            dependency_manifest = pd.DataFrame(
-                [
-                    {
-                        "strategy_id": spec.strategy_id,
-                        "dependency_mode": dependency_mode,
-                        "dependence_label": "CROSS_STRATEGY_DEPENDENCE_UNVERIFIED" if dependency_mode == "INDEPENDENT_SOURCE_PATHS" else "USER_UPLOADED_ORDER_PAIRED",
-                        "common_date_count": pd.NA,
-                        "common_month_count": pd.NA,
-                        "paired_date_coverage_pct": pd.NA,
-                    }
-                    for spec in specs
-                ]
-            )
             strategy_manifest = pd.DataFrame(
                 [
                     {
-                        "portfolio_path_id": 0,
-                        "strategy_path_id": 0,
-                        "strategy_id": spec.strategy_id,
-                        "source_sequence_hash": trade_ledger.loc[trade_ledger["strategy_id"].eq(spec.strategy_id), "source_sequence_hash"].dropna().iloc[0]
-                        if not trade_ledger.loc[trade_ledger["strategy_id"].eq(spec.strategy_id)].empty
-                        else pd.NA,
+                        "portfolio_path_id": portfolio_path_id,
+                        "strategy_path_id": portfolio_path_id,
+                        "strategy_id": strategy_id,
+                        "source_sequence_hash": source_sequence_hash,
                     }
-                    for spec in specs
+                    for portfolio_path_id in sorted(trade_ledger["portfolio_path_id"].dropna().astype(int).unique())
+                    for strategy_id, source_sequence_hash in (
+                        trade_ledger[trade_ledger["portfolio_path_id"].astype(int).eq(portfolio_path_id)]
+                        .groupby("strategy_id")["source_sequence_hash"]
+                        .first()
+                        .items()
+                    )
                 ]
             )
             frames = portfolio_export_frames(

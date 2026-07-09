@@ -165,13 +165,29 @@ def test_failure_ordering_with_overlapping_positions_marks_missing_mae_unknown_a
 
 def test_paired_date_resampling_preserves_same_date_combinations_and_seed_reproducibility():
     ledgers = {
-        "mnq": pd.concat([_ledger("mnq", "2025-01-02", 1), _ledger("mnq", "2025-02-03", 2)], ignore_index=True),
-        "mgc": pd.concat([_ledger("mgc", "2025-01-02", 3, asset="GC"), _ledger("mgc", "2025-02-03", 4, asset="GC")], ignore_index=True),
+        "mnq": pd.concat(
+            [
+                _ledger("mnq", "2025-01-02", 1),
+                _ledger("mnq", "2025-01-03", 2),
+                _ledger("mnq", "2025-02-03", 3),
+                _ledger("mnq", "2025-02-04", 4),
+            ],
+            ignore_index=True,
+        ),
+        "mgc": pd.concat(
+            [
+                _ledger("mgc", "2025-01-02", 3, asset="GC"),
+                _ledger("mgc", "2025-01-03", 4, asset="GC"),
+                _ledger("mgc", "2025-02-03", 5, asset="GC"),
+                _ledger("mgc", "2025-02-04", 6, asset="GC"),
+            ],
+            ignore_index=True,
+        ),
     }
     first, manifest = build_joint_portfolio_paths(ledgers, path_count=2, seed=7, trades_per_path=3)
     second, _ = build_joint_portfolio_paths(ledgers, path_count=2, seed=7, trades_per_path=3)
 
-    assert manifest["common_date_count"].iloc[0] == 2
+    assert manifest["common_date_count"].iloc[0] == 4
     assert manifest["common_month_count"].iloc[0] == 2
     assert first[0]["mnq"]["source_session_date"].tolist() == first[0]["mgc"]["source_session_date"].tolist()
     assert first[0]["mnq"]["source_session_date"].tolist() == second[0]["mnq"]["source_session_date"].tolist()
@@ -193,6 +209,48 @@ def test_allocation_changes_reuse_source_paths_and_independent_mode_is_labelled_
     assert set(independent_manifest["dependence_label"]) == {"CROSS_STRATEGY_DEPENDENCE_UNVERIFIED"}
     with pytest.raises(ValueError, match="cap"):
         build_allocation_grid({"mnq": [0, 1, 2], "mgc": [0, 1, 2]}, max_combinations=4)
+
+
+def test_strategy_path_ensemble_is_generated_once_before_allocation_grid():
+    ledgers = {
+        "mnq": pd.concat(
+            [
+                _ledger("mnq", "2025-01-02", 1),
+                _ledger("mnq", "2025-01-03", 2),
+                _ledger("mnq", "2025-02-03", 3),
+                _ledger("mnq", "2025-02-04", 4),
+            ],
+            ignore_index=True,
+        ),
+        "mgc": pd.concat(
+            [
+                _ledger("mgc", "2025-01-02", 3, asset="GC"),
+                _ledger("mgc", "2025-01-03", 4, asset="GC"),
+                _ledger("mgc", "2025-02-03", 5, asset="GC"),
+                _ledger("mgc", "2025-02-04", 6, asset="GC"),
+            ],
+            ignore_index=True,
+        ),
+    }
+    paths, manifest = build_joint_portfolio_paths(
+        ledgers,
+        path_count=3,
+        seed=17,
+        trades_per_path=4,
+        seasonal_month_aware=True,
+    )
+    specs = {"mnq": _spec("mnq", "NQ", "MNQ", 2), "mgc": _spec("mgc", "GC", "MGC", 10)}
+    allocations = build_allocation_grid({"mnq": [1], "mgc": [0, 1]}, max_combinations=2)
+
+    path_zero_allocation_zero = combine_portfolio_path(paths[0], specs, allocations[0], portfolio_path_id=0)
+    path_zero_allocation_one = combine_portfolio_path(paths[0], specs, allocations[1], portfolio_path_id=0)
+    path_one_allocation_one = combine_portfolio_path(paths[1], specs, allocations[1], portfolio_path_id=1)
+
+    assert len(paths) == 3
+    assert set(path_zero_allocation_one["portfolio_path_id"]) == {0}
+    assert set(path_one_allocation_one["portfolio_path_id"]) == {1}
+    assert path_zero_allocation_zero[path_zero_allocation_zero["strategy_id"].eq("mnq")]["source_trade_id"].tolist() == path_zero_allocation_one[path_zero_allocation_one["strategy_id"].eq("mnq")]["source_trade_id"].tolist()
+    assert manifest["seasonal_month_aware"].eq(True).all()
 
 
 def test_single_non_overlapping_mnq_strategy_matches_existing_lifecycle_result():

@@ -256,6 +256,7 @@ def build_joint_portfolio_paths(
     seed: int,
     mode: DependencyMode = "PAIRED_CALENDAR_BLOCKS",
     trades_per_path: int | None = None,
+    seasonal_month_aware: bool = False,
 ) -> tuple[list[dict[str, pd.DataFrame]], pd.DataFrame]:
     if mode == "EXACT_INTRATRADE":
         raise ValueError("invalid dependency mode")
@@ -277,6 +278,7 @@ def build_joint_portfolio_paths(
                 "ledger_date_count": len(dates),
                 "paired_date_coverage_pct": len(common & dates) / len(dates) if dates else 0.0,
                 "dependence_label": "VERIFIED_PAIRED_CALENDAR" if mode == "PAIRED_CALENDAR_BLOCKS" and common else "CROSS_STRATEGY_DEPENDENCE_UNVERIFIED",
+                "seasonal_month_aware": bool(seasonal_month_aware),
             }
         )
     manifest = pd.DataFrame(coverage_rows)
@@ -288,7 +290,7 @@ def build_joint_portfolio_paths(
         path: dict[str, pd.DataFrame] = {}
         if mode == "PAIRED_CALENDAR_BLOCKS":
             count = trades_per_path or len(ordered_common)
-            sampled_dates = rng.choice(ordered_common, size=count, replace=True)
+            sampled_dates = _sample_dates(ordered_common, count, rng, seasonal_month_aware=seasonal_month_aware)
             for strategy_id, frame in ledgers_by_strategy.items():
                 picked = pd.concat(
                     [frame[pd.to_datetime(frame["source_session_date"]).dt.date.astype(str).eq(str(date))] for date in sampled_dates],
@@ -300,13 +302,57 @@ def build_joint_portfolio_paths(
         else:
             for strategy_id, frame in ledgers_by_strategy.items():
                 count = trades_per_path or len(frame)
-                indexes = rng.choice(np.arange(len(frame)), size=count, replace=True)
+                indexes = _sample_frame_indexes(frame, count, rng, seasonal_month_aware=seasonal_month_aware)
                 picked = frame.iloc[indexes].reset_index(drop=True).copy()
                 picked["portfolio_path_id"] = portfolio_path_id
                 picked["strategy_path_id"] = portfolio_path_id
                 path[strategy_id] = picked
         paths.append(path)
     return paths, manifest
+
+
+def _sample_dates(
+    dates: list[str],
+    count: int,
+    rng: np.random.Generator,
+    *,
+    seasonal_month_aware: bool,
+) -> np.ndarray:
+    if not seasonal_month_aware:
+        return rng.choice(dates, size=count, replace=True)
+    by_month: dict[int, list[str]] = {}
+    for date in dates:
+        by_month.setdefault(pd.Timestamp(date).month, []).append(date)
+    months = sorted(by_month)
+    sampled = []
+    for index in range(count):
+        month = months[index % len(months)]
+        sampled.append(rng.choice(by_month[month]))
+    return np.array(sampled)
+
+
+def _sample_frame_indexes(
+    frame: pd.DataFrame,
+    count: int,
+    rng: np.random.Generator,
+    *,
+    seasonal_month_aware: bool,
+) -> np.ndarray:
+    if not seasonal_month_aware:
+        return rng.choice(np.arange(len(frame)), size=count, replace=True)
+    dates = pd.to_datetime(frame["source_session_date"], errors="coerce")
+    by_month = {
+        month: dates[dates.dt.month.eq(month)].index.to_numpy()
+        for month in sorted(dates.dt.month.dropna().astype(int).unique())
+    }
+    if not by_month:
+        return rng.choice(np.arange(len(frame)), size=count, replace=True)
+    months = list(by_month)
+    sampled = []
+    for index in range(count):
+        month = months[index % len(months)]
+        sampled.append(rng.choice(by_month[month]))
+    return np.array(sampled)
 
 
 def combine_portfolio_path(
