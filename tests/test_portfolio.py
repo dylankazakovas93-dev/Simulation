@@ -567,6 +567,7 @@ def test_missing_mae_in_realized_only_is_strict_unknown_but_known_failure_overri
     fail_days = build_portfolio_account_day_ledger(pd.concat([missing, known_loss], ignore_index=True), plan, LifecycleSettings(start_mode="funded"), risk_mode="REALIZED_PNL_ONLY")
     assert fail_days.iloc[0]["strict_status"] == "FAILED"
     assert fail_days.iloc[0]["realized_only_status"] == "FAILED"
+    assert fail_days.iloc[0]["conservative_bound_status"] == "UNKNOWN"
 
 
 def test_realized_only_with_complete_mae_does_not_claim_strict_survival():
@@ -580,6 +581,7 @@ def test_realized_only_with_complete_mae_does_not_claim_strict_survival():
 
     assert days.iloc[0]["realized_only_status"] == "SURVIVED"
     assert days.iloc[0]["strict_status"] == "UNKNOWN"
+    assert days.iloc[0]["conservative_bound_status"] == "UNKNOWN"
 
 
 def test_non_overlapping_same_day_mae_bounds_are_not_summed():
@@ -592,6 +594,19 @@ def test_non_overlapping_same_day_mae_bounds_are_not_summed():
 
     assert not bool(summary.iloc[0]["failed"])
     assert not days.iloc[0]["conservative_bound_failure"]
+    assert days.iloc[0]["conservative_bound_status"] == "SURVIVED"
+
+
+def test_conservative_bound_with_missing_mae_reports_unknown_bound_status():
+    plan = default_lifecycle_plans()["Apex Trader Funding - EOD PA 50K - Funded only"]
+    frame = normalize_portfolio_ledger(
+        _timed_ledger("mnq", "2025-01-02", 0, entry="09:30", exit_="09:45", mae_points=None),
+        _spec("mnq", "NQ", "MNQ", 1),
+    )
+
+    days = build_portfolio_account_day_ledger(frame, plan, LifecycleSettings(start_mode="funded"), risk_mode="CONSERVATIVE_OVERLAP_MAE_BOUND")
+
+    assert days.iloc[0]["conservative_bound_status"] == "UNKNOWN"
 
 
 def test_overlapping_mae_cluster_bound_can_fail_and_block_later_trades():

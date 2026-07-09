@@ -1078,7 +1078,14 @@ def _simulate_portfolio_state(
         else:
             strict_status = "UNKNOWN"
         realized_only_status = "FAILED" if realized_only_failure else "SURVIVED"
-        conservative_bound_status = "FAILED" if conservative_failure else "UNKNOWN" if risk_mode == "CONSERVATIVE_OVERLAP_MAE_BOUND" and day_missing_mae else "SURVIVED"
+        if risk_mode != "CONSERVATIVE_OVERLAP_MAE_BOUND":
+            conservative_bound_status = "UNKNOWN"
+        elif conservative_failure:
+            conservative_bound_status = "FAILED"
+        elif day_missing_mae:
+            conservative_bound_status = "UNKNOWN"
+        else:
+            conservative_bound_status = "SURVIVED"
         evidence_coverage = exact_mae_count / len(group) if len(group) else 1.0
         rows.append(
             {
