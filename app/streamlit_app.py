@@ -229,25 +229,15 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
         path_count = int(st.slider("Monte Carlo paths", 10, 1000, 100, step=10))
         july_count = int(st.number_input("Remaining July candidate/trade count", min_value=0, value=8, step=1))
         august_count = int(st.number_input("August candidate/trade count", min_value=0, value=12, step=1))
-        pf_scenario = st.selectbox("Expectancy scenario", ["LOWER_EXPECTANCY", "BASE_EXPECTANCY", "HIGHER_EXPECTANCY"])
-        expectancy_tilt = st.slider(
-            "Artificial expectancy tilt",
-            min_value=-1.0,
-            max_value=1.0,
-            value=0.0,
-            step=0.05,
-            help="Negative tilts overweight historical losers; positive tilts overweight historical winners. Point scale stays separate.",
-        )
-        regime_scenario = st.selectbox("Regime scenario", ["stable", "gradual_degradation", "favourable_persistence", "abrupt_tail"])
         point_scale_scenario = st.selectbox("Point-scale scenario", ["current", "low", "high"])
         geometry_policy_label = st.selectbox(
             "Forward point geometry",
-            ["Current range only", "Source exact"],
-            help="Current range only filters out old tiny-volatility packets. Source exact uses the historical packet sizes as-is.",
+            ["Normalize to forward range", "Source exact"],
+            help="Normalize scales whole packets proportionally into the selected effective-stop range. Source exact uses historical packet sizes as-is.",
         )
         min_stop_points = st.number_input("Min effective stop points", min_value=0.0, value=100.0, step=5.0)
         max_stop_points = st.number_input("Max effective stop points", min_value=1.0, value=200.0, step=5.0)
-        min_abs_nonzero_pnl = st.number_input("Min non-BE P&L points", min_value=0.0, value=100.0, step=5.0)
+        target_expected_pf = st.slider("Target expected PF", min_value=0.80, max_value=2.50, value=1.50, step=0.05)
         allow_cutoff_packets = st.checkbox("Allow cutoff/partial packets", value=False)
 
     with accounts:
@@ -283,14 +273,11 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
         master_seed=master_seed,
         mc_seed=mc_seed,
         path_count=path_count,
-        pf_scenario=pf_scenario,
-        expectancy_tilt=float(expectancy_tilt),
-        regime_scenario=regime_scenario,
+        target_expected_pf=float(target_expected_pf),
         point_scale_scenario=point_scale_scenario,
-        geometry_policy="FILTER_CURRENT_RANGE" if geometry_policy_label == "Current range only" else "SOURCE_EXACT",
+        geometry_policy="NORMALIZE_TO_FORWARD_RANGE" if geometry_policy_label == "Normalize to forward range" else "SOURCE_EXACT",
         min_effective_stop_points=float(min_stop_points),
         max_effective_stop_points=float(max_stop_points),
-        min_abs_nonzero_pnl_points=float(min_abs_nonzero_pnl),
         allow_cutoff_packets=bool(allow_cutoff_packets),
         prefix_application_basis=prefix_basis,
         current_balance=float(current_balance),
@@ -358,6 +345,14 @@ def render_forward_master_path_lab(lifecycle_plans: dict[str, Any], *, default_d
     headline[2].metric("Realized prefix", f"{prefix_net:,.0f} pts")
     headline[3].metric("Forecast continuation", f"{forward_net:,.0f} pts")
     headline[4].metric("Combined", f"{combined_net:,.0f} pts")
+
+    pool = master_path.iloc[0]
+    pool_cols = st.columns(5)
+    pool_cols[0].metric("Requested target PF", f"{float(pool['requested_target_pf']):.2f}")
+    pool_cols[1].metric("Achieved source-pool PF", f"{float(pool['achieved_weighted_source_pf']):.2f}")
+    pool_cols[2].metric("Normalized packets", f"{int(pool['normalized_source_packet_count']):,}")
+    pool_cols[3].metric("July / August packets", f"{int(pool['july_source_packet_count']):,} / {int(pool['august_source_packet_count']):,}")
+    pool_cols[4].metric("Winner multiplier", f"{float(pool['calibration_winner_multiplier']):.3f}")
 
     if realized["excursion_confidence"].eq("UNKNOWN_USER_CONFIRMED").any():
         st.warning(

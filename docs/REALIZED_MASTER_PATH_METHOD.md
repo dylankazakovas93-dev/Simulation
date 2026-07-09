@@ -31,7 +31,7 @@ The workflow samples complete historical packet rows. It does not fabricate synt
 
 Historical `FLAT` rows are excluded from the executable sampling pool because causal forward rolling-PF gating is not fully replayed here. The exported rows label gate state as `GATING_DISABLED_FLAT_ROWS_EXCLUDED`.
 
-The default forward geometry policy is `FILTER_CURRENT_RANGE`. It filters continuation packets to current-sized effective stops and current-sized nonzero P&L before sampling. This keeps the clean two-month forward ledger from silently falling back to old low-volatility 10-40 point packets. Users can intentionally switch to `SOURCE_EXACT` in the app when they want unfiltered historical packet sizes.
+The default forward geometry policy is `NORMALIZE_TO_FORWARD_RANGE`. It does not include or exclude packets based on final P&L magnitude. Instead, it applies the selected point-scale scenario to each historical packet's effective stop, clamps that desired stop into the configured forward range, and multiplies P&L, raw stop, effective stop, target, MAE, and MFE by the same scale factor. Users can intentionally switch to `SOURCE_EXACT` in the app when they want unnormalized historical packet sizes for diagnostics.
 
 Each synthetic trade is assigned to a unique business day after July 8, 2026 through August 31, 2026. Dates do not wrap; requesting more trades than available forecast trading days raises a validation error. Source entry/exit offsets are aligned from `source_session_date` to the assigned `session_date`, and the lifecycle trade day must equal that assigned session. Hard assertions reject duplicate lifecycle days, sequence/order drift, and overlapping synthetic positions.
 
@@ -63,14 +63,12 @@ The default smoke export writes:
 
 ## Limitations
 
-PF, regime, and point-scale controls are recorded in scenario metadata in this implementation. The current sampler preserves historical packet outcomes and does not rewrite trade geometry.
+Target PF and point-scale controls are recorded in scenario metadata. The sampler preserves complete packet identity while normalizing point geometry proportionally for the forward environment.
 
 Scenario controls are active:
 
-- Expectancy scenarios alter packet sampling probabilities by outcome sign and are labeled `LOWER_EXPECTANCY`, `BASE_EXPECTANCY`, and `HIGHER_EXPECTANCY`. Numeric PF labels are not shown unless calibrated. Exports include `expected_weighted_source_pf`, the weighted expected PF of the reusable source pool under the selected weighting scheme.
-- The artificial expectancy tilt is a continuous win/loss weighting control. It changes chronology/mixture by overweighting historical winners or losers; it does not change point scale.
-- Regime scenarios alter packet sampling probabilities by source year/regime/outcome mix.
-- Point-scale scenarios rescale P&L, stops, targets, MAE, and MFE together while preserving the sampled packet and exit identity; stop/target caps are enforced.
+- Target expected PF calibrates one global winner sampling multiplier across the normalized July-and-August source population. The same multiplier is used for July and August; individual months are not separately forced to the target.
+- Point-scale scenarios feed the normalization step. P&L, stops, targets, MAE, and MFE stay internally proportional; P&L, target, MAE, and MFE are not independently capped after scaling.
 
 Rolling-PF disagreement diagnostics are not used to delete confirmed realized trades. Full causal rolling-PF forward gating is not enabled in this implementation; historical FLAT rows are excluded instead.
 

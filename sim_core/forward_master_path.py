@@ -19,7 +19,7 @@ from sim_core.prop_rules import _trade_day
 
 RRConfig = Literal["1rr", "1_5rr"]
 PrefixApplicationBasis = Literal["ACCOUNT_STATE_BEFORE_PREFIX", "ACCOUNT_STATE_AFTER_PREFIX"]
-GeometryPolicy = Literal["SOURCE_EXACT", "FILTER_CURRENT_RANGE"]
+GeometryPolicy = Literal["SOURCE_EXACT", "NORMALIZE_TO_FORWARD_RANGE"]
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DATA_DIR = REPO_ROOT / "data" / "forward_master_path"
@@ -89,12 +89,23 @@ FORWARD_STRATEGY_LEDGER_COLUMNS = [
     "pf_scenario",
     "expectancy_tilt",
     "expected_weighted_source_pf",
+    "requested_target_pf",
+    "achieved_weighted_source_pf",
+    "normalized_source_packet_count",
+    "july_source_packet_count",
+    "august_source_packet_count",
+    "july_source_wins",
+    "july_source_losses",
+    "july_source_breakevens",
+    "august_source_wins",
+    "august_source_losses",
+    "august_source_breakevens",
+    "calibration_winner_multiplier",
     "regime_scenario",
     "point_scale_scenario",
     "geometry_policy",
     "min_effective_stop_points",
     "max_effective_stop_points",
-    "min_abs_nonzero_pnl_points",
 ]
 
 
@@ -106,14 +117,14 @@ class ForwardScenario:
     master_seed: int = 1729
     mc_seed: int = 1730
     path_count: int = 100
-    pf_scenario: str = "BASE_EXPECTANCY"
+    pf_scenario: str = "TARGET_PF"
     expectancy_tilt: float = 0.0
+    target_expected_pf: float = 1.50
     regime_scenario: str = "stable"
     point_scale_scenario: str = "current"
-    geometry_policy: GeometryPolicy = "FILTER_CURRENT_RANGE"
+    geometry_policy: GeometryPolicy = "NORMALIZE_TO_FORWARD_RANGE"
     min_effective_stop_points: float = 100.0
     max_effective_stop_points: float = 200.0
-    min_abs_nonzero_pnl_points: float = 100.0
     allow_breakeven_packets: bool = True
     allow_cutoff_packets: bool = False
     prefix_application_basis: PrefixApplicationBasis = "ACCOUNT_STATE_BEFORE_PREFIX"
@@ -232,15 +243,10 @@ def build_master_path(
     )
     realized = select_realized_prefix(load_realized_master_path(Path(data_dir) / "realized_master_path.csv" if data_dir else None), scenario.rr_config_id)
     source = load_source_library(scenario.rr_config_id, data_dir)
-    weighted_source = _apply_geometry_policy(source, scenario)
-    weighted_source_pf = expected_weighted_pf(
-        weighted_source,
-        scenario.pf_scenario,
-        scenario.regime_scenario,
-        expectancy_tilt=scenario.expectancy_tilt,
-    )
+    source_pool = _apply_geometry_policy(source, scenario)
+    source_stats = source_pool_diagnostics(source_pool, scenario)
     continuation = sample_scenario_continuation(
-        source,
+        source_pool,
         scenario,
         seed=scenario.master_seed if seed is None else seed,
         path_id=path_id,
@@ -249,13 +255,24 @@ def build_master_path(
     master["prefix_application_basis"] = scenario.prefix_application_basis
     master["pf_scenario"] = scenario.pf_scenario
     master["expectancy_tilt"] = float(scenario.expectancy_tilt)
+    master["requested_target_pf"] = float(scenario.target_expected_pf)
+    master["achieved_weighted_source_pf"] = source_stats["achieved_weighted_source_pf"]
+    master["expected_weighted_source_pf"] = source_stats["achieved_weighted_source_pf"]
+    master["normalized_source_packet_count"] = source_stats["normalized_source_packet_count"]
+    master["july_source_packet_count"] = source_stats["july_source_packet_count"]
+    master["august_source_packet_count"] = source_stats["august_source_packet_count"]
+    master["july_source_wins"] = source_stats["july_source_wins"]
+    master["july_source_losses"] = source_stats["july_source_losses"]
+    master["july_source_breakevens"] = source_stats["july_source_breakevens"]
+    master["august_source_wins"] = source_stats["august_source_wins"]
+    master["august_source_losses"] = source_stats["august_source_losses"]
+    master["august_source_breakevens"] = source_stats["august_source_breakevens"]
+    master["calibration_winner_multiplier"] = source_stats["calibration_winner_multiplier"]
     master["regime_scenario"] = scenario.regime_scenario
     master["point_scale_scenario"] = scenario.point_scale_scenario
     master["geometry_policy"] = scenario.geometry_policy
     master["min_effective_stop_points"] = float(scenario.min_effective_stop_points)
     master["max_effective_stop_points"] = float(scenario.max_effective_stop_points)
-    master["min_abs_nonzero_pnl_points"] = float(scenario.min_abs_nonzero_pnl_points)
-    master["expected_weighted_source_pf"] = weighted_source_pf
     master["master_seed"] = scenario.master_seed
     master["mc_seed"] = scenario.mc_seed
     return add_path_totals(master)
@@ -323,9 +340,6 @@ def sample_scenario_continuation(
         7,
         scenario.july_candidate_count,
         rng,
-        pf_scenario=scenario.pf_scenario,
-        expectancy_tilt=scenario.expectancy_tilt,
-        regime_scenario=scenario.regime_scenario,
         scenario=scenario,
     )
     august = _sample_month_packets(
@@ -333,9 +347,6 @@ def sample_scenario_continuation(
         8,
         scenario.august_candidate_count,
         rng,
-        pf_scenario=scenario.pf_scenario,
-        expectancy_tilt=scenario.expectancy_tilt,
-        regime_scenario=scenario.regime_scenario,
         scenario=scenario,
     )
     sampled = pd.concat([july, august], ignore_index=True)
@@ -351,7 +362,6 @@ def sample_scenario_continuation(
                 sequence_number=3 + offset,
                 event_date=dates[month_offset],
                 seed=seed,
-                point_scale_scenario=scenario.point_scale_scenario,
             )
         )
     out = pd.DataFrame(rows)
@@ -386,12 +396,23 @@ def path_summary(paths: list[pd.DataFrame], scenario: ForwardScenario) -> pd.Dat
                 "pf_scenario": scenario.pf_scenario,
                 "expectancy_tilt": float(scenario.expectancy_tilt),
                 "expected_weighted_source_pf": _path_expected_source_pf(path),
+                "requested_target_pf": _path_scalar(path, "requested_target_pf"),
+                "achieved_weighted_source_pf": _path_scalar(path, "achieved_weighted_source_pf"),
+                "normalized_source_packet_count": _path_scalar(path, "normalized_source_packet_count"),
+                "july_source_packet_count": _path_scalar(path, "july_source_packet_count"),
+                "august_source_packet_count": _path_scalar(path, "august_source_packet_count"),
+                "july_source_wins": _path_scalar(path, "july_source_wins"),
+                "july_source_losses": _path_scalar(path, "july_source_losses"),
+                "july_source_breakevens": _path_scalar(path, "july_source_breakevens"),
+                "august_source_wins": _path_scalar(path, "august_source_wins"),
+                "august_source_losses": _path_scalar(path, "august_source_losses"),
+                "august_source_breakevens": _path_scalar(path, "august_source_breakevens"),
+                "calibration_winner_multiplier": _path_scalar(path, "calibration_winner_multiplier"),
                 "regime_scenario": scenario.regime_scenario,
                 "point_scale_scenario": scenario.point_scale_scenario,
                 "geometry_policy": scenario.geometry_policy,
                 "min_effective_stop_points": float(scenario.min_effective_stop_points),
                 "max_effective_stop_points": float(scenario.max_effective_stop_points),
-                "min_abs_nonzero_pnl_points": float(scenario.min_abs_nonzero_pnl_points),
                 "realized_prefix_net_points": float(path["realized_prefix_net_points"].iloc[-1]),
                 "forward_only_net_points": float(path["forward_only_net_points"].iloc[-1]),
                 "combined_net_points": float(path["combined_net_points"].iloc[-1]),
@@ -421,6 +442,12 @@ def strategy_path_manifest(paths: list[pd.DataFrame], scenario: ForwardScenario)
                 "pf_scenario": scenario.pf_scenario,
                 "expectancy_tilt": float(scenario.expectancy_tilt),
                 "expected_weighted_source_pf": _path_expected_source_pf(path),
+                "requested_target_pf": _path_scalar(path, "requested_target_pf"),
+                "achieved_weighted_source_pf": _path_scalar(path, "achieved_weighted_source_pf"),
+                "normalized_source_packet_count": _path_scalar(path, "normalized_source_packet_count"),
+                "july_source_packet_count": _path_scalar(path, "july_source_packet_count"),
+                "august_source_packet_count": _path_scalar(path, "august_source_packet_count"),
+                "calibration_winner_multiplier": _path_scalar(path, "calibration_winner_multiplier"),
                 "regime_scenario": scenario.regime_scenario,
                 "point_scale_scenario": scenario.point_scale_scenario,
                 "geometry_policy": scenario.geometry_policy,
@@ -699,9 +726,9 @@ def _sample_month_packets(
     count: int,
     rng: np.random.Generator,
     *,
-    pf_scenario: str | None,
+    pf_scenario: str | None = None,
     expectancy_tilt: float = 0.0,
-    regime_scenario: str | None,
+    regime_scenario: str | None = None,
     scenario: ForwardScenario | None = None,
 ) -> pd.DataFrame:
     if count <= 0:
@@ -711,15 +738,9 @@ def _sample_month_packets(
     else:
         dates = pd.to_datetime(source["source_session_date"], errors="coerce")
         candidates = source[dates.dt.month == month]
-    candidates = _apply_geometry_policy(candidates, scenario)
     if candidates.empty:
-        raise ValueError(f"no historical packets available for month {month} after forward geometry filters")
-    weights = _scenario_weights(
-        candidates,
-        pf_scenario=pf_scenario,
-        regime_scenario=regime_scenario,
-        expectancy_tilt=expectancy_tilt,
-    )
+        raise ValueError(f"no historical packets available for month {month} after forward geometry normalization")
+    weights = _sampling_probabilities(candidates)
     indexes = rng.choice(np.arange(len(candidates)), size=count, replace=True, p=weights)
     return candidates.iloc[indexes].reset_index(drop=True)
 
@@ -742,9 +763,7 @@ def _synthetic_row(
     sequence_number: int,
     event_date: str,
     seed: int,
-    point_scale_scenario: str = "current",
 ) -> dict[str, Any]:
-    scaled = _scaled_packet_values(row, rr_config_id, point_scale_scenario)
     entry_time, exit_time, duration_minutes = _shift_packet_times(row, event_date)
     return {
         "master_path_version": "2026-07-08.v1",
@@ -766,14 +785,14 @@ def _synthetic_row(
         "direction": row.get("direction"),
         "exit_reason": row.get("exit_reason"),
         "effective_exit_reason": row.get("effective_exit_reason"),
-        "pnl_points": scaled["pnl_points"],
-        "candidate_pnl_points": scaled["pnl_points"],
-        "executed_pnl_points": scaled["pnl_points"],
-        "raw_stop_points": scaled["raw_stop_points"],
-        "effective_stop_points": scaled["effective_stop_points"],
-        "target_points": scaled["target_points"],
-        "mae_points": scaled["mae_points"],
-        "mfe_points": scaled["mfe_points"],
+        "pnl_points": _optional_float(row.get("pnl_points")) or 0.0,
+        "candidate_pnl_points": _optional_float(row.get("pnl_points")) or 0.0,
+        "executed_pnl_points": _optional_float(row.get("pnl_points")) or 0.0,
+        "raw_stop_points": _optional_float(row.get("raw_stop_points")),
+        "effective_stop_points": _optional_float(row.get("effective_stop_points")),
+        "target_points": _optional_float(row.get("target_points")),
+        "mae_points": _optional_float(row.get("mae_points")),
+        "mfe_points": _optional_float(row.get("mfe_points")),
         "holding_duration_minutes": duration_minutes,
         "source_trade_packet_id": row.get("trade_packet_id"),
         "source_type": "HISTORICAL_FORWARD_PACKET",
@@ -798,29 +817,38 @@ def _synthetic_row(
         "geometry_policy": pd.NA,
         "min_effective_stop_points": pd.NA,
         "max_effective_stop_points": pd.NA,
-        "min_abs_nonzero_pnl_points": pd.NA,
     }
 
 
 def _apply_geometry_policy(candidates: pd.DataFrame, scenario: ForwardScenario | None) -> pd.DataFrame:
-    if scenario is None or scenario.geometry_policy == "SOURCE_EXACT" or candidates.empty:
-        return candidates
+    if candidates.empty:
+        return candidates.copy()
     out = candidates.copy()
-    stop = pd.to_numeric(out["effective_stop_points"], errors="coerce")
-    pnl = pd.to_numeric(out["pnl_points"], errors="coerce")
     reason = out["effective_exit_reason"].astype(str).str.upper()
-    stop_ok = stop.between(
-        float(scenario.min_effective_stop_points),
-        float(scenario.max_effective_stop_points),
-        inclusive="both",
+    if scenario is not None and not scenario.allow_cutoff_packets:
+        out = out[~reason.eq("CUTOFF")].copy()
+    if scenario is None or scenario.geometry_policy == "SOURCE_EXACT" or out.empty:
+        return _attach_sampling_weights(out, scenario)
+
+    source_stop = pd.to_numeric(out["effective_stop_points"], errors="coerce")
+    valid_stop = source_stop.notna() & (source_stop > 0)
+    out = out[valid_stop].copy()
+    source_stop = source_stop[valid_stop]
+    desired_stop = (source_stop * _scale_multiplier(scenario.point_scale_scenario)).clip(
+        lower=float(scenario.min_effective_stop_points),
+        upper=float(scenario.max_effective_stop_points),
     )
-    nonzero = pnl.abs() > 1e-9
-    pnl_ok = (~nonzero & bool(scenario.allow_breakeven_packets)) | (
-        nonzero & (pnl.abs() >= float(scenario.min_abs_nonzero_pnl_points))
-    )
-    if not scenario.allow_cutoff_packets:
-        pnl_ok &= ~reason.eq("CUTOFF")
-    return out[stop_ok & pnl_ok].reset_index(drop=True)
+    scale_factor = desired_stop / source_stop
+    out["source_effective_stop_points"] = source_stop.to_numpy(dtype=float)
+    out["desired_effective_stop_points"] = desired_stop.to_numpy(dtype=float)
+    out["normalization_scale_factor"] = scale_factor.to_numpy(dtype=float)
+    for column in ["pnl_points", "raw_stop_points", "effective_stop_points", "target_points", "mae_points", "mfe_points"]:
+        values = pd.to_numeric(out[column], errors="coerce")
+        out[column] = values * scale_factor
+    out["effective_stop_points"] = desired_stop.to_numpy(dtype=float)
+    pnl = pd.to_numeric(out["pnl_points"], errors="coerce").fillna(0.0)
+    out.loc[pnl.abs() <= 1e-9, "pnl_points"] = 0.0
+    return _attach_sampling_weights(out.reset_index(drop=True), scenario)
 
 
 def _accounting_times(row: Any) -> tuple[pd.Timestamp, pd.Timestamp]:
@@ -864,71 +892,102 @@ def _consistency_ratio(daily_profits: list[float], balance: float, starting_bala
     return max(positive) / profit
 
 
-def _scenario_weights(
+def _attach_sampling_weights(candidates: pd.DataFrame, scenario: ForwardScenario | None) -> pd.DataFrame:
+    out = candidates.copy().reset_index(drop=True)
+    if out.empty:
+        out["sampling_weight"] = pd.Series(dtype=float)
+        out["calibration_winner_multiplier"] = pd.Series(dtype=float)
+        return out
+    target_pf = 1.50 if scenario is None else float(scenario.target_expected_pf)
+    multiplier = _calibration_winner_multiplier(out, target_pf, scenario)
+    pnl = pd.to_numeric(out["pnl_points"], errors="coerce").fillna(0.0)
+    out["sampling_weight"] = np.where(pnl > 0, multiplier, 1.0)
+    out["calibration_winner_multiplier"] = multiplier
+    out["source_pool_expected_weight"] = _expected_sampling_exposure_weights(out, scenario)
+    return out
+
+
+def _calibration_winner_multiplier(
     candidates: pd.DataFrame,
-    *,
-    pf_scenario: str | None,
-    regime_scenario: str | None,
-    expectancy_tilt: float = 0.0,
-) -> np.ndarray | None:
+    target_pf: float,
+    scenario: ForwardScenario | None = None,
+) -> float:
+    pnl = pd.to_numeric(candidates["pnl_points"], errors="coerce").fillna(0.0)
+    if float(pnl[pnl > 0].sum()) <= 0 or float((-pnl[pnl < 0]).sum()) <= 0:
+        return 1.0
+    low, high = 0.0, 1.0
+    while (_expected_pf_for_multiplier(candidates, high, scenario) or 0.0) < float(target_pf):
+        high *= 2.0
+        if high > 1_000_000:
+            break
+    for _ in range(80):
+        mid = (low + high) / 2.0
+        pf = _expected_pf_for_multiplier(candidates, mid, scenario)
+        if pf is None:
+            return 1.0
+        if pf < float(target_pf):
+            low = mid
+        else:
+            high = mid
+    return (low + high) / 2.0
+
+
+def _expected_pf_for_multiplier(
+    candidates: pd.DataFrame,
+    winner_multiplier: float,
+    scenario: ForwardScenario | None = None,
+) -> float | None:
+    out = candidates.copy()
+    pnl = pd.to_numeric(out["pnl_points"], errors="coerce").fillna(0.0)
+    out["sampling_weight"] = np.where(pnl > 0, float(winner_multiplier), 1.0)
+    weights = _expected_sampling_exposure_weights(out, scenario)
+    gross_profit = float((np.where(pnl > 0, pnl, 0.0) * weights).sum())
+    gross_loss = float((np.where(pnl < 0, -pnl, 0.0) * weights).sum())
+    if gross_loss == 0:
+        return None
+    return gross_profit / gross_loss
+
+
+def _expected_sampling_exposure_weights(candidates: pd.DataFrame, scenario: ForwardScenario | None = None) -> np.ndarray:
+    if candidates.empty:
+        return np.array([], dtype=float)
+    months = _source_months(candidates)
+    if "sampling_weight" in candidates:
+        weights = pd.to_numeric(candidates["sampling_weight"], errors="coerce").fillna(1.0).to_numpy(dtype=float)
+    else:
+        weights = np.ones(len(candidates), dtype=float)
+    exposure = np.zeros(len(candidates), dtype=float)
+    if scenario is None:
+        planned_counts = {7: 1.0, 8: 1.0}
+    else:
+        planned_counts = {7: float(scenario.july_candidate_count), 8: float(scenario.august_candidate_count)}
+    for month, count in planned_counts.items():
+        mask = (months == month).to_numpy()
+        if not mask.any() or count <= 0:
+            continue
+        month_weights = weights[mask]
+        total = float(month_weights.sum())
+        if total > 0:
+            exposure[mask] = count * month_weights / total
+    if not exposure.any():
+        total = float(weights.sum())
+        return weights / total if total > 0 else np.ones(len(candidates), dtype=float) / len(candidates)
+    return exposure
+
+
+def _sampling_probabilities(candidates: pd.DataFrame) -> np.ndarray | None:
     if candidates.empty:
         return None
-    weights = np.ones(len(candidates), dtype=float)
-    pnl = pd.to_numeric(candidates["pnl_points"], errors="coerce").fillna(0.0).to_numpy()
-    scenario_key = {
-        "PF_1_35": "LOWER_EXPECTANCY",
-        "PF_1_50": "BASE_EXPECTANCY",
-        "PF_1_65": "HIGHER_EXPECTANCY",
-    }.get(str(pf_scenario), str(pf_scenario))
-    if scenario_key == "LOWER_EXPECTANCY":
-        weights *= np.where(pnl > 0, 0.85, np.where(pnl < 0, 1.15, 1.05))
-    elif scenario_key == "BASE_EXPECTANCY":
-        weights *= np.where(pnl > 0, 1.0, 1.0)
-    elif scenario_key == "HIGHER_EXPECTANCY":
-        weights *= np.where(pnl > 0, 1.15, np.where(pnl < 0, 0.85, 0.95))
-    tilt = float(np.clip(expectancy_tilt, -1.0, 1.0))
-    if tilt:
-        win_multiplier = float(np.exp(tilt))
-        loss_multiplier = float(np.exp(-tilt))
-        weights *= np.where(pnl > 0, win_multiplier, np.where(pnl < 0, loss_multiplier, 1.0))
-
-    if regime_scenario == "gradual_degradation":
-        year = pd.to_numeric(candidates.get("source_year", 2024), errors="coerce").fillna(2024).to_numpy()
-        weights *= np.where(year >= 2024, 1.35, 0.85)
-    elif regime_scenario == "favourable_persistence":
-        regime = candidates.get("volatility_regime_by_stop", pd.Series([""] * len(candidates))).astype(str)
-        weights *= np.where(regime.str.contains("low|mid", case=False, regex=True).to_numpy(), 1.25, 0.9)
-        weights *= np.where(pnl > 0, 1.1, 0.95)
-    elif regime_scenario == "abrupt_tail":
-        weights *= np.where(pnl < 0, 1.55, np.where(pnl > 0, 0.75, 1.05))
+    if "sampling_weight" in candidates:
+        weights = pd.to_numeric(candidates["sampling_weight"], errors="coerce").fillna(1.0).to_numpy(dtype=float)
+    else:
+        weights = np.ones(len(candidates), dtype=float)
     total = float(weights.sum())
     return weights / total if total > 0 else None
 
 
 def _scale_multiplier(point_scale_scenario: str) -> float:
     return {"low": 0.75, "current": 1.0, "high": 1.15}.get(point_scale_scenario, 1.0)
-
-
-def _scaled_packet_values(row: pd.Series, rr_config_id: RRConfig, point_scale_scenario: str) -> dict[str, float | None]:
-    multiplier = _scale_multiplier(point_scale_scenario)
-    raw_stop = _optional_float(row.get("raw_stop_points"))
-    effective_stop = _optional_float(row.get("effective_stop_points"))
-    target = _optional_float(row.get("target_points"))
-    pnl = _optional_float(row.get("pnl_points"))
-    mae = _optional_float(row.get("mae_points"))
-    mfe = _optional_float(row.get("mfe_points"))
-    raw_cap = 200.0
-    target_cap = 200.0 if rr_config_id == "1rr" else 300.0
-    raw_scaled = min(raw_cap, raw_stop * multiplier) if raw_stop is not None else None
-    stop_ratio = (raw_scaled / raw_stop) if raw_stop and raw_scaled is not None else multiplier
-    return {
-        "raw_stop_points": raw_scaled,
-        "effective_stop_points": min(200.0, effective_stop * stop_ratio) if effective_stop is not None else None,
-        "target_points": min(target_cap, target * stop_ratio) if target is not None else None,
-        "pnl_points": pnl * stop_ratio if pnl is not None else 0.0,
-        "mae_points": mae * stop_ratio if mae is not None else None,
-        "mfe_points": mfe * stop_ratio if mfe is not None else None,
-    }
 
 
 def _shift_packet_times(row: pd.Series, event_date: str) -> tuple[pd.Timestamp, pd.Timestamp, float]:
@@ -967,22 +1026,61 @@ def strategy_sequence_hash(path: pd.DataFrame) -> str:
     return sha256(material.encode("utf-8")).hexdigest()
 
 
+def source_pool_diagnostics(frame: pd.DataFrame, scenario: ForwardScenario) -> dict[str, float | int | None]:
+    achieved_pf = expected_weighted_pf(
+        frame,
+        scenario.pf_scenario,
+        scenario.regime_scenario,
+        expectancy_tilt=scenario.expectancy_tilt,
+        target_expected_pf=scenario.target_expected_pf,
+    )
+    months = _source_months(frame)
+    pnl = pd.to_numeric(frame["pnl_points"], errors="coerce").fillna(0.0)
+    stats: dict[str, float | int | None] = {
+        "requested_target_pf": float(scenario.target_expected_pf),
+        "achieved_weighted_source_pf": achieved_pf,
+        "normalized_source_packet_count": int(len(frame)),
+        "july_source_packet_count": int((months == 7).sum()),
+        "august_source_packet_count": int((months == 8).sum()),
+        "calibration_winner_multiplier": float(frame["calibration_winner_multiplier"].iloc[0])
+        if "calibration_winner_multiplier" in frame and not frame.empty
+        else None,
+    }
+    for month, label in [(7, "july"), (8, "august")]:
+        month_pnl = pnl[months == month]
+        stats[f"{label}_source_wins"] = int((month_pnl > 0).sum())
+        stats[f"{label}_source_losses"] = int((month_pnl < 0).sum())
+        stats[f"{label}_source_breakevens"] = int((month_pnl.abs() <= 1e-9).sum())
+    return stats
+
+
+def _source_months(frame: pd.DataFrame) -> pd.Series:
+    if "seasonality_month" in frame:
+        return pd.to_numeric(frame["seasonality_month"], errors="coerce")
+    return pd.to_datetime(frame["source_session_date"], errors="coerce").dt.month
+
+
 def expected_weighted_pf(
     frame: pd.DataFrame,
     pf_scenario: str | None,
     regime_scenario: str | None,
     *,
     expectancy_tilt: float = 0.0,
+    target_expected_pf: float = 1.50,
 ) -> float | None:
     synthetic = frame[frame["status"].eq("SYNTHETIC")] if "status" in frame else frame
     if synthetic.empty:
         return None
-    weights = _scenario_weights(
-        synthetic,
-        pf_scenario=pf_scenario,
-        regime_scenario=regime_scenario,
-        expectancy_tilt=expectancy_tilt,
-    )
+    if "sampling_weight" not in synthetic:
+        synthetic = _attach_sampling_weights(synthetic, ForwardScenario(target_expected_pf=float(target_expected_pf)))
+    if "source_pool_expected_weight" in synthetic:
+        weights = pd.to_numeric(synthetic["source_pool_expected_weight"], errors="coerce").fillna(0.0).to_numpy(dtype=float)
+        if float(weights.sum()) > 0:
+            weights = weights / float(weights.sum())
+        else:
+            weights = None
+    else:
+        weights = _sampling_probabilities(synthetic)
     pnl = pd.to_numeric(synthetic["pnl_points"], errors="coerce").fillna(0.0).to_numpy()
     if weights is None:
         weights = np.ones(len(synthetic), dtype=float) / len(synthetic)
@@ -997,6 +1095,15 @@ def _path_expected_source_pf(path: pd.DataFrame) -> float | None:
     if "expected_weighted_source_pf" not in path or path["expected_weighted_source_pf"].dropna().empty:
         return None
     return float(path["expected_weighted_source_pf"].dropna().iloc[0])
+
+
+def _path_scalar(path: pd.DataFrame, column: str) -> Any:
+    if column not in path or path[column].dropna().empty:
+        return None
+    value = path[column].dropna().iloc[0]
+    if isinstance(value, np.generic):
+        return value.item()
+    return value
 
 
 def _assert_synthetic_calendar(frame: pd.DataFrame) -> None:

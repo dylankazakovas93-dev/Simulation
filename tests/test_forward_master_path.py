@@ -5,11 +5,14 @@ import pytest
 
 from sim_core.forward_master_path import (
     ForwardScenario,
+    _apply_geometry_policy,
     build_master_path,
     build_monte_carlo_paths,
     executable_packet_pool,
+    expected_weighted_pf,
     forecast_trading_dates,
     forward_strategy_ledger,
+    load_source_library,
     load_realized_master_path,
     path_summary,
     run_forward_lifecycle_grid,
@@ -221,24 +224,131 @@ def test_historical_flat_rows_are_not_executable_packets():
     assert len(executable_packet_pool(frame)) == 1
 
 
-def test_enabled_scenario_controls_materially_change_outputs_and_point_scale_caps():
+def _normalization_fixture() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "trade_packet_id": "tiny_win",
+                "source_session_date": "2024-07-01",
+                "seasonality_month": 7,
+                "entry_time": "2024-07-01T09:00:00-04:00",
+                "exit_time": "2024-07-01T10:00:00-04:00",
+                "direction": "long",
+                "exit_reason": "TP",
+                "effective_exit_reason": "TP",
+                "pnl_points": 6.0,
+                "raw_stop_points": 12.0,
+                "effective_stop_points": 12.0,
+                "target_points": 18.0,
+                "mae_points": 3.0,
+                "mfe_points": 24.0,
+                "source_ledger_id": "fixture",
+            },
+            {
+                "trade_packet_id": "wide_loss",
+                "source_session_date": "2024-08-01",
+                "seasonality_month": 8,
+                "entry_time": "2024-08-01T09:00:00-04:00",
+                "exit_time": "2024-08-01T10:00:00-04:00",
+                "direction": "short",
+                "exit_reason": "SL",
+                "effective_exit_reason": "SL",
+                "pnl_points": -10.0,
+                "raw_stop_points": 250.0,
+                "effective_stop_points": 250.0,
+                "target_points": 375.0,
+                "mae_points": 260.0,
+                "mfe_points": 20.0,
+                "source_ledger_id": "fixture",
+            },
+            {
+                "trade_packet_id": "small_loss",
+                "source_session_date": "2024-07-02",
+                "seasonality_month": 7,
+                "entry_time": "2024-07-02T09:00:00-04:00",
+                "exit_time": "2024-07-02T10:00:00-04:00",
+                "direction": "long",
+                "exit_reason": "SL",
+                "effective_exit_reason": "SL",
+                "pnl_points": -1.0,
+                "raw_stop_points": 50.0,
+                "effective_stop_points": 50.0,
+                "target_points": 75.0,
+                "mae_points": 55.0,
+                "mfe_points": 5.0,
+                "source_ledger_id": "fixture",
+            },
+            {
+                "trade_packet_id": "breakeven",
+                "source_session_date": "2024-08-02",
+                "seasonality_month": 8,
+                "entry_time": "2024-08-02T09:00:00-04:00",
+                "exit_time": "2024-08-02T10:00:00-04:00",
+                "direction": "short",
+                "exit_reason": "BE",
+                "effective_exit_reason": "BE",
+                "pnl_points": 0.0,
+                "raw_stop_points": 40.0,
+                "effective_stop_points": 40.0,
+                "target_points": 60.0,
+                "mae_points": 12.0,
+                "mfe_points": 8.0,
+                "source_ledger_id": "fixture",
+            },
+        ]
+    )
+
+
+def test_forward_geometry_normalizes_small_and_wide_packets_without_outcome_filtering():
+    scenario = ForwardScenario(min_effective_stop_points=100, max_effective_stop_points=200)
+    normalized = _apply_geometry_policy(_normalization_fixture(), scenario)
+
+    assert set(normalized["trade_packet_id"]) == {"tiny_win", "wide_loss", "small_loss", "breakeven"}
+    tiny = normalized[normalized["trade_packet_id"] == "tiny_win"].iloc[0]
+    wide = normalized[normalized["trade_packet_id"] == "wide_loss"].iloc[0]
+    assert tiny["effective_stop_points"] == 100.0
+    assert tiny["normalization_scale_factor"] == pytest.approx(100.0 / 12.0)
+    assert wide["effective_stop_points"] == 200.0
+    assert wide["normalization_scale_factor"] == pytest.approx(200.0 / 250.0)
+    assert normalized.loc[normalized["trade_packet_id"] == "small_loss", "pnl_points"].iloc[0] == pytest.approx(-2.0)
+
+
+def test_normalization_uses_one_scale_factor_and_preserves_packet_result_identity():
+    scenario = ForwardScenario(min_effective_stop_points=100, max_effective_stop_points=200)
+    source = _normalization_fixture()
+    normalized = _apply_geometry_policy(source, scenario)
+    row = normalized[normalized["trade_packet_id"] == "tiny_win"].iloc[0]
+    source_row = source[source["trade_packet_id"] == "tiny_win"].iloc[0]
+
+    factor = row["normalization_scale_factor"]
+    for column in ["pnl_points", "raw_stop_points", "effective_stop_points", "target_points", "mae_points", "mfe_points"]:
+        assert row[column] == pytest.approx(float(source_row[column]) * factor)
+    assert row["exit_reason"] == source_row["exit_reason"]
+    assert row["effective_exit_reason"] == source_row["effective_exit_reason"]
+    assert row["pnl_points"] > 0
+    assert normalized.loc[normalized["trade_packet_id"] == "wide_loss", "pnl_points"].iloc[0] < 0
+    assert normalized.loc[normalized["trade_packet_id"] == "breakeven", "pnl_points"].iloc[0] == 0.0
+
+
+def test_point_scale_changes_geometry_but_not_packet_eligibility():
     base = build_master_path(ForwardScenario(rr_config_id="1_5rr", master_seed=42, july_candidate_count=6, august_candidate_count=6))
-    pf = build_master_path(
-        ForwardScenario(rr_config_id="1_5rr", master_seed=42, july_candidate_count=6, august_candidate_count=6, pf_scenario="HIGHER_EXPECTANCY")
-    )
-    regime = build_master_path(
-        ForwardScenario(rr_config_id="1_5rr", master_seed=42, july_candidate_count=6, august_candidate_count=6, regime_scenario="abrupt_tail")
-    )
     high = build_master_path(
         ForwardScenario(rr_config_id="1_5rr", master_seed=42, july_candidate_count=6, august_candidate_count=6, point_scale_scenario="high")
     )
 
-    assert base["source_trade_packet_id"].fillna("").tolist() != pf["source_trade_packet_id"].fillna("").tolist()
-    assert base["source_trade_packet_id"].fillna("").tolist() != regime["source_trade_packet_id"].fillna("").tolist()
+    assert base["source_trade_packet_id"].fillna("").tolist() == high["source_trade_packet_id"].fillna("").tolist()
     synthetic = high[high["status"] == "SYNTHETIC"]
-    assert synthetic["raw_stop_points"].max() <= 200
     assert synthetic["effective_stop_points"].max() <= 200
-    assert synthetic["target_points"].max() <= 300
+    assert synthetic["effective_stop_points"].min() >= 100
+    midrange = _normalization_fixture().iloc[[0]].copy()
+    midrange[["pnl_points", "raw_stop_points", "effective_stop_points", "target_points", "mae_points", "mfe_points"]] = [
+        [75.0, 150.0, 150.0, 225.0, 30.0, 240.0]
+    ]
+    current_packet = _apply_geometry_policy(midrange, ForwardScenario(point_scale_scenario="current")).iloc[0]
+    high_packet = _apply_geometry_policy(midrange, ForwardScenario(point_scale_scenario="high")).iloc[0]
+    assert current_packet["trade_packet_id"] == high_packet["trade_packet_id"]
+    assert high_packet["normalization_scale_factor"] > current_packet["normalization_scale_factor"]
+    assert high_packet["target_points"] > current_packet["target_points"]
 
 
 def test_strategy_sequence_hash_is_identical_for_account_variants():
@@ -280,34 +390,34 @@ def test_clean_forward_strategy_ledger_has_no_prop_account_fields():
     assert {"raw_stop_points", "effective_stop_points", "target_points", "mae_points", "mfe_points"} <= set(ledger.columns)
 
 
-def test_artificial_expectancy_tilt_materially_changes_weighted_source_pf():
-    low = build_master_path(
-        ForwardScenario(
-            rr_config_id="1rr",
-            july_candidate_count=4,
-            august_candidate_count=4,
-            expectancy_tilt=-1.0,
-        )
-    )
-    high = build_master_path(
-        ForwardScenario(
-            rr_config_id="1rr",
-            july_candidate_count=4,
-            august_candidate_count=4,
-            expectancy_tilt=1.0,
-        )
-    )
-
-    assert float(low["expected_weighted_source_pf"].iloc[0]) < float(high["expected_weighted_source_pf"].iloc[0])
+def test_target_pf_calibrates_weighted_source_pool_for_both_rr_configs_and_blocks_old_defaults():
+    for rr_config_id, old_pf in [("1rr", 3.0298388701), ("1_5rr", 2.0278424872)]:
+        path = build_master_path(ForwardScenario(rr_config_id=rr_config_id, july_candidate_count=4, august_candidate_count=4))
+        achieved = float(path["achieved_weighted_source_pf"].iloc[0])
+        assert achieved == pytest.approx(1.50, abs=0.01)
+        assert achieved != pytest.approx(old_pf, abs=0.001)
+        assert float(path["requested_target_pf"].iloc[0]) == 1.50
 
 
-def test_default_forward_geometry_filters_out_tiny_nonzero_packets():
+def test_target_pf_monotonically_increases_winner_weights_and_expected_pf():
+    source = load_source_library("1rr")
+    rows = []
+    for target_pf in [1.20, 1.50, 1.80]:
+        scenario = ForwardScenario(rr_config_id="1rr", target_expected_pf=target_pf)
+        pool = _apply_geometry_policy(source, scenario)
+        rows.append((target_pf, float(pool["calibration_winner_multiplier"].iloc[0]), expected_weighted_pf(pool, None, None)))
+
+    assert [row[1] for row in rows] == sorted(row[1] for row in rows)
+    assert [row[2] for row in rows] == sorted(row[2] for row in rows)
+    assert [row[2] for row in rows] == pytest.approx([1.20, 1.50, 1.80], abs=0.01)
+
+
+def test_default_forward_geometry_normalizes_tiny_nonzero_packets():
     path = build_master_path(ForwardScenario(rr_config_id="1rr", july_candidate_count=8, august_candidate_count=8))
     synthetic = path[path["status"] == "SYNTHETIC"]
     nonzero = synthetic[synthetic["pnl_points"].astype(float).abs() > 1e-9]
 
     assert not nonzero.empty
-    assert nonzero["pnl_points"].abs().min() >= 100
     assert synthetic["effective_stop_points"].between(100, 200).all()
     assert not synthetic["effective_exit_reason"].astype(str).str.lower().eq("cutoff").any()
 
@@ -326,6 +436,40 @@ def test_source_exact_geometry_can_still_show_old_small_packets_when_selected():
     nonzero = synthetic[synthetic["pnl_points"].astype(float).abs() > 1e-9]
 
     assert nonzero["pnl_points"].abs().min() < 100
+
+
+def test_july_and_august_are_not_independently_forced_to_target_pf():
+    scenario = ForwardScenario(rr_config_id="1rr", target_expected_pf=1.50)
+    pool = _apply_geometry_policy(load_source_library("1rr"), scenario)
+
+    month_pfs = []
+    for month in [7, 8]:
+        month_pool = pool[pool["seasonality_month"].astype(int) == month]
+        month_pfs.append(expected_weighted_pf(month_pool, None, None))
+    assert expected_weighted_pf(pool, None, None) == pytest.approx(1.50, abs=0.01)
+    assert any(abs(float(month_pf) - 1.50) > 0.01 for month_pf in month_pfs)
+
+
+def test_normalized_source_pool_is_materially_broader_than_previous_filtered_subset():
+    scenario = ForwardScenario(rr_config_id="1rr")
+    source = load_source_library("1rr")
+    pool = _apply_geometry_policy(source, scenario)
+    old_stop = source["effective_stop_points"].between(100, 200, inclusive="both")
+    old_pnl = source["pnl_points"].abs().le(1e-9) | source["pnl_points"].abs().ge(100)
+    old_subset = source[old_stop & old_pnl & ~source["effective_exit_reason"].astype(str).str.upper().eq("CUTOFF")]
+
+    assert len(pool) > len(old_subset) * 2
+    assert pool["trade_packet_id"].nunique() > old_subset["trade_packet_id"].nunique() * 2
+
+
+def test_large_deterministic_sampling_smoke_approximately_reproduces_target_pf():
+    scenario = ForwardScenario(rr_config_id="1rr", path_count=800, july_candidate_count=8, august_candidate_count=12, target_expected_pf=1.50)
+    ledgers = pd.concat(build_monte_carlo_paths(scenario), ignore_index=True)
+    synthetic = ledgers[ledgers["status"] == "SYNTHETIC"]
+    gross_profit = synthetic.loc[synthetic["pnl_points"] > 0, "pnl_points"].sum()
+    gross_loss = -synthetic.loc[synthetic["pnl_points"] < 0, "pnl_points"].sum()
+
+    assert gross_profit / gross_loss == pytest.approx(1.50, abs=0.18)
 
 
 def test_per_trade_ledger_reconciles_after_prefix_basis_and_current_state():
