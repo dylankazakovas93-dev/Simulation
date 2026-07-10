@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from hashlib import sha256
+from pathlib import Path
+
 import pandas as pd
 import pytest
+from streamlit.testing.v1 import AppTest
 
 pytest.importorskip("streamlit")
 
@@ -25,6 +29,7 @@ from app.streamlit_app import (
     format_prop_summary,
     format_guidance_ranking,
     inspect_historical_upload_metadata,
+    inspect_historical_upload_set_metadata,
     plan_route_label,
 )
 
@@ -89,7 +94,7 @@ def test_historical_upload_metadata_blocks_multiple_rr_configs():
     errors, warnings = inspect_historical_upload_metadata(frame)
 
     assert len(errors) == 1
-    assert "multiple rr_config_id" in errors[0]
+    assert "Multiple RR configurations" in errors[0]
     assert warnings == []
 
 
@@ -99,7 +104,7 @@ def test_historical_upload_metadata_blocks_multiple_simulated_paths():
     errors, warnings = inspect_historical_upload_metadata(frame)
 
     assert len(errors) == 1
-    assert "multiple simulated path_id" in errors[0]
+    assert "Multiple simulated path IDs" in errors[0]
     assert warnings == []
 
 
@@ -118,6 +123,112 @@ def test_historical_upload_metadata_warns_for_single_forward_ledger():
     assert errors == []
     assert len(warnings) == 1
     assert "generated forward ledger" in warnings[0]
+
+
+def test_historical_upload_set_accepts_single_and_matching_rr_metadata():
+    one_rr = pd.DataFrame({"rr_config_id": ["1rr"], "entry_time": ["2026-01-01"]})
+
+    assert inspect_historical_upload_set_metadata([("one.csv", one_rr)])[0] == []
+    assert inspect_historical_upload_set_metadata([("one.csv", one_rr), ("two.csv", one_rr)])[0] == []
+
+
+def test_historical_upload_set_blocks_cross_file_rr_configs_with_file_names():
+    errors, _ = inspect_historical_upload_set_metadata(
+        [
+            ("ledger_1rr.csv", pd.DataFrame({"rr_config_id": ["1rr"]})),
+            ("ledger_1_5rr.csv", pd.DataFrame({"rr_config_id": ["1_5rr"]})),
+        ]
+    )
+
+    assert errors == [
+        "Multiple RR configurations detected across uploads:\n"
+        "1_5rr: ledger_1_5rr.csv\n"
+        "1rr: ledger_1rr.csv"
+    ]
+
+
+def test_historical_upload_set_blocks_cross_file_paths_and_accepts_matching_paths():
+    path_zero = pd.DataFrame({"path_id": [0]})
+    path_one = pd.DataFrame({"path_id": [1]})
+
+    errors, _ = inspect_historical_upload_set_metadata([("path_0.csv", path_zero), ("path_1.csv", path_one)])
+
+    assert errors == ["Multiple simulated path IDs detected across uploads:\n0: path_0.csv\n1: path_1.csv"]
+    assert inspect_historical_upload_set_metadata([("a.csv", path_zero), ("b.csv", path_zero)])[0] == []
+
+
+def test_historical_upload_set_normalizes_rr_case_and_integer_like_path_ids():
+    errors, _ = inspect_historical_upload_set_metadata(
+        [
+            ("first.csv", pd.DataFrame({"rr_config_id": [" 1RR "], "path_id": [0]})),
+            ("second.csv", pd.DataFrame({"rr_config_id": ["1rr"], "path_id": [" 0 "]})),
+            ("third.csv", pd.DataFrame({"rr_config_id": ["1Rr"], "path_id": ["0"]})),
+        ]
+    )
+
+    assert errors == []
+
+
+def test_historical_upload_set_has_order_independent_errors_and_warnings():
+    first = ("generated.csv", pd.DataFrame({"rr_config_id": ["1RR"], "path_id": [0], "status": ["SYNTHETIC"]}))
+    second = ("other.csv", pd.DataFrame({"rr_config_id": ["1_5rr"], "path_id": [1], "status": ["SYNTHETIC"]}))
+
+    assert inspect_historical_upload_set_metadata([first, second]) == inspect_historical_upload_set_metadata([second, first])
+
+
+def test_generated_multifile_bundle_requires_complete_provenance():
+    errors, warnings = inspect_historical_upload_set_metadata(
+        [
+            ("generated.csv", pd.DataFrame({"rr_config_id": ["1rr"], "path_id": [0], "status": ["SYNTHETIC"]})),
+            ("unproven.csv", pd.DataFrame({"entry_time": ["2026-01-01"], "pnl_points": [10]})),
+        ]
+    )
+
+    assert errors == [
+        "Generated forward bundles require rr_config_id and path_id in every uploaded file:\nunproven.csv"
+    ]
+    assert len(warnings) == 1
+
+
+def test_historical_upload_set_accepts_ordinary_ledgers_and_validates_raw_metadata_before_coercion():
+    ordinary = pd.DataFrame({"entry_time": ["2026-01-01"], "pnl_points": [10]})
+    one_rr = ordinary.assign(rr_config_id="1rr")
+    one_half_rr = ordinary.assign(rr_config_id="1_5rr")
+
+    assert inspect_historical_upload_set_metadata([("ordinary.csv", ordinary)])[0] == []
+    coerced = coerce_uploaded_ledger(
+        one_rr,
+        strategy_id="test",
+        default_dpp=2.0,
+        fallback_minutes=60,
+    )
+    assert "rr_config_id" not in coerced
+    assert inspect_historical_upload_set_metadata([("one.csv", one_rr), ("half.csv", one_half_rr)])[0]
+
+
+def test_historical_bundle_error_stops_before_coercion_or_partial_acceptance():
+    app = AppTest.from_file(str(Path(__file__).parents[1] / "app" / "streamlit_app.py")).run()
+    app.file_uploader[0].upload("one.csv", b"rr_config_id,path_id\n1rr,0\n", "text/csv")
+    app.file_uploader[0].upload("half.csv", b"rr_config_id,path_id\n1_5rr,1\n", "text/csv")
+    app.run()
+
+    assert not app.exception
+    assert [error.value for error in app.error] == [
+        "Multiple RR configurations detected across uploads:\n1_5rr: half.csv\n1rr: one.csv\n"
+        "Multiple simulated path IDs detected across uploads:\n0: one.csv\n1: half.csv"
+    ]
+    assert not app.dataframe
+
+
+def test_exact_realistic_1rr_regression_ledger_is_accepted():
+    ledger_path = Path(
+        "/Users/mariusvidziunas/Documents/Codex/2026-07-09/files-mentioned-by-the-user-read/outputs/"
+        "UPLOAD_THIS_ONE_FILE_ONLY_REALISTIC_1RR_LEDGER_UPLOAD_READY.csv"
+    )
+    content = ledger_path.read_bytes()
+
+    assert sha256(content).hexdigest() == "92d3c3c934fd191726882fcfee26a8ba8f5614c2aad86bb06f0956d5cf5b76d9"
+    assert inspect_historical_upload_set_metadata([(ledger_path.name, pd.read_csv(ledger_path))])[0] == []
 
 
 def test_prop_comparison_uses_default_funded_floor_instead_of_zero_cushion_override():

@@ -107,19 +107,31 @@ def main() -> None:
         return
     ledger_settings = uploaded_ledger_settings(uploaded, default_dpp=float(default_dpp))
 
-    loaded_frames: list[pd.DataFrame] = []
+    raw_uploads: list[tuple[str, pd.DataFrame]] = []
     errors: list[str] = []
     warnings: list[str] = []
     for file in uploaded:
-        settings = ledger_settings[file.name]
         try:
             raw = read_uploaded_ledger(file)
-            if simulation_mode == "Historical lifecycle bootstrap":
-                metadata_errors, metadata_warnings = inspect_historical_upload_metadata(raw)
-                errors.extend(f"{file.name}: {message}" for message in metadata_errors)
-                warnings.extend(f"{file.name}: {message}" for message in metadata_warnings)
-                if metadata_errors:
-                    continue
+            raw_uploads.append((file.name, raw))
+        except Exception as exc:  # noqa: BLE001 - display file-level load errors in UI
+            errors.append(f"{file.name}: {exc}")
+
+    if simulation_mode == "Historical lifecycle bootstrap" and raw_uploads:
+        metadata_errors, metadata_warnings = inspect_historical_upload_set_metadata(raw_uploads)
+        errors.extend(metadata_errors)
+        warnings.extend(metadata_warnings)
+
+    if warnings:
+        st.warning("\n".join(warnings))
+    if errors:
+        st.error("\n".join(errors))
+        return
+
+    loaded_frames: list[pd.DataFrame] = []
+    for file_name, raw in raw_uploads:
+        settings = ledger_settings[file_name]
+        try:
             loaded_frames.append(
                 coerce_uploaded_ledger(
                     raw,
@@ -132,10 +144,7 @@ def main() -> None:
                 )
             )
         except Exception as exc:  # noqa: BLE001 - display file-level load errors in UI
-            errors.append(f"{file.name}: {exc}")
-
-    if warnings:
-        st.warning("\n".join(warnings))
+            errors.append(f"{file_name}: {exc}")
     if errors:
         st.error("\n".join(errors))
     if not loaded_frames:
@@ -1751,43 +1760,99 @@ def coerce_uploaded_ledger(
 
 
 def inspect_historical_upload_metadata(frame: pd.DataFrame) -> tuple[list[str], list[str]]:
-    columns = {normalize_column_name(str(column)): column for column in frame.columns}
-    errors: list[str] = []
+    return inspect_historical_upload_set_metadata([("uploaded ledger", frame)])
+
+
+def inspect_historical_upload_set_metadata(
+    uploads: list[tuple[str, pd.DataFrame]],
+) -> tuple[list[str], list[str]]:
+    """Validate generated-ledger metadata before upload frames are coerced."""
+    rr_files: dict[str, list[str]] = {}
+    path_files: dict[str, list[str]] = {}
     warnings: list[str] = []
-    rr_col = columns.get("rr_config_id")
-    if rr_col is not None:
-        rr_values = sorted(value for value in frame[rr_col].dropna().astype(str).unique() if value)
-        if len(rr_values) > 1:
-            errors.append(
-                "multiple rr_config_id values found; upload exactly one RR configuration for historical bootstrap."
-            )
-    path_col = columns.get("path_id")
-    if path_col is not None:
-        path_values = sorted(value for value in frame[path_col].dropna().astype(str).unique() if value)
-        if len(path_values) > 1:
-            errors.append(
-                "multiple simulated path_id values found; mutually exclusive Monte Carlo paths cannot be treated as one historical ledger."
-            )
-    status_col = columns.get("status")
-    has_synthetic = False
-    if status_col is not None:
-        has_synthetic = frame[status_col].dropna().astype(str).str.upper().eq("SYNTHETIC").any()
-    forward_columns = {
-        "pf_scenario",
-        "expectancy_tilt",
-        "source_trade_packet_id",
-        "cumulative_forward_only_points",
-        "cumulative_combined_points",
-        "regime_scenario",
-        "point_scale_scenario",
-    }
-    has_forward_metadata = any(column in columns for column in forward_columns)
-    if has_synthetic or has_forward_metadata:
-        warnings.append(
-            "This appears to be a generated forward ledger. Use July-August realized-prefix forward simulation "
-            "for the primary analysis. Historical bootstrap would resample simulated outcomes again."
+    generated_uploads = False
+    missing_forward_provenance: list[str] = []
+
+    for file_name, frame in sorted(uploads, key=lambda upload: upload[0]):
+        columns = {normalize_column_name(str(column)): column for column in frame.columns}
+        rr_col = columns.get("rr_config_id")
+        rr_values = _non_null_metadata_values(frame[rr_col], case_insensitive=True) if rr_col is not None else []
+        if rr_col is not None:
+            for value in rr_values:
+                rr_files.setdefault(value, []).append(file_name)
+        path_col = columns.get("path_id")
+        path_values = _non_null_metadata_values(frame[path_col], path_id=True) if path_col is not None else []
+        if path_col is not None:
+            for value in path_values:
+                path_files.setdefault(value, []).append(file_name)
+
+        status_col = columns.get("status")
+        has_synthetic = (
+            status_col is not None
+            and frame[status_col].dropna().astype(str).str.upper().eq("SYNTHETIC").any()
         )
-    return errors, warnings
+        forward_columns = {
+            "pf_scenario",
+            "expectancy_tilt",
+            "source_trade_packet_id",
+            "cumulative_forward_only_points",
+            "cumulative_combined_points",
+            "regime_scenario",
+            "point_scale_scenario",
+        }
+        if has_synthetic or any(column in columns for column in forward_columns):
+            generated_uploads = True
+            warnings.append(
+                f"{file_name}: This appears to be a generated forward ledger. Use July-August realized-prefix "
+                "forward simulation for the primary analysis. Historical bootstrap would resample simulated "
+                "outcomes again."
+            )
+        if not rr_values or not path_values:
+            missing_forward_provenance.append(file_name)
+
+    errors: list[str] = []
+    if len(rr_files) > 1:
+        errors.append("Multiple RR configurations detected across uploads:\n" + _metadata_file_list(rr_files))
+    if len(path_files) > 1:
+        errors.append("Multiple simulated path IDs detected across uploads:\n" + _metadata_file_list(path_files))
+    if len(uploads) > 1 and generated_uploads and missing_forward_provenance:
+        errors.append(
+            "Generated forward bundles require rr_config_id and path_id in every uploaded file:\n"
+            + "\n".join(sorted(missing_forward_provenance))
+        )
+    return errors, sorted(warnings)
+
+
+def _non_null_metadata_values(
+    values: pd.Series,
+    *,
+    case_insensitive: bool = False,
+    path_id: bool = False,
+) -> list[str]:
+    normalized: set[str] = set()
+    for raw_value in values.dropna():
+        value = str(raw_value).strip()
+        if not value:
+            continue
+        if case_insensitive:
+            value = value.casefold()
+        if path_id:
+            try:
+                numeric = float(value)
+            except ValueError:
+                pass
+            else:
+                if numeric.is_integer():
+                    value = str(int(numeric))
+        normalized.add(value)
+    return sorted(normalized)
+
+
+def _metadata_file_list(files_by_value: dict[str, list[str]]) -> str:
+    return "\n".join(
+        f"{value}: {', '.join(sorted(set(file_names)))}"
+        for value, file_names in sorted(files_by_value.items())
+    )
 
 
 def read_uploaded_ledger(file: Any) -> pd.DataFrame:
