@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import asdict, dataclass, replace
 from typing import Any, Literal
 
@@ -102,6 +104,10 @@ class LifecyclePathResult:
     max_drawdown: float
     target_hit: bool
     cushion_ok_after_payout: bool
+    effective_starting_balance: float | None = None
+    shared_strategy_path_id: int | None = None
+    account_result_id: int | None = None
+    source_sequence_hash: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -462,6 +468,7 @@ def simulate_lifecycle_path(
         state.daily_profits = [float(value) for value in settings.current_daily_profits]
         if settings.current_highest_winning_day > 0:
             state.daily_profits.append(float(settings.current_highest_winning_day))
+    effective_starting_balance = state.balance
 
     first_trade_date = _trade_day(ordered[0].exit_time, timezone) if ordered else pd.Timestamp("1970-01-01")
     if state.stage == "evaluation":
@@ -920,6 +927,7 @@ def simulate_lifecycle_path(
         max_drawdown=max_drawdown_seen,
         target_hit=target_hit,
         cushion_ok_after_payout=cushion_ok_after_payout,
+        effective_starting_balance=effective_starting_balance,
     )
     if terminal_reason:
         events.append(
@@ -956,33 +964,71 @@ def run_lifecycle_grid(
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     rng = np.random.default_rng(seed)
     sampler = MonthBlockSampler(trades, horizon_months)
+    shared_paths: list[tuple[list[Trade], str]] = [
+        (sampled, _source_sequence_hash(sampled))
+        for sampled in (sampler.sample(rng) for _path_number in range(paths))
+    ]
     results: list[LifecyclePathResult] = []
-    months: list[LifecycleMonth] = []
-    events: list[LifecycleEvent] = []
+    month_rows: list[dict[str, Any]] = []
+    event_rows: list[dict[str, Any]] = []
     path_id = 0
     for plan in plans:
         settings = settings_by_plan[plan.key]
         for contracts in contract_values:
-            for path_number in range(paths):
-                sampled = sampler.sample(rng)
+            for path_number, (sampled, sequence_hash) in enumerate(shared_paths):
+                account_result_id = path_id
                 result, path_months, path_events = simulate_lifecycle_path(
                     sampled,
                     plan,
                     contracts=contracts,
                     settings=settings,
-                    path_id=path_id,
+                    path_id=account_result_id,
                     seed=seed + path_number,
                     dollars_per_point=dollars_per_point,
                 )
+                result = replace(
+                    result,
+                    shared_strategy_path_id=path_number,
+                    account_result_id=account_result_id,
+                    source_sequence_hash=sequence_hash,
+                )
                 results.append(result)
-                months.extend(path_months)
-                events.extend(path_events)
+                shared_fields = {
+                    "shared_strategy_path_id": path_number,
+                    "account_result_id": account_result_id,
+                    "source_sequence_hash": sequence_hash,
+                }
+                for month in path_months:
+                    row = month.to_dict()
+                    row.update(shared_fields)
+                    month_rows.append(row)
+                for event in path_events:
+                    row = event.to_dict()
+                    row.update(shared_fields)
+                    event_rows.append(row)
                 path_id += 1
     return (
         summarize_lifecycle_results(results),
-        pd.DataFrame([month.to_dict() for month in months]),
-        pd.DataFrame([event.to_dict() for event in events]),
+        pd.DataFrame(month_rows),
+        pd.DataFrame(event_rows),
     )
+
+
+def _source_sequence_hash(trades: list[Trade]) -> str:
+    payload = [
+        {
+            "source_row_id": trade.source_row_id,
+            "trade_id": trade.trade_id,
+            "source_month": trade.metadata.get("source_month", str(trade.source_month)),
+            "target_month": trade.metadata.get("target_month", str(trade.source_month)),
+            "entry_time": trade.entry_time.isoformat(),
+            "exit_time": trade.exit_time.isoformat(),
+            "pnl_points": float(trade.pnl_points),
+        }
+        for trade in trades
+    ]
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _metadata_int(trade: Trade, key: str) -> int | None:
@@ -1024,6 +1070,9 @@ def summarize_lifecycle_results(results: list[LifecyclePathResult]) -> pd.DataFr
         net = group["net_cash"].astype(float)
         payouts = group["total_payouts"].astype(float)
         payout_counts = group["payouts_taken"].astype(float)
+        ending_balance = group["ending_balance"].astype(float)
+        effective_start = pd.to_numeric(group.get("effective_starting_balance"), errors="coerce").astype(float)
+        ending_profit = ending_balance - effective_start
         failed = group["failed"].astype(bool)
         target = group["target_hit"].astype(bool)
         has_payout = group["first_payout_month"].notna()
@@ -1066,6 +1115,9 @@ def summarize_lifecycle_results(results: list[LifecyclePathResult]) -> pd.DataFr
             "p95_net_cash": float(np.percentile(net, 95)),
             "mean_net_cash": float(net.mean()),
             "avg_net_cash": float(net.mean()),
+            "p50_ending_balance": float(np.percentile(ending_balance, 50)),
+            "p50_ending_account_profit": float(np.percentile(ending_profit, 50)),
+            "p50_unresolved_ending_profit": _nanpercentile(ending_profit.loc[no_resolution].to_numpy(), 50),
             "p50_payouts": float(np.percentile(payouts, 50)),
             "avg_withdrawal": float(payouts.mean()),
             "p50_withdrawal": float(np.percentile(payouts, 50)),

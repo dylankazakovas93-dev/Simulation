@@ -836,3 +836,139 @@ def test_eval_pass_and_activation_fee_have_authoritative_trace_rows():
     assert ledger[-1]["balance_after"] == result.ending_balance
     assert ledger[-1]["floor_after"] == result.ending_floor
     assert ledger[-1]["total_fees"] == result.total_fees
+
+
+def test_lifecycle_grid_reuses_shared_source_paths_across_sizes_and_plans():
+    trades = _trades(
+        [
+            {
+                "entry_time": "2026-01-02T10:00:00Z",
+                "exit_time": "2026-01-02T11:00:00Z",
+                "pnl_points": 10,
+                "source_row_id": "jan",
+            },
+            {
+                "entry_time": "2026-02-02T10:00:00Z",
+                "exit_time": "2026-02-02T11:00:00Z",
+                "pnl_points": -5,
+                "source_row_id": "feb",
+            },
+        ]
+    )
+    plans = [
+        default_lifecycle_plans()["Apex Trader Funding - EOD PA 50K - Funded only"],
+        default_lifecycle_plans()["TakeProfitTrader - PRO 50K - Funded only"],
+    ]
+    settings_by_plan = {
+        plan.key: LifecycleSettings(
+            start_mode="funded",
+            current_balance=50_000,
+            current_floor=0,
+            auto_payout=False,
+        )
+        for plan in plans
+    }
+
+    _ranking_a, monthly_a, _events_a = run_lifecycle_grid(
+        trades,
+        plans,
+        contract_values=[1, 2],
+        paths=4,
+        horizon_months=3,
+        seed=99,
+        dollars_per_point=2,
+        settings_by_plan=settings_by_plan,
+    )
+    _ranking_b, monthly_b, _events_b = run_lifecycle_grid(
+        trades,
+        plans,
+        contract_values=[1, 2],
+        paths=4,
+        horizon_months=3,
+        seed=99,
+        dollars_per_point=2,
+        settings_by_plan=settings_by_plan,
+    )
+
+    for path_id, group in monthly_a.groupby("shared_strategy_path_id"):
+        assert group["source_sequence_hash"].nunique() == 1
+        assert group["source_sequence_hash"].iloc[0] == monthly_b[
+            monthly_b["shared_strategy_path_id"] == path_id
+        ]["source_sequence_hash"].iloc[0]
+    assert set(monthly_a["shared_strategy_path_id"]) == {0, 1, 2, 3}
+    assert monthly_a["account_result_id"].nunique() == 16
+
+
+def test_shared_lifecycle_paths_scale_pnl_without_resampling():
+    trades = _trades(
+        [
+            {
+                "entry_time": "2026-01-02T10:00:00Z",
+                "exit_time": "2026-01-02T11:00:00Z",
+                "pnl_points": 10,
+                "source_row_id": "jan",
+            },
+            {
+                "entry_time": "2026-02-02T10:00:00Z",
+                "exit_time": "2026-02-02T11:00:00Z",
+                "pnl_points": 10,
+                "source_row_id": "feb",
+            },
+        ]
+    )
+    plan = default_lifecycle_plans()["Apex Trader Funding - EOD PA 50K - Funded only"]
+    settings = LifecycleSettings(start_mode="funded", current_balance=50_000, current_floor=0, auto_payout=False)
+
+    _ranking, monthly, _events = run_lifecycle_grid(
+        trades,
+        [plan],
+        contract_values=[1, 3],
+        paths=3,
+        horizon_months=2,
+        seed=7,
+        dollars_per_point=2,
+        settings_by_plan={plan.key: settings},
+    )
+    totals = monthly.groupby(["shared_strategy_path_id", "contracts"])["pnl"].sum().unstack()
+
+    assert (totals[3] == totals[1] * 3).all()
+
+
+def test_lifecycle_summary_separates_realized_cash_from_ending_profit():
+    result = LifecyclePathResult(
+        plan_key="test-plan",
+        firm="Test",
+        account_name="Test Account",
+        contracts=1,
+        path_id=1,
+        seed=1,
+        failed=False,
+        terminal_stage="funded",
+        attempts=1,
+        eval_passes=0,
+        funded_failures=0,
+        payouts_taken=0,
+        first_payout_month=None,
+        first_payout_day=None,
+        first_payout_order=None,
+        first_failure_month=None,
+        first_failure_day=None,
+        first_failure_order=None,
+        total_payouts=0,
+        total_fees=0,
+        net_cash=0,
+        roi_on_fees=None,
+        ending_balance=51_000,
+        ending_floor=49_000,
+        max_drawdown=0,
+        target_hit=False,
+        cushion_ok_after_payout=False,
+        effective_starting_balance=50_000,
+    )
+
+    row = summarize_lifecycle_results([result]).iloc[0]
+
+    assert row["avg_net_cash"] == 0
+    assert row["p50_ending_balance"] == 51_000
+    assert row["p50_ending_account_profit"] == 1_000
+    assert row["p50_unresolved_ending_profit"] == 1_000

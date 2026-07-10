@@ -24,6 +24,7 @@ from app.streamlit_app import (
     format_prop_comparison,
     format_prop_summary,
     format_guidance_ranking,
+    inspect_historical_upload_metadata,
     plan_route_label,
 )
 
@@ -82,6 +83,43 @@ def test_uploaded_ledger_coercion_uses_per_file_instrument_and_point_value():
     assert es.iloc[0]["commission_round_turn"] == 1.25
 
 
+def test_historical_upload_metadata_blocks_multiple_rr_configs():
+    frame = pd.DataFrame({"rr_config_id": ["1rr", "1.5rr"], "entry_time": ["2026-01-01", "2026-01-02"]})
+
+    errors, warnings = inspect_historical_upload_metadata(frame)
+
+    assert len(errors) == 1
+    assert "multiple rr_config_id" in errors[0]
+    assert warnings == []
+
+
+def test_historical_upload_metadata_blocks_multiple_simulated_paths():
+    frame = pd.DataFrame({"path_id": [0, 1], "entry_time": ["2026-01-01", "2026-01-02"]})
+
+    errors, warnings = inspect_historical_upload_metadata(frame)
+
+    assert len(errors) == 1
+    assert "multiple simulated path_id" in errors[0]
+    assert warnings == []
+
+
+def test_historical_upload_metadata_warns_for_single_forward_ledger():
+    frame = pd.DataFrame(
+        {
+            "rr_config_id": ["1rr"],
+            "path_id": [0],
+            "status": ["SYNTHETIC"],
+            "pf_scenario": ["realistic"],
+        }
+    )
+
+    errors, warnings = inspect_historical_upload_metadata(frame)
+
+    assert errors == []
+    assert len(warnings) == 1
+    assert "generated forward ledger" in warnings[0]
+
+
 def test_prop_comparison_uses_default_funded_floor_instead_of_zero_cushion_override():
     balance, floor = current_state_overrides(
         mode="Prop Comparison",
@@ -122,7 +160,7 @@ def test_guidance_ranking_is_compact_and_uses_new_outcome_labels():
                 "avg_fees": 80,
                 "p50_month_to_first_payout": 1,
                 "display_composite_score": 72.5,
-                "status": "Candidate",
+                "status": "Payout candidate",
             }
         ]
     )
@@ -135,7 +173,7 @@ def test_guidance_ranking_is_compact_and_uses_new_outcome_labels():
         "paid before blow",
         "blew before payout",
         "paid after rebuy",
-        "avg net",
+        "average realized cash after fees",
         "median realized",
         "avg fees",
         "median first payout",
@@ -143,6 +181,7 @@ def test_guidance_ranking_is_compact_and_uses_new_outcome_labels():
         "status",
     ]
     assert formatted.iloc[0]["paid before blow"] == "65.0%"
+    assert formatted.iloc[0]["average realized cash after fees"] == "$1,200"
 
 
 def test_monthly_heatmap_formats_dollar_and_rate_values_without_matplotlib():
@@ -199,7 +238,101 @@ def test_apply_score_config_upgrades_legacy_ranking_columns():
     scored = apply_score_config(frame, config)
 
     assert "survival_score" in scored
-    assert scored.iloc[0]["status"] == "Candidate"
+    assert scored.iloc[0]["status"] == "Payout candidate"
+
+
+def test_guidance_statuses_do_not_label_zero_payout_rows_as_candidates():
+    frame = pd.DataFrame(
+        [
+            {
+                "contracts": 1,
+                "paths": 100,
+                "paid_before_first_blow_count": 0,
+                "blew_before_payout_count": 0,
+                "paid_after_rebuy_count": 0,
+                "no_resolution_count": 100,
+                "paid_before_first_blow_rate": 0.0,
+                "blew_before_payout_rate": 0.0,
+                "payout_after_rebuy_rate": 0.0,
+                "no_resolution_rate": 1.0,
+                "any_payout_rate": 0.0,
+                "mean_net_cash": 0,
+            },
+            {
+                "contracts": 2,
+                "paths": 100,
+                "paid_before_first_blow_count": 0,
+                "blew_before_payout_count": 25,
+                "paid_after_rebuy_count": 0,
+                "no_resolution_count": 75,
+                "paid_before_first_blow_rate": 0.0,
+                "blew_before_payout_rate": 0.25,
+                "payout_after_rebuy_rate": 0.0,
+                "no_resolution_rate": 0.75,
+                "any_payout_rate": 0.0,
+                "mean_net_cash": 0,
+            },
+            {
+                "contracts": 3,
+                "paths": 100,
+                "paid_before_first_blow_count": 0,
+                "blew_before_payout_count": 100,
+                "paid_after_rebuy_count": 0,
+                "no_resolution_count": 0,
+                "paid_before_first_blow_rate": 0.0,
+                "blew_before_payout_rate": 1.0,
+                "payout_after_rebuy_rate": 0.0,
+                "no_resolution_rate": 0.0,
+                "any_payout_rate": 0.0,
+                "mean_net_cash": 0,
+            },
+            {
+                "contracts": 4,
+                "paths": 100,
+                "paid_before_first_blow_count": 5,
+                "blew_before_payout_count": 20,
+                "paid_after_rebuy_count": 0,
+                "no_resolution_count": 75,
+                "paid_before_first_blow_rate": 0.05,
+                "blew_before_payout_rate": 0.20,
+                "payout_after_rebuy_rate": 0.0,
+                "no_resolution_rate": 0.75,
+                "any_payout_rate": 0.05,
+                "mean_net_cash": 100,
+            },
+            {
+                "contracts": 5,
+                "paths": 100,
+                "paid_before_first_blow_count": 0,
+                "blew_before_payout_count": 0,
+                "paid_after_rebuy_count": 10,
+                "no_resolution_count": 90,
+                "paid_before_first_blow_rate": 0.0,
+                "blew_before_payout_rate": 0.0,
+                "payout_after_rebuy_rate": 0.10,
+                "no_resolution_rate": 0.90,
+                "any_payout_rate": 0.10,
+                "mean_net_cash": 100,
+            },
+        ]
+    )
+    config = {
+        "survival_weight": 0.4,
+        "ev_weight": 0.3,
+        "speed_weight": 0.15,
+        "convexity_weight": 0.15,
+        "max_blow_rate": 0.5,
+    }
+
+    scored = apply_score_config(frame, config).sort_values("contracts")
+
+    assert scored["status"].tolist() == [
+        "No payout observed",
+        "No payout observed",
+        "All paths failed",
+        "Payout candidate",
+        "Payout only after failure/rebuy",
+    ]
 
 
 def test_prop_comparison_helpers_support_size_and_route_filters():

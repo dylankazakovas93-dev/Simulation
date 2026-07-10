@@ -59,7 +59,7 @@ MAE_COLUMNS = ("mae_points", "mae_pts", "mae")
 MFE_COLUMNS = ("mfe_points", "mfe_pts", "mfe")
 STOP_COLUMNS = ("stop_points", "stop_pts", "sl_points", "sl_pts")
 DEFAULT_PROFILE_KEY = "Apex Trader Funding - EOD PA 50K"
-RESULT_SCHEMA_VERSION = 4
+RESULT_SCHEMA_VERSION = 5
 RESULT_STATE_KEYS = (
     "lifecycle_ranking",
     "lifecycle_monthly",
@@ -109,10 +109,17 @@ def main() -> None:
 
     loaded_frames: list[pd.DataFrame] = []
     errors: list[str] = []
+    warnings: list[str] = []
     for file in uploaded:
         settings = ledger_settings[file.name]
         try:
             raw = read_uploaded_ledger(file)
+            if simulation_mode == "Historical lifecycle bootstrap":
+                metadata_errors, metadata_warnings = inspect_historical_upload_metadata(raw)
+                errors.extend(f"{file.name}: {message}" for message in metadata_errors)
+                warnings.extend(f"{file.name}: {message}" for message in metadata_warnings)
+                if metadata_errors:
+                    continue
             loaded_frames.append(
                 coerce_uploaded_ledger(
                     raw,
@@ -127,6 +134,8 @@ def main() -> None:
         except Exception as exc:  # noqa: BLE001 - display file-level load errors in UI
             errors.append(f"{file.name}: {exc}")
 
+    if warnings:
+        st.warning("\n".join(warnings))
     if errors:
         st.error("\n".join(errors))
     if not loaded_frames:
@@ -1030,13 +1039,53 @@ def apply_score_config(frame: pd.DataFrame, score_config: dict[str, float]) -> p
         + score_config["speed_weight"] * scored["speed_score"].astype(float)
         + score_config["convexity_weight"] * scored["convexity_score"].astype(float)
     )
-    scored["status"] = scored["blew_before_payout_rate"].apply(
-        lambda rate: "Too aggressive" if float(rate) > score_config["max_blow_rate"] else "Candidate"
+    scored["status"] = scored.apply(
+        lambda row: classify_guidance_status(row, max_blow_rate=float(score_config["max_blow_rate"])),
+        axis=1,
     )
+    scored["status_rank"] = scored["status"].map(status_rank)
     return scored.sort_values(
-        ["status", "display_composite_score", "paid_before_first_blow_rate", "mean_net_cash"],
+        ["status_rank", "display_composite_score", "paid_before_first_blow_rate", "mean_net_cash"],
         ascending=[True, False, False, False],
     )
+
+
+def classify_guidance_status(row: pd.Series, *, max_blow_rate: float) -> str:
+    paths = int(_numeric_or_zero(row.get("paths", 0)))
+    paid_before_count = int(_numeric_or_zero(row.get("paid_before_first_blow_count", 0)))
+    blew_before_count = int(_numeric_or_zero(row.get("blew_before_payout_count", 0)))
+    any_payout_rate = _numeric_or_zero(row.get("any_payout_rate", 0.0))
+    paid_after_rebuy_rate = _numeric_or_zero(row.get("payout_after_rebuy_rate", 0.0))
+    blew_before_rate = _numeric_or_zero(row.get("blew_before_payout_rate", 0.0))
+    if paid_before_count > 0 and any_payout_rate > 0 and blew_before_rate <= max_blow_rate:
+        return "Payout candidate"
+    if paid_before_count == 0 and paid_after_rebuy_rate > 0:
+        return "Payout only after failure/rebuy"
+    if any_payout_rate == 0 and paths > 0 and blew_before_count == paths:
+        return "All paths failed"
+    if blew_before_rate > max_blow_rate:
+        return "Too aggressive"
+    if any_payout_rate == 0:
+        return "No payout observed"
+    return "Too aggressive"
+
+
+def _numeric_or_zero(value: Any) -> float:
+    numeric = pd.to_numeric(value, errors="coerce")
+    if pd.isna(numeric):
+        return 0.0
+    return float(numeric)
+
+
+def status_rank(status: str) -> int:
+    ranks = {
+        "Payout candidate": 0,
+        "Payout only after failure/rebuy": 1,
+        "No payout observed": 2,
+        "Too aggressive": 3,
+        "All paths failed": 4,
+    }
+    return ranks.get(str(status), 99)
 
 
 def ensure_guidance_columns(frame: pd.DataFrame) -> pd.DataFrame:
@@ -1047,6 +1096,10 @@ def ensure_guidance_columns(frame: pd.DataFrame) -> pd.DataFrame:
         scored["blew_before_payout_rate"] = scored.get("current_account_blew_first_rate", 0.0)
     if "payout_after_rebuy_rate" not in scored:
         scored["payout_after_rebuy_rate"] = 0.0
+    if "any_payout_rate" not in scored:
+        scored["any_payout_rate"] = scored["paid_before_first_blow_rate"].astype(float) + scored[
+            "payout_after_rebuy_rate"
+        ].astype(float)
     if "no_resolution_rate" not in scored:
         scored["no_resolution_rate"] = (
             1.0
@@ -1061,6 +1114,17 @@ def ensure_guidance_columns(frame: pd.DataFrame) -> pd.DataFrame:
         ).fillna(0).astype(int)
         paid_counts = (scored["paid_before_first_blow_rate"].astype(float) * paths).round().astype(int)
         scored["paid_before_first_blow_paths"] = paid_counts.astype(str) + " / " + paths.astype(str)
+        scored["paid_before_first_blow_count"] = paid_counts
+    elif "paid_before_first_blow_count" not in scored:
+        paths = pd.to_numeric(scored.get("paths", pd.Series([0] * len(scored))), errors="coerce").fillna(0).astype(int)
+        scored["paid_before_first_blow_count"] = (
+            scored["paid_before_first_blow_rate"].astype(float) * paths
+        ).round().astype(int)
+    if "blew_before_payout_count" not in scored:
+        paths = pd.to_numeric(scored.get("paths", pd.Series([0] * len(scored))), errors="coerce").fillna(0).astype(int)
+        scored["blew_before_payout_count"] = (
+            scored["blew_before_payout_rate"].astype(float) * paths
+        ).round().astype(int)
     if "avg_net_cash" not in scored:
         scored["avg_net_cash"] = scored.get("mean_net_cash", 0.0)
     if "avg_fees" not in scored:
@@ -1094,6 +1158,10 @@ def ensure_guidance_columns(frame: pd.DataFrame) -> pd.DataFrame:
         scored["ev_score"] = ((net - net_min) / (net_max - net_min) * 100.0) if net_max > net_min else 0.0
     if "convexity_score" not in scored:
         scored["convexity_score"] = 0.0
+    if "status_rank" not in scored and "status" in scored:
+        scored["status_rank"] = scored["status"].map(status_rank)
+    elif "status_rank" not in scored:
+        scored["status_rank"] = 99
     return scored
 
 
@@ -1103,16 +1171,24 @@ def render_funded_guidance(
     score_config: dict[str, float],
 ) -> None:
     st.subheader("Funded Guidance")
-    st.caption("Fail/blow means blew before payout. Rebuy-inclusive payouts are shown separately.")
-    candidates = ranking[ranking["blew_before_payout_rate"] <= score_config["max_blow_rate"]]
+    st.caption(
+        "Outcome buckets are mutually exclusive. Realized cash after fees is withdrawn trader cash minus fees, "
+        "not account P&L."
+    )
+    candidates = filter_viable_prop_rows(ranking, score_config)
     best = candidates.iloc[0] if not candidates.empty else ranking.iloc[0]
     cols = st.columns(6)
-    cols[0].metric("Best size", f"{int(best['contracts'])} micros")
+    cols[0].metric(
+        "Best size",
+        f"{int(best['contracts'])} micros" if not candidates.empty else "None",
+    )
     cols[1].metric("Paid before blow", pct(float(best["paid_before_first_blow_rate"])))
     cols[2].metric("Blew before payout", pct(float(best["blew_before_payout_rate"])))
-    cols[3].metric("Avg net / path", money(float(best["avg_net_cash"])))
+    cols[3].metric("Average realized cash after fees", money(float(best["avg_net_cash"])))
     cols[4].metric("Median first payout", month_or_dash(best["p50_month_to_first_payout"]))
     cols[5].metric("Status", str(best["status"]))
+    if candidates.empty:
+        st.warning("No payout-producing size in this run")
 
     dial_cols = st.columns(5)
     for col, label, field in (
@@ -1674,6 +1750,46 @@ def coerce_uploaded_ledger(
     return out
 
 
+def inspect_historical_upload_metadata(frame: pd.DataFrame) -> tuple[list[str], list[str]]:
+    columns = {normalize_column_name(str(column)): column for column in frame.columns}
+    errors: list[str] = []
+    warnings: list[str] = []
+    rr_col = columns.get("rr_config_id")
+    if rr_col is not None:
+        rr_values = sorted(value for value in frame[rr_col].dropna().astype(str).unique() if value)
+        if len(rr_values) > 1:
+            errors.append(
+                "multiple rr_config_id values found; upload exactly one RR configuration for historical bootstrap."
+            )
+    path_col = columns.get("path_id")
+    if path_col is not None:
+        path_values = sorted(value for value in frame[path_col].dropna().astype(str).unique() if value)
+        if len(path_values) > 1:
+            errors.append(
+                "multiple simulated path_id values found; mutually exclusive Monte Carlo paths cannot be treated as one historical ledger."
+            )
+    status_col = columns.get("status")
+    has_synthetic = False
+    if status_col is not None:
+        has_synthetic = frame[status_col].dropna().astype(str).str.upper().eq("SYNTHETIC").any()
+    forward_columns = {
+        "pf_scenario",
+        "expectancy_tilt",
+        "source_trade_packet_id",
+        "cumulative_forward_only_points",
+        "cumulative_combined_points",
+        "regime_scenario",
+        "point_scale_scenario",
+    }
+    has_forward_metadata = any(column in columns for column in forward_columns)
+    if has_synthetic or has_forward_metadata:
+        warnings.append(
+            "This appears to be a generated forward ledger. Use July-August realized-prefix forward simulation "
+            "for the primary analysis. Historical bootstrap would resample simulated outcomes again."
+        )
+    return errors, warnings
+
+
 def read_uploaded_ledger(file: Any) -> pd.DataFrame:
     suffix = Path(file.name).suffix.lower()
     if suffix == ".csv":
@@ -1905,7 +2021,7 @@ def format_guidance_ranking(frame: pd.DataFrame) -> pd.DataFrame:
             "paid_before_first_blow_rate": "paid before blow",
             "blew_before_payout_rate": "blew before payout",
             "payout_after_rebuy_rate": "paid after rebuy",
-            "avg_net_cash": "avg net",
+            "avg_net_cash": "average realized cash after fees",
             "p50_net_cash": "median realized",
             "avg_fees": "avg fees",
             "p50_month_to_first_payout": "median first payout",
@@ -1915,7 +2031,7 @@ def format_guidance_ranking(frame: pd.DataFrame) -> pd.DataFrame:
     for column in ("paid before blow", "blew before payout", "paid after rebuy"):
         if column in formatted:
             formatted[column] = formatted[column].map(pct)
-    for column in ("avg net", "median realized", "avg fees"):
+    for column in ("average realized cash after fees", "median realized", "avg fees"):
         if column in formatted:
             formatted[column] = formatted[column].map(money)
     if "median first payout" in formatted:
