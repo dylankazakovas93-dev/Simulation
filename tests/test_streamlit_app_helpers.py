@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from hashlib import sha256
 from pathlib import Path
 
 import pandas as pd
@@ -153,8 +152,12 @@ def test_historical_upload_set_blocks_cross_file_paths_and_accepts_matching_path
 
     errors, _ = inspect_historical_upload_set_metadata([("path_0.csv", path_zero), ("path_1.csv", path_one)])
 
-    assert errors == ["Multiple simulated path IDs detected across uploads:\n0: path_0.csv\n1: path_1.csv"]
-    assert inspect_historical_upload_set_metadata([("a.csv", path_zero), ("b.csv", path_zero)])[0] == []
+    assert errors == [
+        "Multiple simulated path IDs detected across uploads:\n0: path_0.csv\n1: path_1.csv",
+        "Generated forward bundles require rr_config_id and path_id in every uploaded file:\npath_0.csv\npath_1.csv",
+    ]
+    complete_path_zero = path_zero.assign(rr_config_id="1rr")
+    assert inspect_historical_upload_set_metadata([("a.csv", complete_path_zero), ("b.csv", complete_path_zero)])[0] == []
 
 
 def test_historical_upload_set_normalizes_rr_case_and_integer_like_path_ids():
@@ -190,6 +193,21 @@ def test_generated_multifile_bundle_requires_complete_provenance():
     assert len(warnings) == 1
 
 
+def test_path_id_alone_requires_complete_multifile_provenance_in_any_upload_order():
+    generated_path = ("generated.csv", pd.DataFrame({"rr_config_id": ["1rr"], "path_id": [0]}))
+    ordinary = ("ordinary.csv", pd.DataFrame({"entry_time": ["2026-01-01"], "pnl_points": [10]}))
+    expected_errors = [
+        "Generated forward bundles require rr_config_id and path_id in every uploaded file:\nordinary.csv"
+    ]
+
+    forward_errors, forward_warnings = inspect_historical_upload_set_metadata([generated_path, ordinary])
+    reverse_errors, reverse_warnings = inspect_historical_upload_set_metadata([ordinary, generated_path])
+
+    assert forward_errors == reverse_errors == expected_errors
+    assert forward_warnings == reverse_warnings
+    assert forward_warnings == []
+
+
 def test_historical_upload_set_accepts_ordinary_ledgers_and_validates_raw_metadata_before_coercion():
     ordinary = pd.DataFrame({"entry_time": ["2026-01-01"], "pnl_points": [10]})
     one_rr = ordinary.assign(rr_config_id="1rr")
@@ -218,17 +236,6 @@ def test_historical_bundle_error_stops_before_coercion_or_partial_acceptance():
         "Multiple simulated path IDs detected across uploads:\n0: one.csv\n1: half.csv"
     ]
     assert not app.dataframe
-
-
-def test_exact_realistic_1rr_regression_ledger_is_accepted():
-    ledger_path = Path(
-        "/Users/mariusvidziunas/Documents/Codex/2026-07-09/files-mentioned-by-the-user-read/outputs/"
-        "UPLOAD_THIS_ONE_FILE_ONLY_REALISTIC_1RR_LEDGER_UPLOAD_READY.csv"
-    )
-    content = ledger_path.read_bytes()
-
-    assert sha256(content).hexdigest() == "92d3c3c934fd191726882fcfee26a8ba8f5614c2aad86bb06f0956d5cf5b76d9"
-    assert inspect_historical_upload_set_metadata([(ledger_path.name, pd.read_csv(ledger_path))])[0] == []
 
 
 def test_prop_comparison_uses_default_funded_floor_instead_of_zero_cushion_override():

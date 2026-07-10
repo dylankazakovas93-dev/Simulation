@@ -1800,8 +1800,10 @@ def inspect_historical_upload_set_metadata(
             "regime_scenario",
             "point_scale_scenario",
         }
-        if has_synthetic or any(column in columns for column in forward_columns):
+        has_generated_marker = has_synthetic or any(column in columns for column in forward_columns)
+        if path_values or has_generated_marker:
             generated_uploads = True
+        if has_generated_marker:
             warnings.append(
                 f"{file_name}: This appears to be a generated forward ledger. Use July-August realized-prefix "
                 "forward simulation for the primary analysis. Historical bootstrap would resample simulated "
