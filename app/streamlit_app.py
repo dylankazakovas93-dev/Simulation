@@ -873,32 +873,51 @@ def simulation_controls(
         st.session_state["current_profit"] = float(current_profit)
         st.session_state["current_cushion"] = float(current_cushion)
 
-    target_cols = st.columns(4)
-    desired_payout = target_cols[0].number_input(
-        "Desired payout, 0 = max allowed",
+    target_cols = st.columns(5)
+    payout_mode_label = target_cols[0].selectbox(
+        "Payout request mode",
+        ["Minimum first payout ($500)", "Maximum allowed", "Custom"],
+        key=f"{mode}_payout_request_mode",
+    )
+    payout_request_mode = {
+        "Minimum first payout ($500)": "minimum_first_payout",
+        "Maximum allowed": "maximum_allowed",
+        "Custom": "custom",
+    }[payout_mode_label]
+    desired_payout = target_cols[1].number_input(
+        "Custom payout request",
         min_value=0.0,
-        value=1500.0 if mode == "Funded Guidance" else 0.0,
+        value=500.0,
         step=100.0,
+        disabled=payout_request_mode != "custom",
         key=f"{mode}_desired_payout",
     )
-    required_cushion = target_cols[1].number_input(
+    required_cushion = target_cols[2].number_input(
         "Required cushion after payout",
         min_value=0.0,
         value=0.0,
         step=100.0,
         key=f"{mode}_required_cushion",
     )
-    max_rebuy_capital = target_cols[2].number_input(
+    max_rebuy_capital = target_cols[3].number_input(
         "Max fee capital / rebuys",
         min_value=0.0,
         value=1000.0,
         step=50.0,
         key=f"{mode}_max_rebuy_capital",
     )
-    allow_rebuys = target_cols[3].checkbox("Allow eval rebuys", value=True, key=f"{mode}_allow_rebuys")
+    allow_rebuys = target_cols[4].checkbox("Allow eval rebuys", value=True, key=f"{mode}_allow_rebuys")
 
     score_config = score_controls(mode)
     firm_costs = fee_controls(selected_plans, mode)
+    if start_mode == "funded" and any(
+        plan.firm == "Apex Trader Funding" and plan.account_name.startswith("EOD PA")
+        for plan in selected_plans
+    ):
+        st.warning(
+            "Apex EOD PA inactivity history is unknown for this existing funded account. "
+            "Results retain that UNKNOWN status rather than assuming prior activity."
+        )
     settings_by_plan: dict[str, LifecycleSettings] = {}
     for plan in selected_plans:
         costs = firm_costs.get(plan.firm, {})
@@ -922,6 +941,7 @@ def simulation_controls(
             current_winning_days=int(current_winning_days),
             current_highest_winning_day=float(current_high_day),
             desired_payout=float(desired_payout),
+            payout_request_mode=payout_request_mode,
             required_cushion=float(required_cushion),
             allow_rebuys=bool(allow_rebuys),
             max_rebuy_capital=float(max_rebuy_capital),

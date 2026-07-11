@@ -24,6 +24,7 @@ from sim_core.prop_rules import (
 
 LifecycleStage = Literal["evaluation", "funded"]
 StartMode = Literal["new_eval", "existing_eval", "funded"]
+PayoutRequestMode = Literal["legacy", "minimum_first_payout", "maximum_allowed", "custom"]
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,7 @@ class LifecycleSettings:
     payouts_already_taken: int = 0
     prior_fees: float = 0.0
     desired_payout: float = 0.0
+    payout_request_mode: PayoutRequestMode = "legacy"
     required_cushion: float = 0.0
     allow_rebuys: bool = True
     max_rebuy_capital: float = 0.0
@@ -73,6 +75,8 @@ class LifecycleSettings:
     activation_fee: float = 0.0
     reset_fee: float = 0.0
     auto_payout: bool = True
+    funded_activation_date: str | None = None
+    prior_activity_dates: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -108,6 +112,10 @@ class LifecyclePathResult:
     shared_strategy_path_id: int | None = None
     account_result_id: int | None = None
     source_sequence_hash: str | None = None
+    terminal_status: str = "active"
+    inactivity_status: str = "not_applicable"
+    payout_request_mode: str = "legacy"
+    effective_requested_payout: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -173,10 +181,57 @@ class _AccountState:
     daily_paused: bool = False
     winning_days: int = 0
     daily_profits: list[float] | None = None
+    apex_session_start_balance: float | None = None
+    apex_tier: int | None = None
+    apex_micro_limit: int | None = None
+    apex_dll_level: float | None = None
+    apex_activity_dates: list[pd.Timestamp] | None = None
+    apex_activation_date: pd.Timestamp | None = None
 
     def __post_init__(self) -> None:
         if self.daily_profits is None:
             self.daily_profits = []
+        if self.apex_activity_dates is None:
+            self.apex_activity_dates = []
+
+
+def _is_apex_eod_pa(profile: PropRuleProfile) -> bool:
+    return profile.firm == "Apex Trader Funding" and profile.account_name.startswith("EOD PA")
+
+
+def _apex_session_day(timestamp: pd.Timestamp, timezone: str) -> pd.Timestamp:
+    local = timestamp.tz_convert(timezone)
+    session_date = local.date()
+    if local.hour >= 18:
+        session_date = (local + pd.Timedelta(days=1)).date()
+    return pd.Timestamp(session_date)
+
+
+def _apex_tier(balance: float, profile: PropRuleProfile) -> tuple[int, int, float]:
+    profit = balance - profile.starting_balance
+    if profit < 1_500:
+        return 1, 20, 1_000.0
+    if profit < 3_000:
+        return 2, 30, 1_000.0
+    if profit < 6_000:
+        return 3, 40, 2_000.0
+    return 4, 40, 3_000.0
+
+
+def _effective_payout_request(settings: LifecycleSettings, profile: PropRuleProfile) -> tuple[str, float]:
+    if not _is_apex_eod_pa(profile):
+        return settings.payout_request_mode, float(settings.desired_payout)
+    mode = settings.payout_request_mode
+    if mode == "minimum_first_payout":
+        return mode, 500.0
+    if mode == "maximum_allowed":
+        return mode, 0.0
+    if mode == "custom":
+        if settings.desired_payout < 500:
+            raise ValueError("Apex custom payout requests must be at least $500")
+        return mode, float(settings.desired_payout)
+    # Compatibility only for legacy callers and the explicitly-labelled legacy regression.
+    return ("custom", float(settings.desired_payout)) if settings.desired_payout > 0 else ("maximum_allowed", 0.0)
 
 
 def default_lifecycle_plans() -> dict[str, LifecyclePlan]:
@@ -306,6 +361,9 @@ def simulate_lifecycle_path(
     event_order = 0
     failed_terminal = False
     terminal_reason = ""
+    terminal_status = "active"
+    inactivity_status = "not_applicable"
+    strict_unknown = False
     max_drawdown_seen = 0.0
     cushion_ok_after_payout = False
     first_day = _trade_day(ordered[0].entry_time, timezone) if ordered else None
@@ -360,6 +418,14 @@ def simulate_lifecycle_path(
             "net_cash": total_payouts - total_fees,
             "failure": failed_terminal,
             "failure_reason": terminal_reason,
+            "terminal_status": terminal_status,
+            "payout_request_mode": request_mode,
+            "effective_requested_payout": effective_requested_payout,
+            "apex_tier": state.apex_tier if apex_active else None,
+            "apex_micro_limit": state.apex_micro_limit if apex_active else None,
+            "apex_dll_level": state.apex_dll_level if apex_active else None,
+            "apex_session_start_balance": state.apex_session_start_balance if apex_active else None,
+            "inactivity_status": inactivity_status,
         }
 
     def refresh_terminal_trace() -> None:
@@ -469,6 +535,18 @@ def simulate_lifecycle_path(
         if settings.current_highest_winning_day > 0:
             state.daily_profits.append(float(settings.current_highest_winning_day))
     effective_starting_balance = state.balance
+    apex_active = state.stage == "funded" and _is_apex_eod_pa(state.profile)
+    request_mode, effective_requested_payout = _effective_payout_request(settings, state.profile)
+    if apex_active:
+        activation = pd.Timestamp(settings.funded_activation_date) if settings.funded_activation_date else None
+        state.apex_activation_date = activation
+        state.apex_activity_dates = [pd.Timestamp(value) for value in settings.prior_activity_dates]
+        if settings.start_mode == "funded" and activation is None:
+            inactivity_status = "UNKNOWN_MISSING_STATE"
+        tier, limit, dll = _apex_tier(state.balance, state.profile)
+        state.apex_tier, state.apex_micro_limit = tier, limit
+        state.apex_session_start_balance = state.balance
+        state.apex_dll_level = state.balance - dll
 
     first_trade_date = _trade_day(ordered[0].exit_time, timezone) if ordered else pd.Timestamp("1970-01-01")
     if state.stage == "evaluation":
@@ -491,12 +569,39 @@ def simulate_lifecycle_path(
             state.winning_days += 1
         if state.stage == "funded":
             state.daily_profits.append(state.day_pnl)
+            if apex_active and state.day_pnl >= 50:
+                state.apex_activity_dates.append(state.day)
         if state.profile.drawdown_mode == "eod_trailing":
             state.eod_peak = max(state.eod_peak, state.balance)
             state.floor = max(
                 state.floor,
                 min(_floor_ceiling(state.profile), state.eod_peak - state.profile.max_loss),
             )
+
+    def begin_apex_session(session_day: pd.Timestamp) -> None:
+        if not apex_active:
+            return
+        tier, limit, dll = _apex_tier(state.balance, state.profile)
+        state.apex_tier = tier
+        state.apex_micro_limit = limit
+        state.apex_session_start_balance = state.balance
+        state.apex_dll_level = state.balance - dll
+
+    def inactivity_closed_before(session_day: pd.Timestamp) -> bool:
+        nonlocal failed_terminal, terminal_reason, terminal_status, inactivity_status
+        if not apex_active or state.apex_activation_date is None:
+            return False
+        if session_day < state.apex_activation_date + pd.Timedelta(days=30):
+            return False
+        window_start = session_day - pd.Timedelta(days=30)
+        activity = {date.normalize() for date in state.apex_activity_dates if window_start < date <= session_day}
+        if len(activity) >= 2:
+            return False
+        failed_terminal = True
+        terminal_status = "closed_for_inactivity"
+        terminal_reason = "Apex funded PA inactivity requirement not met"
+        inactivity_status = "closed_for_inactivity"
+        return True
 
     def finish_month() -> None:
         nonlocal month_start_balance, month_start_minimum, month_pnl, month_payouts
@@ -539,6 +644,7 @@ def simulate_lifecycle_path(
         nonlocal total_payouts, payouts_taken, first_payout_month, first_payout_day
         nonlocal first_payout_order
         nonlocal month_payouts, cushion_ok_after_payout
+        nonlocal failed_terminal, terminal_reason, terminal_status
         if failed_terminal:
             return
         if state.stage != "funded":
@@ -549,7 +655,7 @@ def simulate_lifecycle_path(
             winning_days=state.winning_days,
             daily_profits=state.daily_profits,
             payouts_taken=payouts_taken,
-            desired_payout=settings.desired_payout,
+            desired_payout=effective_requested_payout,
             required_cushion=settings.required_cushion,
             auto_payout=settings.auto_payout,
         )
@@ -614,6 +720,8 @@ def simulate_lifecycle_path(
                     "gross_account_debit": payout,
                     "trader_cash": trader_cash,
                     "payout_number": payouts_taken,
+                    "payout_request_mode": request_mode,
+                    "effective_requested_payout": effective_requested_payout,
                     "payout_event_order": payout_order,
                     "payout_eligibility": True,
                     "total_payouts": total_payouts,
@@ -622,9 +730,13 @@ def simulate_lifecycle_path(
                 }
             )
             trade_ledger.append(row)
+        if apex_active and payouts_taken >= 6:
+            failed_terminal = True
+            terminal_status = "completed_after_six_payouts"
+            terminal_reason = "completed_after_six_payouts"
 
     for trade in ordered:
-        current_day = _trade_day(trade.exit_time, timezone)
+        current_day = _apex_session_day(trade.exit_time, timezone) if apex_active else _trade_day(trade.exit_time, timezone)
         month_index = int(trade.source_month.ordinal - ordered[0].source_month.ordinal + 1)
         month_label = str(trade.source_month)
         if not active_month_label:
@@ -644,12 +756,17 @@ def simulate_lifecycle_path(
 
         if state.day is None:
             state.day = current_day
+            begin_apex_session(current_day)
         elif current_day != state.day:
             finish_day()
             maybe_take_payout(state.day, month_index)
             state.day = current_day
             state.day_pnl = 0.0
             state.daily_paused = False
+            begin_apex_session(current_day)
+
+        if inactivity_closed_before(current_day):
+            month_status = terminal_status
 
         if failed_terminal:
             month_status = "terminal"
@@ -685,16 +802,38 @@ def simulate_lifecycle_path(
                 trade_ledger.append(row)
             continue
 
+        requested_contracts = int(trade.metadata.get("requested_contracts", contracts)) if apex_active else contracts
+        if apex_active and state.apex_micro_limit is not None and requested_contracts > state.apex_micro_limit:
+            if return_trade_ledger:
+                row = trace_base(current_day=current_day, record_type="TRADE", sequence_number=_metadata_int(trade, "sequence_number"))
+                row.update(_trade_trace_identity(trade))
+                row.update(
+                    {
+                        "candidate": True,
+                        "executed": False,
+                        "account_taken": False,
+                        "threshold_touched": False,
+                        "strict_account_result": "REJECTED_TIER_LIMIT",
+                        "realized_pnl_only_result": "REJECTED_TIER_LIMIT",
+                        "apex_tier": state.apex_tier,
+                        "apex_micro_limit": state.apex_micro_limit,
+                        "apex_dll_level": state.apex_dll_level,
+                        "requested_contracts": requested_contracts,
+                    }
+                )
+                trade_ledger.append(row)
+            continue
+
         if return_trade_ledger:
             trace_row = trace_base(current_day=current_day, record_type="TRADE", sequence_number=_metadata_int(trade, "sequence_number"))
             trace_row.update(_trade_trace_identity(trade))
-            trace_row.update({"candidate": True, "executed": True, "account_taken": True})
+            trace_row.update({"candidate": True, "executed": True, "account_taken": True, "requested_contracts": requested_contracts})
         else:
             trace_row = {}
-        pnl = _trade_pnl_dollars(trade, contracts, dollars_per_point)
+        pnl = _trade_pnl_dollars(trade, requested_contracts, dollars_per_point)
         mae_missing = trade.mae_points is None
-        mae = _trade_mae_dollars(trade, contracts, dollars_per_point)
-        mfe = _trade_mfe_dollars(trade, contracts, dollars_per_point)
+        mae = _trade_mae_dollars(trade, requested_contracts, dollars_per_point)
+        mfe = _trade_mfe_dollars(trade, requested_contracts, dollars_per_point)
         unknown_excursion = bool(
             mae_missing
             and str(trade.metadata.get("excursion_confidence", "")).upper().startswith("UNKNOWN")
@@ -708,7 +847,59 @@ def simulate_lifecycle_path(
                 min(_floor_ceiling(state.profile), state.running_peak - state.profile.max_loss),
             )
 
-        breached = (not unknown_excursion) and state.balance + mae <= state.floor
+        apex_floor_breach = False
+        if apex_active and state.apex_dll_level is not None:
+            trigger_level = max(state.floor, state.apex_dll_level)
+            if mae_missing:
+                realized_low = min(state.balance, state.balance + pnl)
+                if realized_low <= trigger_level <= state.balance:
+                    strict_unknown = True
+                    if return_trade_ledger:
+                        trace_row["strict_account_result"] = "UNKNOWN_MISSING_MAE"
+            elif estimated_low <= trigger_level:
+                if state.floor >= state.apex_dll_level:
+                    apex_floor_breach = True
+                else:
+                    liquidation = state.apex_dll_level
+                    realized = liquidation - state.balance
+                    state.balance = liquidation
+                    state.day_pnl += realized
+                    month_pnl += realized
+                    state.minimum_balance = min(state.minimum_balance, liquidation)
+                    month_start_minimum = min(month_start_minimum, liquidation)
+                    state.daily_paused = True
+                    events.append(
+                        LifecycleEvent(
+                            path_id=path_id,
+                            plan_key=plan.key,
+                            event_order=next_event_order(),
+                            month_index=month_index,
+                            date=str(current_day.date()),
+                            stage="funded",
+                            event="dll_pause",
+                            balance=state.balance,
+                            floor=state.floor,
+                            attempt=max(1, attempts),
+                            note=f"Liquidated at fixed session DLL {liquidation:.2f}",
+                        )
+                    )
+                    if return_trade_ledger:
+                        trace_row.update(
+                            {
+                                "gross_pnl_dollars": realized,
+                                "balance_after": state.balance,
+                                "floor_after": state.floor,
+                                "apex_tier": state.apex_tier,
+                                "apex_micro_limit": state.apex_micro_limit,
+                                "apex_dll_level": state.apex_dll_level,
+                                "strict_account_result": "DLL_PAUSED",
+                                "realized_pnl_only_result": "DLL_PAUSED",
+                            }
+                        )
+                        trade_ledger.append(trace_row)
+                    continue
+
+        breached = apex_floor_breach or ((not unknown_excursion) and state.balance + mae <= state.floor)
         if not breached:
             state.balance += pnl
             state.day_pnl += pnl
@@ -817,7 +1008,7 @@ def simulate_lifecycle_path(
                     "estimated_intratrade_low": None if unknown_excursion else estimated_low,
                     "estimated_intratrade_high": estimated_high,
                     "threshold_touched": "UNKNOWN" if unknown_excursion else False,
-                    "strict_account_result": "UNKNOWN" if unknown_excursion else "SURVIVED",
+                    "strict_account_result": "UNKNOWN_MISSING_MAE" if strict_unknown else "UNKNOWN" if unknown_excursion else "SURVIVED",
                     "realized_pnl_only_result": "SURVIVED",
                     "balance_after": state.balance,
                     "floor_after": state.floor,
@@ -898,7 +1089,7 @@ def simulate_lifecycle_path(
 
     net_cash = total_payouts - total_fees
     roi = net_cash / total_fees if total_fees > 0 else None
-    target_hit = total_payouts >= settings.desired_payout if settings.desired_payout > 0 else total_payouts > 0
+    target_hit = total_payouts >= effective_requested_payout if effective_requested_payout > 0 else total_payouts > 0
     result = LifecyclePathResult(
         plan_key=plan.key,
         firm=plan.firm,
@@ -906,7 +1097,7 @@ def simulate_lifecycle_path(
         contracts=contracts,
         path_id=path_id,
         seed=seed,
-        failed=failed_terminal,
+        failed=failed_terminal and terminal_status not in {"completed_after_six_payouts", "closed_for_inactivity"},
         terminal_stage=state.stage,
         attempts=max(1, attempts),
         eval_passes=eval_passes,
@@ -928,6 +1119,10 @@ def simulate_lifecycle_path(
         target_hit=target_hit,
         cushion_ok_after_payout=cushion_ok_after_payout,
         effective_starting_balance=effective_starting_balance,
+        terminal_status=("UNKNOWN_MISSING_MAE" if strict_unknown and terminal_status == "active" else terminal_status),
+        inactivity_status=inactivity_status,
+        payout_request_mode=request_mode,
+        effective_requested_payout=effective_requested_payout,
     )
     if terminal_reason:
         events.append(

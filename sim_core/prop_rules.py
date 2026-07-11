@@ -673,7 +673,10 @@ def _is_payout_eligible(
     positive_days = [profit for profit in daily_profits if profit > 0]
     if not positive_days or net_profit <= 0:
         return False
-    return max(positive_days) <= profile.consistency_pct * net_profit
+    limit = profile.consistency_pct * net_profit
+    if profile.firm == "Apex Trader Funding" and profile.account_name.startswith("EOD PA"):
+        return max(positive_days) < limit
+    return max(positive_days) <= limit
 
 
 def _gross_cash_available(
