@@ -77,6 +77,7 @@ class LifecycleSettings:
     auto_payout: bool = True
     funded_activation_date: str | None = None
     prior_activity_dates: tuple[str, ...] = ()
+    prior_activity_history_known: bool = False
     prior_completed_eod_balance: float | None = None
 
 
@@ -120,6 +121,12 @@ class LifecyclePathResult:
     apex_rule_status: str = "not_applicable"
     strict_unknown_count: int = 0
     dll_pause_events: int = 0
+    current_account_payouts_taken: int = 0
+    lifecycle_payouts_taken: int = 0
+    strict_outcome: str = "active_unresolved"
+    realized_only_outcome: str = "active_unresolved"
+    realized_only_first_payout: bool = False
+    realized_only_failure: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -355,7 +362,10 @@ def simulate_lifecycle_path(
     attempts = 0
     eval_passes = 0
     funded_failures = 0
-    payouts_taken = max(0, int(settings.payouts_already_taken))
+    current_account_payouts_taken = (
+        max(0, int(settings.payouts_already_taken)) if settings.start_mode == "funded" else 0
+    )
+    lifecycle_payouts_taken = current_account_payouts_taken
     first_payout_month: int | None = None
     first_payout_day: int | None = None
     first_payout_order: int | None = None
@@ -422,7 +432,9 @@ def simulate_lifecycle_path(
             "payout_eligibility": False,
             "gross_account_debit": 0.0,
             "trader_cash": 0.0,
-            "payout_number": payouts_taken,
+            "payout_number": current_account_payouts_taken,
+            "current_account_payouts_taken": current_account_payouts_taken,
+            "lifecycle_payouts_taken": lifecycle_payouts_taken,
             "fees": total_fees,
             "total_payouts": total_payouts,
             "total_fees": total_fees,
@@ -453,7 +465,9 @@ def simulate_lifecycle_path(
                 "day_pnl_after": state.day_pnl,
                 "winning_days_after": state.winning_days,
                 "consistency_after": consistency_ratio(),
-                "payout_number": payouts_taken,
+                "payout_number": current_account_payouts_taken,
+                "current_account_payouts_taken": current_account_payouts_taken,
+                "lifecycle_payouts_taken": lifecycle_payouts_taken,
                 "fees": total_fees,
                 "total_payouts": total_payouts,
                 "total_fees": total_fees,
@@ -553,8 +567,8 @@ def simulate_lifecycle_path(
         activation = pd.Timestamp(settings.funded_activation_date) if settings.funded_activation_date else None
         state.apex_activation_date = activation
         state.apex_activity_dates = [pd.Timestamp(value) for value in settings.prior_activity_dates]
-        if settings.start_mode == "funded" and activation is None:
-            inactivity_status = "UNKNOWN_MISSING_STATE"
+        if settings.start_mode == "funded" and (activation is None or not settings.prior_activity_history_known):
+            inactivity_status = "UNKNOWN_MISSING_INACTIVITY_STATE"
         session_balance = settings.prior_completed_eod_balance
         if settings.start_mode == "funded" and session_balance is None:
             inactivity_status = "UNKNOWN_MISSING_SESSION_STATE"
@@ -568,7 +582,7 @@ def simulate_lifecycle_path(
         state.apex_session_start_balance = session_balance
         state.apex_dll_level = session_balance - dll
         if apex_active:
-            apex_rule_status = "exact"
+            apex_rule_status = "EXACT" if inactivity_status == "not_applicable" else inactivity_status
 
     first_trade_date = _trade_day(ordered[0].exit_time, timezone) if ordered else pd.Timestamp("1970-01-01")
     if state.stage == "evaluation":
@@ -663,7 +677,7 @@ def simulate_lifecycle_path(
         month_status = "active"
 
     def maybe_take_payout(current_day: pd.Timestamp, month_index: int) -> None:
-        nonlocal total_payouts, payouts_taken, first_payout_month, first_payout_day
+        nonlocal total_payouts, current_account_payouts_taken, lifecycle_payouts_taken, first_payout_month, first_payout_day
         nonlocal first_payout_order
         nonlocal month_payouts, cushion_ok_after_payout
         nonlocal failed_terminal, terminal_reason, terminal_status
@@ -676,7 +690,7 @@ def simulate_lifecycle_path(
             profile=state.profile,
             winning_days=state.winning_days,
             daily_profits=state.daily_profits,
-            payouts_taken=payouts_taken,
+            payouts_taken=current_account_payouts_taken,
             desired_payout=effective_requested_payout,
             required_cushion=settings.required_cushion,
             auto_payout=settings.auto_payout,
@@ -689,7 +703,8 @@ def simulate_lifecycle_path(
         state.running_peak = max(state.running_peak, state.balance)
         total_payouts += trader_cash
         month_payouts += trader_cash
-        payouts_taken += 1
+        current_account_payouts_taken += 1
+        lifecycle_payouts_taken += 1
         cushion_ok_after_payout = True
         payout_order = next_event_order()
         if first_payout_month is None:
@@ -741,7 +756,9 @@ def simulate_lifecycle_path(
                     "balance_after": state.balance,
                     "gross_account_debit": payout,
                     "trader_cash": trader_cash,
-                    "payout_number": payouts_taken,
+                    "payout_number": current_account_payouts_taken,
+                    "current_account_payouts_taken": current_account_payouts_taken,
+                    "lifecycle_payouts_taken": lifecycle_payouts_taken,
                     "payout_request_mode": request_mode,
                     "effective_requested_payout": effective_requested_payout,
                     "payout_event_order": payout_order,
@@ -752,7 +769,7 @@ def simulate_lifecycle_path(
                 }
             )
             trade_ledger.append(row)
-        if apex_active and payouts_taken >= 6:
+        if apex_active and current_account_payouts_taken >= 6:
             failed_terminal = True
             terminal_status = "completed_after_six_payouts"
             terminal_reason = "completed_after_six_payouts"
@@ -1029,9 +1046,26 @@ def simulate_lifecycle_path(
                 )
                 trade_ledger.append(trace_row)
             if can_rebuy:
+                prior_profile = state.profile
                 state = reset_state("evaluation")
                 apex_active = False
                 request_mode, effective_requested_payout = _effective_payout_request(settings, state.profile)
+                current_account_payouts_taken = 0
+                if return_trade_ledger and trade_ledger:
+                    trade_ledger[-1].update(
+                        {
+                            "stage_before": "funded",
+                            "stage_after": "evaluation",
+                            "active_profile_before": prior_profile.key,
+                            "active_profile_after": state.profile.key,
+                            "balance_after": state.balance,
+                            "floor_after": state.floor,
+                            "current_account_payouts_taken": None,
+                            "apex_tier": None,
+                            "apex_micro_limit": None,
+                            "apex_dll_level": None,
+                        }
+                    )
                 attempts += 1
                 add_fee(next_attempt_fee, month_index, current_day, "eval_fee", next_attempt_note)
                 month_start_balance = state.balance
@@ -1129,9 +1163,11 @@ def simulate_lifecycle_path(
                     }
                 )
                 trade_ledger.append(row)
+            prior_profile = state.profile
             state = reset_state("funded")
             apex_active = _is_apex_eod_pa_50k(state.profile)
             request_mode, effective_requested_payout = _effective_payout_request(settings, state.profile)
+            current_account_payouts_taken = 0
             if apex_active:
                 state.apex_activation_date = current_day
                 state.apex_activity_dates = []
@@ -1140,7 +1176,22 @@ def simulate_lifecycle_path(
                 state.apex_session_start_balance = state.balance
                 state.apex_dll_level = state.balance - dll
                 inactivity_status = "active"
-                apex_rule_status = "exact"
+                apex_rule_status = "EXACT"
+            if return_trade_ledger and trade_ledger:
+                trade_ledger[-1].update(
+                    {
+                        "stage_before": "evaluation",
+                        "stage_after": "funded",
+                        "active_profile_before": prior_profile.key,
+                        "active_profile_after": state.profile.key,
+                        "balance_after": state.balance,
+                        "floor_after": state.floor,
+                        "current_account_payouts_taken": 0,
+                        "apex_tier": state.apex_tier,
+                        "apex_micro_limit": state.apex_micro_limit,
+                        "apex_dll_level": state.apex_dll_level,
+                    }
+                )
             add_fee(settings.activation_fee, month_index, current_day, "activation_fee", "Funded activation after eval pass")
             month_start_balance = state.balance
             month_start_minimum = state.balance
@@ -1153,6 +1204,22 @@ def simulate_lifecycle_path(
     net_cash = total_payouts - total_fees
     roi = net_cash / total_fees if total_fees > 0 else None
     target_hit = total_payouts >= effective_requested_payout if effective_requested_payout > 0 else total_payouts > 0
+    if first_payout_order is not None and (first_failure_order is None or first_payout_order < first_failure_order):
+        realized_only_outcome = "paid_before_blow"
+    elif first_failure_order is not None and (first_payout_order is None or first_failure_order < first_payout_order):
+        realized_only_outcome = "blew_before_payout"
+    elif first_payout_order is not None:
+        realized_only_outcome = "payout_after_rebuy"
+    else:
+        realized_only_outcome = "active_unresolved"
+    if strict_unknown:
+        strict_outcome = "strict_unknown"
+    elif terminal_status == "closed_for_inactivity":
+        strict_outcome = "closed_for_inactivity"
+    elif terminal_status == "completed_after_six_payouts":
+        strict_outcome = "completed_after_six_payouts"
+    else:
+        strict_outcome = realized_only_outcome
     result = LifecyclePathResult(
         plan_key=plan.key,
         firm=plan.firm,
@@ -1165,7 +1232,7 @@ def simulate_lifecycle_path(
         attempts=max(1, attempts),
         eval_passes=eval_passes,
         funded_failures=funded_failures,
-        payouts_taken=payouts_taken,
+        payouts_taken=lifecycle_payouts_taken,
         first_payout_month=first_payout_month,
         first_payout_day=first_payout_day,
         first_payout_order=first_payout_order,
@@ -1189,6 +1256,12 @@ def simulate_lifecycle_path(
         apex_rule_status=("STRICT_UNKNOWN" if strict_unknown and apex_rule_status == "exact" else apex_rule_status),
         strict_unknown_count=strict_unknown_count,
         dll_pause_events=dll_pause_events,
+        current_account_payouts_taken=current_account_payouts_taken,
+        lifecycle_payouts_taken=lifecycle_payouts_taken,
+        strict_outcome=strict_outcome,
+        realized_only_outcome=realized_only_outcome,
+        realized_only_first_payout=first_payout_order is not None,
+        realized_only_failure=first_failure_order is not None,
     )
     if terminal_reason:
         events.append(
@@ -1340,15 +1413,33 @@ def summarize_lifecycle_results(results: list[LifecyclePathResult]) -> pd.DataFr
         has_failure = group["first_failure_month"].notna()
         first_payout_order = group["first_payout_order"].astype(float)
         first_failure_order = group["first_failure_order"].astype(float)
-        paid_before_first_blow = has_payout & (
-            ~has_failure | (first_payout_order < first_failure_order)
+        realized_paid_before_first_blow = has_payout & (~has_failure | (first_payout_order < first_failure_order))
+        realized_first_blow_before_payout = has_failure & (~has_payout | (first_failure_order < first_payout_order))
+        realized_payout_after_rebuy = has_payout & has_failure & (first_failure_order < first_payout_order)
+        derived_outcome = np.where(
+            realized_paid_before_first_blow,
+            "paid_before_blow",
+            np.where(
+                realized_payout_after_rebuy,
+                "payout_after_rebuy",
+                np.where(realized_first_blow_before_payout, "blew_before_payout", "active_unresolved"),
+            ),
         )
-        first_blow_before_payout = has_failure & (
-            ~has_payout | (first_failure_order < first_payout_order)
+        strict_outcome = group["strict_outcome"].where(
+            ~(
+                group["strict_outcome"].eq("active_unresolved")
+                & (has_payout | has_failure)
+            ),
+            pd.Series(derived_outcome, index=group.index),
         )
-        payout_after_rebuy = has_payout & has_failure & (first_failure_order < first_payout_order)
-        blew_before_payout = ~has_payout & (has_failure | failed)
-        no_resolution = ~(paid_before_first_blow | payout_after_rebuy | blew_before_payout)
+        paid_before_first_blow = strict_outcome.eq("paid_before_blow")
+        first_blow_before_payout = strict_outcome.isin(["blew_before_payout", "payout_after_rebuy"])
+        payout_after_rebuy = strict_outcome.eq("payout_after_rebuy")
+        blew_before_payout = strict_outcome.eq("blew_before_payout")
+        strict_unknown = strict_outcome.eq("strict_unknown")
+        inactivity_closed = strict_outcome.eq("closed_for_inactivity")
+        completed = strict_outcome.eq("completed_after_six_payouts")
+        no_resolution = strict_outcome.eq("active_unresolved")
         paid_before_count = int(paid_before_first_blow.sum())
         blew_before_count = int(blew_before_payout.sum())
         paid_after_rebuy_count = int(payout_after_rebuy.sum())
@@ -1368,8 +1459,17 @@ def summarize_lifecycle_results(results: list[LifecyclePathResult]) -> pd.DataFr
             "blew_before_payout_rate": float(blew_before_payout.mean()),
             "payout_after_rebuy_rate": float(payout_after_rebuy.mean()),
             "no_resolution_rate": float(no_resolution.mean()),
+            "strict_unknown_count": int(strict_unknown.sum()),
+            "strict_unknown_rate": float(strict_unknown.mean()),
+            "closed_for_inactivity_count": int(inactivity_closed.sum()),
+            "closed_for_inactivity_rate": float(inactivity_closed.mean()),
+            "completed_after_six_payouts_count": int(completed.sum()),
+            "completed_after_six_payouts_rate": float(completed.mean()),
+            "realized_only_paid_before_blow_rate": float(realized_paid_before_first_blow.mean()),
+            "realized_only_blew_before_payout_rate": float(realized_first_blow_before_payout.mean()),
+            "realized_only_payout_after_rebuy_rate": float(realized_payout_after_rebuy.mean()),
             "capital_exhausted_rate": float((failed & ~has_payout).mean()),
-            "any_payout_rate": float(has_payout.mean()),
+            "any_payout_rate": float((paid_before_first_blow | payout_after_rebuy).mean()),
             "target_before_first_fail_rate": float((target & paid_before_first_blow).mean()),
             "p05_net_cash": float(np.percentile(net, 5)),
             "p50_net_cash": float(np.percentile(net, 50)),
@@ -1395,8 +1495,7 @@ def summarize_lifecycle_results(results: list[LifecyclePathResult]) -> pd.DataFr
             "payout_request_mode": group["payout_request_mode"].iloc[0],
             "effective_requested_payout": float(group["effective_requested_payout"].iloc[0]),
             "apex_rule_status": group["apex_rule_status"].iloc[0],
-            "strict_unknown_count": int(group["strict_unknown_count"].sum()),
-            "strict_unknown_rate": float((group["strict_unknown_count"] > 0).mean()),
+            "strict_unknown_trade_count": int(group["strict_unknown_count"].sum()),
             "inactivity_closure_count": int(group["terminal_status"].eq("closed_for_inactivity").sum()),
             "inactivity_closure_rate": float(group["terminal_status"].eq("closed_for_inactivity").mean()),
             "six_payout_completion_count": int(group["terminal_status"].eq("completed_after_six_payouts").sum()),

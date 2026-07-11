@@ -848,6 +848,9 @@ def simulation_controls(
     current_winning_days = 0
     current_high_day = 0.0
     prior_completed_eod_balance: float | None = None
+    funded_activation_date: str | None = None
+    prior_activity_dates: tuple[str, ...] = ()
+    prior_activity_history_known = False
     use_current_account_state = mode == "Funded Guidance" and start_mode in {"existing_eval", "funded"}
     if use_current_account_state:
         state_cols = st.columns(4)
@@ -883,6 +886,19 @@ def simulation_controls(
                     step=100.0,
                     key=f"{mode}_prior_eod_balance",
                 )
+            funded_activation_date = str(
+                st.date_input("Funded activation date", key=f"{mode}_funded_activation_date")
+            )
+            prior_activity_history_known = st.checkbox(
+                "Known prior $50 qualifying activity history (may be empty)",
+                key=f"{mode}_known_activity_history",
+            )
+            if prior_activity_history_known:
+                activity_dates = st.text_input(
+                    "Prior qualifying activity dates (YYYY-MM-DD, comma-separated)",
+                    key=f"{mode}_prior_activity_dates",
+                )
+                prior_activity_dates = tuple(value.strip() for value in activity_dates.split(",") if value.strip())
 
     target_cols = st.columns(5)
     payout_mode_label = target_cols[0].selectbox(
@@ -954,6 +970,9 @@ def simulation_controls(
             desired_payout=float(desired_payout),
             payout_request_mode=payout_request_mode,
             prior_completed_eod_balance=prior_completed_eod_balance,
+            funded_activation_date=funded_activation_date,
+            prior_activity_dates=prior_activity_dates,
+            prior_activity_history_known=prior_activity_history_known,
             required_cushion=float(required_cushion),
             allow_rebuys=bool(allow_rebuys),
             max_rebuy_capital=float(max_rebuy_capital),

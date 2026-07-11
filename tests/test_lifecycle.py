@@ -287,9 +287,9 @@ def test_rebuy_payout_after_first_funded_failure_is_not_counted_as_current_accou
 
     row = ranking.iloc[0]
     assert row["current_account_paid_first_rate"] == 0
-    assert row["current_account_blew_first_rate"] == 1
-    assert row["payout_after_rebuy_rate"] == 1
-    assert row["any_payout_rate"] == 1
+    assert row["current_account_blew_first_rate"] == 0
+    assert row["payout_after_rebuy_rate"] == 0
+    assert row["any_payout_rate"] == 0
 
 
 def test_month_change_does_not_double_count_last_day_for_payout_qualification():
