@@ -847,6 +847,7 @@ def simulation_controls(
     current_cushion = 0.0
     current_winning_days = 0
     current_high_day = 0.0
+    prior_completed_eod_balance: float | None = None
     use_current_account_state = mode == "Funded Guidance" and start_mode in {"existing_eval", "funded"}
     if use_current_account_state:
         state_cols = st.columns(4)
@@ -872,6 +873,16 @@ def simulation_controls(
         )
         st.session_state["current_profit"] = float(current_profit)
         st.session_state["current_cushion"] = float(current_cushion)
+        if any(plan.firm == "Apex Trader Funding" and plan.account_name == "EOD PA 50K" for plan in selected_plans):
+            known_eod_balance = st.checkbox("Known prior completed EOD balance", key=f"{mode}_known_prior_eod")
+            if known_eod_balance:
+                prior_completed_eod_balance = st.number_input(
+                    "Prior completed EOD balance",
+                    min_value=0.0,
+                    value=float(50_000 + current_profit),
+                    step=100.0,
+                    key=f"{mode}_prior_eod_balance",
+                )
 
     target_cols = st.columns(5)
     payout_mode_label = target_cols[0].selectbox(
@@ -915,8 +926,8 @@ def simulation_controls(
         for plan in selected_plans
     ):
         st.warning(
-            "Apex EOD PA inactivity history is unknown for this existing funded account. "
-            "Results retain that UNKNOWN status rather than assuming prior activity."
+            "Apex EOD PA session-start and inactivity history must be supplied for an exact result. "
+            "Missing state is retained as UNKNOWN rather than inferred from intraday balance."
         )
     settings_by_plan: dict[str, LifecycleSettings] = {}
     for plan in selected_plans:
@@ -942,6 +953,7 @@ def simulation_controls(
             current_highest_winning_day=float(current_high_day),
             desired_payout=float(desired_payout),
             payout_request_mode=payout_request_mode,
+            prior_completed_eod_balance=prior_completed_eod_balance,
             required_cushion=float(required_cushion),
             allow_rebuys=bool(allow_rebuys),
             max_rebuy_capital=float(max_rebuy_capital),

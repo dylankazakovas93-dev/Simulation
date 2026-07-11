@@ -138,9 +138,11 @@ def test_funded_failure_rebuy_charges_new_eval_not_eval_plus_reset():
 
     result, _months, events = simulate_lifecycle_path(trades, plan, contracts=1, settings=settings)
 
-    assert [event.event for event in events if event.event == "dll_pause"] == ["dll_pause"]
-    assert result.total_fees == 0
-    assert result.eval_passes == 0
+    fee_events = [event for event in events if event.event in {"eval_fee", "activation_fee"}]
+    assert [event.amount for event in fee_events] == [-30, -60]
+    assert fee_events[0].note == "New evaluation after funded failure"
+    assert result.total_fees == 90
+    assert result.eval_passes == 1
 
 
 def test_payout_target_is_blocked_when_required_cushion_would_not_remain():
@@ -285,9 +287,9 @@ def test_rebuy_payout_after_first_funded_failure_is_not_counted_as_current_accou
 
     row = ranking.iloc[0]
     assert row["current_account_paid_first_rate"] == 0
-    assert row["current_account_blew_first_rate"] == 0
-    assert row["payout_after_rebuy_rate"] == 0
-    assert row["any_payout_rate"] == 0
+    assert row["current_account_blew_first_rate"] == 1
+    assert row["payout_after_rebuy_rate"] == 1
+    assert row["any_payout_rate"] == 1
 
 
 def test_month_change_does_not_double_count_last_day_for_payout_qualification():
@@ -684,10 +686,10 @@ def test_guaranteed_mae_failure_cannot_pay_afterward():
         trades, plan, contracts=1, settings=settings, return_trade_ledger=True
     )
 
-    assert result.failed is False
+    assert result.failed is True
     assert result.total_payouts == 0
     assert "payout" not in [event.event for event in events]
-    assert ledger[0]["strict_account_result"] == "DLL_PAUSED"
+    assert ledger[-1]["strict_account_result"] == "FAILED"
 
 
 def test_apex_50100_fails_and_5010001_survives():

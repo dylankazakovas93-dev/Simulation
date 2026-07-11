@@ -36,6 +36,7 @@ def _settings(**overrides) -> LifecycleSettings:
         current_floor=48_000,
         payout_request_mode="minimum_first_payout",
         funded_activation_date="2026-01-01",
+        prior_completed_eod_balance=50_000,
     )
     values.update(overrides)
     return LifecycleSettings(**values)
@@ -88,7 +89,7 @@ def test_apex_dll_pauses_session_then_resumes_next_session():
 
 
 def test_apex_missing_mae_marks_strict_result_unknown():
-    trade = _trade("2026-01-02", -600)
+    trade = _trade("2026-01-02", -200)
     trade = Trade(**{**trade.__dict__, "mae_points": None})
 
     result, _months, _events, ledger = simulate_lifecycle_path(
