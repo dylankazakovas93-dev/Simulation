@@ -1,0 +1,58 @@
+contracts:
+  - id: alpha_advanced_50k
+    firm: Alpha Futures
+    program: Advanced
+    stage: funded
+    account_name: Advanced 50K
+    status: enabled
+    mechanics: {account_size: 50000, max_loss: 1750, drawdown_mode: eod_trailing, profit_split: 0.90, max_micro_contracts: 50, payout_profit_fraction: 0.50, min_winning_days: 5, winning_day_threshold: 200}
+    sources: [{document: Alpha%20Rules.pdf, sha256: 7802bc80a479c0ca5c398a0163b9f2e7e07f8ffc4593e9b8133d182a201e69a0, pages: "1-2,14-15"}]
+  - id: alpha_premium_50k
+    firm: Alpha Futures
+    program: Premium
+    stage: funded
+    account_name: Premium 50K
+    status: enabled
+    mechanics: {account_size: 50000, max_loss: 2000, drawdown_mode: eod_trailing, profit_split: 0.90, max_micro_contracts: 40}
+    sources: [{document: Alpha%20Rules.pdf, sha256: 7802bc80a479c0ca5c398a0163b9f2e7e07f8ffc4593e9b8133d182a201e69a0, pages: "4-5,14-15"}]
+  - id: fundednext_rapid_50k
+    firm: FundedNext Futures
+    program: Rapid
+    stage: funded
+    account_name: Rapid 50K
+    status: enabled
+    mechanics: {account_size: 50000, max_loss: 2000, drawdown_mode: eod_trailing, profit_split: 0.80, consistency_pct: 0.40, daily_loss_limit: null}
+    sources: [{document: FundedNext%20Rules.pdf, sha256: 79e2c87ee2913bbac1b8168b9862d158901bdbaefa9dabc19b3600857c2fff13, pages: 1-40}]
+  - id: fundednext_bolt_50k
+    firm: FundedNext Futures
+    program: Bolt
+    stage: funded
+    account_name: Bolt 50K
+    status: enabled
+    mechanics: {account_size: 50000, max_loss: 2000, drawdown_mode: eod_trailing, profit_split: 0.80, consistency_pct: 0.40, daily_loss_limit: 1000, daily_loss_hard: false, daily_loss_reset: 17:00 America/Chicago}
+    sources: [{document: FundedNext%20Rules.pdf, sha256: 79e2c87ee2913bbac1b8168b9862d158901bdbaefa9dabc19b3600857c2fff13, pages: 1-40}]
+  - id: tpt_pro_50k
+    firm: TakeProfitTrader
+    program: PRO
+    stage: funded
+    account_name: PRO 50K
+    status: enabled
+    mechanics: {account_size: 50000, max_loss: 2000, drawdown_mode: intraday_trailing, profit_split: 0.80, withdrawal_buffer: 2000, activity: weekly_sunday_friday, strict_intratrade_evidence: required}
+    sources: [{document: TPT%20Rules.pdf, sha256: 7405c8284178addfc397db1619ccafd62455ed9cab2518f77302347f58a3f36f, pages: 1-6}]
+  - id: tpt_pro_plus_50k
+    firm: TakeProfitTrader
+    program: PRO+
+    stage: funded
+    account_name: PRO+ 50K
+    status: source_gap
+    mechanics: {drawdown_mode: eod_trailing, profit_split: 0.90, withdrawal_buffer: 0, transition: manual_invitation_only}
+    sources: [{document: TPT%20Rules.pdf, sha256: 7405c8284178addfc397db1619ccafd62455ed9cab2518f77302347f58a3f36f, pages: 13-17}]
+  - id: tpt_test_50k
+    firm: TakeProfitTrader
+    program: Test
+    stage: evaluation
+    account_name: Test 50K
+    status: source_gap
+    mechanics: {}
+    sources: []
+    notes: [Complete Test evaluation table absent from supplied PDF; disabled.]

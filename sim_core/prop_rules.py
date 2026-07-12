@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from functools import lru_cache
 from typing import Any, Literal
 
@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 from sim_core.models import Trade
+from sim_core.rule_contracts import ContractStatus, load_contracts
 
 DrawdownMode = Literal["eod_trailing", "intraday_trailing", "fixed"]
 
@@ -316,7 +317,28 @@ def default_prop_rule_profiles() -> dict[str, PropRuleProfile]:
             )
         )
 
-    return {profile.key: profile for profile in profiles}
+    # Preserve the public profile keys while binding every covered preset to a
+    # source-reviewed contract.  A contract mismatch is a release-time error:
+    # it cannot silently change a firm mechanic in only one representation.
+    profile_by_key = {profile.key: profile for profile in profiles}
+    compared_fields = ("account_size", "max_loss", "drawdown_mode", "profit_split")
+    for contract in load_contracts():
+        profile = profile_by_key.get(contract.profile_key)
+        if contract.status is ContractStatus.ENABLED and profile is not None:
+            mismatches = [
+                field
+                for field in compared_fields
+                if field in contract.mechanics and getattr(profile, field) != contract.mechanics[field]
+            ]
+            if mismatches:
+                raise ValueError(
+                    f"profile {profile.key} disagrees with contract {contract.id}: {', '.join(mismatches)}"
+                )
+            profile_by_key[profile.key] = replace(
+                profile,
+                source=f"{profile.source}; rule contract {contract.id}",
+            )
+    return profile_by_key
 
 
 def resolve_overlapping_trades(
