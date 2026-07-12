@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass
 from functools import lru_cache
 from typing import Any, Literal
 
@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 
 from sim_core.models import Trade
-from sim_core.rule_contracts import ContractStatus, load_contracts
+from sim_core.rule_contracts import load_contracts
 
 DrawdownMode = Literal["eod_trailing", "intraday_trailing", "fixed"]
 
@@ -317,27 +317,14 @@ def default_prop_rule_profiles() -> dict[str, PropRuleProfile]:
             )
         )
 
-    # Preserve the public profile keys while binding every covered preset to a
-    # source-reviewed contract.  A contract mismatch is a release-time error:
-    # it cannot silently change a firm mechanic in only one representation.
-    profile_by_key = {profile.key: profile for profile in profiles}
-    compared_fields = ("account_size", "max_loss", "drawdown_mode", "profit_split")
-    for contract in load_contracts():
-        profile = profile_by_key.get(contract.profile_key)
-        if contract.status is ContractStatus.ENABLED and profile is not None:
-            mismatches = [
-                field
-                for field in compared_fields
-                if field in contract.mechanics and getattr(profile, field) != contract.mechanics[field]
-            ]
-            if mismatches:
-                raise ValueError(
-                    f"profile {profile.key} disagrees with contract {contract.id}: {', '.join(mismatches)}"
-                )
-            profile_by_key[profile.key] = replace(
-                profile,
-                source=f"{profile.source}; rule contract {contract.id}",
-            )
+    # Alpha, FundedNext and TPT presets are generated from typed contracts.
+    # The retained local loops above are legacy compatibility material only;
+    # they are removed from the published profile set here.
+    from sim_core.rule_contracts.runtime import runtime_profiles
+
+    contract_firms = {"Alpha Futures", "FundedNext Futures", "TakeProfitTrader"}
+    profile_by_key = {profile.key: profile for profile in profiles if profile.firm not in contract_firms}
+    profile_by_key.update(runtime_profiles(load_contracts()))
     return profile_by_key
 
 
