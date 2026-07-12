@@ -580,6 +580,16 @@ def summarize_lifecycle_results_from_dicts(rows: list[dict[str, Any]]) -> pd.Dat
             else None,
             axis=1,
         )
+        # Trace-level strict results are authoritative here.  Replace the
+        # lifecycle aggregate variants before merging so public rate names
+        # stay stable rather than being silently renamed to ``*_x``/``*_y``.
+        summary = summary.drop(
+            columns=[
+                column
+                for column in ("strict_exact_failure_rate", "strict_unknown_rate", "realized_only_failure_rate")
+                if column in summary
+            ]
+        )
         summary = summary.merge(strict, left_on=["plan", "contracts"], right_on=["plan_key", "contracts"], how="left")
         summary = summary.drop(columns=["plan_key"])
     return summary
