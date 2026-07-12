@@ -49,6 +49,7 @@ from sim_core.prop_rules import (
     default_prop_rule_profiles,
     resolve_overlapping_trades,
 )
+from sim_core.rule_contracts import load_contracts
 
 
 ENTRY_COLUMNS = ("entry_time", "entry_utc", "entry_ts", "entry", "touched_at", "open_time")
@@ -59,6 +60,27 @@ MAE_COLUMNS = ("mae_points", "mae_pts", "mae")
 MFE_COLUMNS = ("mfe_points", "mfe_pts", "mfe")
 STOP_COLUMNS = ("stop_points", "stop_pts", "sl_points", "sl_pts")
 DEFAULT_PROFILE_KEY = "Apex Trader Funding - EOD PA 50K"
+
+
+def rule_certification_rows() -> pd.DataFrame:
+    """Audit-facing contract certification data; non-exact routes are unrankable."""
+    return pd.DataFrame(
+        [
+            {
+                "contract_id": contract.id,
+                "firm": contract.identity.firm,
+                "program": contract.identity.program,
+                "account_size": contract.identity.account_size,
+                "stage": contract.identity.stage.value,
+                "status": contract.status.value,
+                "exactness": contract.exactness.value,
+                "source_version": contract.identity.source_version,
+                "missing_required_evidence": contract.disabled_reason,
+                "strict_ranking_eligible": contract.rankable,
+            }
+            for contract in load_contracts()
+        ]
+    )
 RESULT_SCHEMA_VERSION = 5
 RESULT_STATE_KEYS = (
     "lifecycle_ranking",

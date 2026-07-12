@@ -1,0 +1,4 @@
+contract_id,firm,program,account_size,stage,field_path,normalized_value,exactness,source_document,page,article,implementation_status
+alpha_advanced_50k_evaluation,Alpha Futures,Advanced,50000,evaluation,transition.evaluation_target,4000,exact,Alpha Rules(5).pdf,2,Advanced Account Overview,implemented
+fundednext_rapid_50k_funded,FundedNext Futures,Rapid,50000,funded,drawdown.amount,2000,non_rankable,FundedNext Rules(3).pdf,1-40,Futures Trading Objectives,implemented
+tpt_pro_50k_funded,TakeProfitTrader,PRO,50000,funded,drawdown.mode,intraday_trailing,non_rankable,TPT Rules(1).pdf,2-3,PRO Account Rules,implemented

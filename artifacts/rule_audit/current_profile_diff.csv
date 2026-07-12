@@ -1,0 +1,4 @@
+profile,source_of_truth,status,material_discrepancy
+Alpha Futures profiles,typed rule contract,contract-derived,retired Standard profiles excluded
+FundedNext Futures profiles,typed rule contract,contract-derived,position limits remain non-rankable when unsourced
+TakeProfitTrader PRO profiles,typed rule contract,contract-derived,intratrade ordering evidence required
