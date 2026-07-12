@@ -1,0 +1,14 @@
+firm,program,stage,mechanic,value,source_pages,status
+Alpha Futures,Advanced,evaluation,profit_targets,50K=4000;100K=8000;150K=12000,1-2,SOURCED
+Alpha Futures,Advanced,funded,eod_trailing_mll,locks_at_starting_balance,14-15,SOURCED
+Alpha Futures,Advanced,funded,payout,5_days_at_200;50_percent_profit;90_percent_split,1-2,SOURCED
+Alpha Futures,Premium,evaluation,consistency,50_percent_evaluation_only,4-5,SOURCED
+Alpha Futures,Zero,funded,daily_loss_guard,2_percent_starting_balance_soft_pause,9-10,SOURCED
+FundedNext Futures,Rapid/Legacy/Flex/Bolt,evaluation,objectives,per_supplied_futures_tables,1-40,SOURCED
+FundedNext Futures,Bolt,funded,daily_loss_limit,1000_soft_pause_reset_5PM_CT,source_pdf,SOURCED
+FundedNext Futures,Rapid/Legacy/Flex,funded,daily_loss_limit,none,source_pdf,SOURCED
+FundedNext Futures,all,funded,consistency,40_percent_largest_day_less_than_or_equal_to_total_profit,source_pdf,SOURCED
+TakeProfitTrader,PRO,funded,intraday_trailing,realized_and_unrealized_peak;locks_at_start,1-4,SOURCED
+TakeProfitTrader,PRO,funded,payout,80_20_split_and_drawdown_buffer,5-6,SOURCED
+TakeProfitTrader,PRO+,funded,eod_drawdown_and_payout,90_10_split_no_buffer,13-17,SOURCED
+TakeProfitTrader,Test,evaluation,all,missing_complete_evaluation_tables,1-18,SOURCE_GAP

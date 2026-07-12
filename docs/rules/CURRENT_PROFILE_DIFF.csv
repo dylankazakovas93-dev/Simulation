@@ -1,0 +1,7 @@
+current_profile,contract_id,difference,disposition
+Alpha Futures - Advanced 50K,alpha_advanced_50k,hand_coded_preset_to_sourced_contract,compatible_mapping
+Alpha Futures - Premium 50K,alpha_premium_50k,hand_coded_preset_to_sourced_contract,compatible_mapping
+FundedNext Futures - Rapid 50K,fundednext_rapid_50k,hand_coded_preset_to_sourced_contract,compatible_mapping
+TakeProfitTrader - PRO 50K,tpt_pro_50k,hand_coded_preset_to_sourced_contract,compatible_mapping
+TakeProfitTrader - PRO+ 50K,tpt_pro_plus_50k,new_funded_only_source_contract,added
+TakeProfitTrader - Test 50K,tpt_test_50k,missing_source_table,disabled_SOURCE_GAP
